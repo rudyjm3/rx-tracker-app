@@ -14,11 +14,20 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "placeholde
 // Native/Expo guidance — a persisted session (access + refresh token
 // plus user metadata) commonly exceeds SecureStore's ~2KB per-key limit
 // on Android.
+//
+// On web, app.json's `web.output: "static"` pre-renders this module on
+// the server (no `window`), and @react-native-async-storage/async-storage's
+// web shim reaches for `window.localStorage` unconditionally — passing it
+// as `storage` there crashes the whole dev/render server. Only use it once
+// there's a real `window` to back it; supabase-js's own browser check
+// already no-ops persistence safely when `storage` is left undefined.
+const isServer = typeof window === "undefined";
+
 export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    storage: isServer ? undefined : AsyncStorage,
+    autoRefreshToken: !isServer,
+    persistSession: !isServer,
     detectSessionInUrl: false,
   },
 });
