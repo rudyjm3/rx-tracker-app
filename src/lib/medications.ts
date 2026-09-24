@@ -1,7 +1,8 @@
 // Ported subset of rx-tracker-web's lib/medications.ts — just the reads
-// the dashboard needs for now (getCurrentUserId, getActiveMedications,
-// getGroups, getGroupMembers). Write paths (add/edit medication, groups)
-// come later once the medication CRUD screens are built.
+// the dashboard/medications screens need so far (getCurrentUserId,
+// getActiveMedications, getInactiveMedications, getGroups,
+// getGroupMembers). Write paths (add/edit medication, groups) come later
+// once the medication CRUD screens are built.
 import { supabase } from "@/lib/supabase/client";
 import type { Medication, MedicationGroup } from "@/lib/types/medications";
 
@@ -20,6 +21,17 @@ export async function getActiveMedications(profileId?: string | null): Promise<M
     .eq("active", true);
   query = profileId == null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
   const { data, error } = await query.order("sort_order");
+  if (error) throw error;
+  return data as Medication[];
+}
+
+export async function getInactiveMedications(profileId?: string | null): Promise<Medication[]> {
+  let query = supabase
+    .from("medications")
+    .select("*, medication_schedule_times(*)")
+    .eq("active", false);
+  query = profileId == null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
+  const { data, error } = await query.order("name");
   if (error) throw error;
   return data as Medication[];
 }

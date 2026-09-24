@@ -31,6 +31,24 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="medications"
+        options={{
+          title: 'Medications',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'medical' : 'medical-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',

@@ -1,5 +1,6 @@
 // Ported from rx-tracker-web's lib/utils.ts (subset used by lib/schedule.ts
-// and the dashboard screen).
+// and the dashboard/medications/calendar screens).
+import type { Medication } from "@/lib/types/medications";
 
 // Local calendar date (YYYY-MM-DD), not UTC — toISOString() would shift
 // the date for any user not on UTC, especially for several hours around
@@ -23,4 +24,94 @@ export function to12h(time: string): string {
 export function timeToMinutes(time: string): number {
   const [hour, minute] = time.split(":").map(Number);
   return hour * 60 + minute;
+}
+
+export function formatLate(minutes: number): string {
+  if (minutes < 60) return `${minutes}mins late`;
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins > 0 ? `${hrs}hr ${mins}mins late` : `${hrs}hr late`;
+}
+
+// Single source of truth for "how many doses a day" a schedule implies.
+export function dosesPerDay(
+  scheduleMode: "fixed_times" | "interval",
+  scheduleTimesCount: number,
+  intervalHours: number | null | undefined,
+): number {
+  if (scheduleMode === "fixed_times") return scheduleTimesCount;
+  return intervalHours ? Math.max(1, Math.round(24 / intervalHours)) : 0;
+}
+
+export interface GroupDoseOverride {
+  scheduled_time: string;
+  quantity_per_dose: number | null;
+}
+
+function doseUnitsForTime(
+  medication: Medication,
+  scheduledTime: string,
+  scheduleTimeOverride: number | null | undefined,
+  groupDoseOverrides: GroupDoseOverride[],
+): number {
+  const groupOverride = groupDoseOverrides.find(
+    (override) => override.scheduled_time.slice(0, 5) === scheduledTime.slice(0, 5),
+  );
+  return groupOverride?.quantity_per_dose ?? scheduleTimeOverride ?? medication.quantity_per_dose;
+}
+
+// null = no supply projection possible (e.g. no inventory tracked, or no
+// dose quantity to divide by).
+export function daysUntilRunout(
+  medication: Medication,
+  groupDoseOverrides: GroupDoseOverride[] = [],
+): number | null {
+  const qty = medication.current_quantity ?? 0;
+  if (qty <= 0) return 0;
+
+  let dailyUnits = 0;
+  if (medication.as_needed) {
+    dailyUnits = groupDoseOverrides.reduce(
+      (total, override) => total + (override.quantity_per_dose ?? medication.quantity_per_dose),
+      0,
+    );
+  } else if (medication.schedule_mode === "fixed_times") {
+    dailyUnits = (medication.medication_schedule_times ?? []).reduce(
+      (total, scheduleTime) =>
+        total +
+        doseUnitsForTime(
+          medication,
+          scheduleTime.reminder_time,
+          scheduleTime.quantity_per_dose,
+          groupDoseOverrides,
+        ),
+      0,
+    );
+  } else {
+    dailyUnits =
+      dosesPerDay(
+        medication.schedule_mode,
+        medication.medication_schedule_times?.length ?? 0,
+        medication.interval_hours,
+      ) * medication.quantity_per_dose;
+  }
+
+  if (dailyUnits <= 0) return null;
+  return Math.floor(qty / dailyUnits);
+}
+
+export function scheduleSummary(med: Medication): string {
+  if (med.as_needed) return "As needed";
+  if (med.schedule_mode === "interval") {
+    return med.interval_hours
+      ? `Every ${med.interval_hours}h${med.first_dose_time ? ` from ${to12h(med.first_dose_time)}` : ""}`
+      : "Interval schedule";
+  }
+  const times = med.medication_schedule_times ?? [];
+  if (times.length === 0) return "No schedule set";
+  return times
+    .slice()
+    .sort((a, b) => a.reminder_time.localeCompare(b.reminder_time))
+    .map((t) => to12h(t.reminder_time))
+    .join(", ");
 }
