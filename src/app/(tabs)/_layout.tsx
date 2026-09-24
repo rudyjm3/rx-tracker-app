@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs } from 'expo-router';
 
 import { Colors } from '@/constants/theme';
@@ -20,8 +21,24 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: theme.background },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'today' : 'today-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
