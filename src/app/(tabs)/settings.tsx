@@ -1,13 +1,82 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import {
+  cancelAllReminderNotifications,
+  getRemindersEnabledSetting,
+  requestReminderPermissions,
+  resyncReminderNotifications,
+  setRemindersEnabledSetting,
+} from '@/lib/notifications';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
+  const theme = useTheme();
+
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [loadingSetting, setLoadingSetting] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const enabled = await getRemindersEnabledSetting();
+        if (!cancelled) setRemindersEnabled(enabled);
+      } catch {
+        // If we can't read the setting yet (e.g. no session), default off.
+      } finally {
+        if (!cancelled) setLoadingSetting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleToggle(value: boolean) {
+    setError(null);
+    setPermissionDenied(false);
+
+    if (Platform.OS === 'web') {
+      setError('Reminders aren’t available in the web app — open RxTracker on your phone to turn them on.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (value) {
+        const result = await requestReminderPermissions();
+        if (result === 'denied') {
+          setPermissionDenied(true);
+          return;
+        }
+        if (result === 'unsupported') {
+          setError('Reminders aren’t supported on this device.');
+          return;
+        }
+        await setRemindersEnabledSetting(true);
+        setRemindersEnabled(true);
+        await resyncReminderNotifications();
+      } else {
+        await setRemindersEnabledSetting(false);
+        setRemindersEnabled(false);
+        await cancelAllReminderNotifications();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update reminder setting');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -24,11 +93,38 @@ export default function SettingsScreen() {
         </ThemedView>
 
         <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="smallBold">Reminders</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-            Push notification delivery isn&apos;t wired up yet — this is where reminder settings
-            will live once it is.
-          </ThemedText>
+          <View style={styles.reminderRow}>
+            <View style={styles.reminderLabel}>
+              <ThemedText type="smallBold">Enable medication reminders</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                Get a notification on this device at each medication&apos;s scheduled time.
+                As-needed medications aren&apos;t reminded.
+              </ThemedText>
+            </View>
+            <Switch
+              value={remindersEnabled}
+              onValueChange={handleToggle}
+              disabled={busy || loadingSetting}
+              trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+            />
+          </View>
+
+          {permissionDenied && (
+            <ThemedView type="backgroundSelected" style={styles.permissionNotice}>
+              <ThemedText type="small">
+                Notifications are turned off for RxTracker in your device settings.
+              </ThemedText>
+              <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
+                <ThemedText type="linkPrimary">Open Settings</ThemedText>
+              </Pressable>
+            </ThemedView>
+          )}
+
+          {error && (
+            <ThemedText type="small" style={styles.error}>
+              {error}
+            </ThemedText>
+          )}
         </ThemedView>
 
         <Pressable style={styles.button} onPress={signOut}>
@@ -45,6 +141,15 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
   card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   note: { marginTop: Spacing.one },
+  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  reminderLabel: { flex: 1 },
+  permissionNotice: {
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.two,
+    gap: Spacing.two,
+  },
+  settingsButton: { alignSelf: 'flex-start' },
+  error: { color: Brand.danger, marginTop: Spacing.one },
   button: {
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,

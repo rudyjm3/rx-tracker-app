@@ -24,6 +24,7 @@ import {
   type ScheduleTimeInput,
 } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
+import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { Medication, MedicationType, ScheduleMode } from '@/lib/types/medications';
 import { daysUntilRunout, scheduleSummary, to12h } from '@/lib/utils';
 
@@ -66,6 +67,7 @@ export default function MedicationDetailScreen() {
           try {
             if (medication.active) await deactivateMedication(medication.id);
             else await activateMedication(medication.id);
+            resyncIfRemindersEnabled();
             await load();
           } catch (e) {
             Alert.alert('Failed', e instanceof Error ? e.message : 'Something went wrong');
@@ -315,6 +317,7 @@ function EditForm({
     setSaving(true);
     try {
       await updateMedication(medication.id, input, scheduleTimes);
+      resyncIfRemindersEnabled();
       onSaved();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save changes');
