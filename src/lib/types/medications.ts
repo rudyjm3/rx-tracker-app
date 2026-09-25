@@ -6,6 +6,7 @@ export type ScheduleMode = "fixed_times" | "interval";
 export type MedicationType = "prescription" | "otc" | "supplement";
 export type FeedbackType = "none" | "pain" | "mood" | "both";
 export type SetupStatus = "draft" | "ready" | "active";
+export type RefillEntryType = "refill" | "adjustment";
 
 export interface MedicationScheduleTime {
   id: string;
@@ -70,6 +71,19 @@ export interface MedicationGroupMember {
   medication_id: string;
   sort_order: number;
   quantity_per_dose: number | null;
+}
+
+export interface MedicationRefill {
+  id: string;
+  medication_id: string;
+  refill_date: string;
+  amount: number;
+  pills_on_hand: number;
+  note: string;
+  entry_type: RefillEntryType;
+  started_using_at: string | null;
+  carryover_quantity: number;
+  created_at: string;
 }
 
 export type DoseLogStatus = "taken" | "skipped" | "missed";

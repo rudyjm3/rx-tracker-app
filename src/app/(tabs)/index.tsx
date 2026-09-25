@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,10 +14,12 @@ import { getMissedGraceMinutes } from '@/lib/app-settings';
 import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
+import type { Medication } from '@/lib/types/medications';
 import { isLate, localDateString, to12h } from '@/lib/utils';
 
 export default function DashboardScreen() {
   const { activeProfileId, familyProfiles } = useActiveProfile();
+  const [medications, setMedications] = useState<Medication[]>([]);
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
   // The date these events were built for — kept alongside them rather than
   // recomputed from localDateString() at action time, so a Take/Skip tap
@@ -48,7 +51,7 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const date = localDateString();
-      const [medications, groups, groupMembers, doseLogs, postpones, graceMinutes] = await Promise.all([
+      const [activeMedications, groups, groupMembers, doseLogs, postpones, graceMinutes] = await Promise.all([
         getActiveMedications(activeProfileId),
         getGroups(activeProfileId),
         getGroupMembers(),
@@ -57,7 +60,8 @@ export default function DashboardScreen() {
         getMissedGraceMinutes(),
       ]);
       if (requestIdRef.current !== requestId) return;
-      const slots = generateDaySlots(date, medications, groups, groupMembers, doseLogs, postpones);
+      setMedications(activeMedications);
+      const slots = generateDaySlots(date, activeMedications, groups, groupMembers, doseLogs, postpones);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
 
@@ -150,6 +154,8 @@ export default function DashboardScreen() {
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
+          <LowSupplyBanner medications={medications} />
 
           <ThemedView type="backgroundElement" style={styles.heroCard}>
             <ThemedText type="small" themeColor="textSecondary">
