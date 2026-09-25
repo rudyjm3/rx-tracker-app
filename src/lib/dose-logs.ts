@@ -61,16 +61,34 @@ export type CalendarLogRow = DoseLog & {
   medications: { name: string; dose: string | null; dose_amount: number | null; dose_unit: string | null };
 };
 
-/** Per-day taken/skipped/missed counts for a month, keyed by date. */
+/**
+ * Per-day taken/skipped/missed counts for a month, keyed by date.
+ *
+ * medicationIds, when provided, scopes the query to that set via
+ * `.in("medication_id", ...)` — dose_logs has no profile_id of its own, so
+ * callers wanting a profile-scoped view (e.g. the active family member)
+ * resolve that profile's medication ids themselves (getActiveMedications +
+ * getInactiveMedications) and pass them in here. Omitted, this behaves
+ * exactly as before: every medication across every profile.
+ */
 export async function getCalendarMarkers(
   monthStart: string,
   monthEnd: string,
+  medicationIds?: string[],
 ): Promise<Record<string, CalendarDayMarker>> {
-  const { data, error } = await supabase
+  // A provided-but-empty scope (e.g. a profile with no medications at all)
+  // means "match nothing" — short-circuit rather than send
+  // `medication_id=in.()`, which PostgREST rejects as malformed instead of
+  // treating as an empty result.
+  if (medicationIds && medicationIds.length === 0) return {};
+
+  let query = supabase
     .from("dose_logs")
     .select("scheduled_for_date, status")
     .gte("scheduled_for_date", monthStart)
     .lte("scheduled_for_date", monthEnd);
+  if (medicationIds) query = query.in("medication_id", medicationIds);
+  const { data, error } = await query;
   if (error) throw error;
 
   const markers: Record<string, CalendarDayMarker> = {};
@@ -81,16 +99,29 @@ export async function getCalendarMarkers(
   return markers;
 }
 
-/** Raw dose_logs for a month, joined with medication name/dose, for the day-detail view. */
+/**
+ * Raw dose_logs for a date range, joined with medication name/dose, for
+ * the calendar's day-detail view and the History screen's list (which
+ * passes an arbitrary range, not necessarily a calendar month).
+ *
+ * See getCalendarMarkers above for the medicationIds scoping convention.
+ */
 export async function getCalendarLogs(
   monthStart: string,
   monthEnd: string,
+  medicationIds?: string[],
 ): Promise<CalendarLogRow[]> {
-  const { data, error } = await supabase
+  // See getCalendarMarkers above: a provided-but-empty scope means "match
+  // nothing," short-circuited rather than sent as `medication_id=in.()`.
+  if (medicationIds && medicationIds.length === 0) return [];
+
+  let query = supabase
     .from("dose_logs")
     .select("*, medications(name, dose, dose_amount, dose_unit)")
     .gte("scheduled_for_date", monthStart)
-    .lte("scheduled_for_date", monthEnd)
+    .lte("scheduled_for_date", monthEnd);
+  if (medicationIds) query = query.in("medication_id", medicationIds);
+  const { data, error } = await query
     .order("scheduled_for_date", { ascending: true })
     .order("scheduled_time", { ascending: true });
   if (error) throw error;

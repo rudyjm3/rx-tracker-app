@@ -7,11 +7,13 @@ import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { computeAdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
+import { getMissedGraceMinutes } from '@/lib/app-settings';
 import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
-import { localDateString, to12h } from '@/lib/utils';
+import { isLate, localDateString, to12h } from '@/lib/utils';
 
 export default function DashboardScreen() {
   const { activeProfileId, familyProfiles } = useActiveProfile();
@@ -22,6 +24,9 @@ export default function DashboardScreen() {
   // the date the on-screen slot actually belongs to, not "today" as of the
   // tap.
   const [scheduleDate, setScheduleDate] = useState(localDateString());
+  // null = no required (adherence-tracked, non-PRN) doses today, so the
+  // chip is hidden rather than showing a misleading "0%".
+  const [adherencePercent, setAdherencePercent] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -43,17 +48,30 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const date = localDateString();
-      const [medications, groups, groupMembers, doseLogs, postpones] = await Promise.all([
+      const [medications, groups, groupMembers, doseLogs, postpones, graceMinutes] = await Promise.all([
         getActiveMedications(activeProfileId),
         getGroups(activeProfileId),
         getGroupMembers(),
         getTodayLogs(date),
         getTodayPostpones(date),
+        getMissedGraceMinutes(),
       ]);
       if (requestIdRef.current !== requestId) return;
       const slots = generateDaySlots(date, medications, groups, groupMembers, doseLogs, postpones);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
+
+      const requiredSlots = slots
+        .filter((s) => !s.isPrn && s.medication.adherence_enabled)
+        .map((s) => ({
+          status: s.status,
+          late: isLate(
+            { status: s.status, taken_at: s.takenAt, scheduled_for_date: date, scheduled_time: s.scheduledTime },
+            graceMinutes,
+          ),
+        }));
+      const stats = computeAdherenceStats(requiredSlots);
+      setAdherencePercent(stats.requiredTotal > 0 ? stats.percent : null);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
@@ -116,9 +134,18 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.scrollContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         >
-          <ThemedText type="title" style={styles.title}>
-            Today
-          </ThemedText>
+          <View style={styles.titleRow}>
+            <ThemedText type="title" style={styles.title}>
+              Today
+            </ThemedText>
+            {adherencePercent !== null && (
+              <View style={styles.adherenceChip}>
+                <ThemedText type="small" style={styles.adherenceChipText}>
+                  {adherencePercent}%
+                </ThemedText>
+              </View>
+            )}
+          </View>
 
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
@@ -266,7 +293,17 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   title: { fontSize: 28, lineHeight: 34 },
+  adherenceChip: {
+    borderRadius: 999,
+    backgroundColor: Brand.bg,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.half,
+    paddingHorizontal: Spacing.two,
+  },
+  adherenceChipText: { color: Brand.deepBlue, fontWeight: '700' },
   error: { color: Brand.danger },
   heroCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   doneText: { fontSize: 16, marginTop: Spacing.one },
