@@ -98,3 +98,28 @@ export interface DosePostpone {
   resolved_at: string | null;
   created_at: string;
 }
+
+export type PainMoodLogType = "pain" | "mood" | "both";
+
+export interface StandalonePainMoodLog {
+  id: string;
+  user_id: string;
+  medication_id: string | null;
+  profile_id: string | null;
+  log_type: PainMoodLogType;
+  pain_level: number | null;
+  mood_level: number | null;
+  note: string;
+  tags: string;
+  logged_at: string;
+  updated_at: string | null;
+}
+
+export interface MoodTag {
+  id: string;
+  user_id: string;
+  name: string;
+  always_show: boolean;
+  sort_order: number;
+  created_at: string;
+}

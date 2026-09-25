@@ -49,6 +49,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="pain-mood"
+        options={{
+          title: 'Pain & Mood',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'pulse' : 'pulse-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
