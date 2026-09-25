@@ -17,9 +17,9 @@ import {
 } from '@/lib/family';
 import type { FamilyProfile } from '@/lib/types/profile';
 
-// Height/weight and profile_picture/photo upload are skipped this round —
-// no image picker is installed, and they're a separate scope (see AGENTS
-// task notes for this feature).
+// profile_picture/photo upload is skipped this round — no image picker is
+// installed, and it's a separate scope (see AGENTS task notes for this
+// feature).
 export default function EditFamilyMemberScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeProfileId, refreshFamilyProfiles, setActiveProfileId } = useActiveProfile();
@@ -136,6 +136,10 @@ function EditForm({
   const [displayName, setDisplayName] = useState(profile.display_name ?? '');
   const [relationship, setRelationship] = useState(profile.relationship ?? '');
   const [birthDate, setBirthDate] = useState(profile.birth_date ?? '');
+  const [heightValue, setHeightValue] = useState(profile.height_value != null ? String(profile.height_value) : '');
+  const [heightUnit, setHeightUnit] = useState<'in' | 'cm'>((profile.height_unit as 'in' | 'cm') ?? 'in');
+  const [weightValue, setWeightValue] = useState(profile.weight_value != null ? String(profile.weight_value) : '');
+  const [weightUnit, setWeightUnit] = useState<'lb' | 'kg'>((profile.weight_unit as 'lb' | 'kg') ?? 'lb');
   const [avatarColor, setAvatarColor] = useState(profile.avatar_color ?? AVATAR_COLOR_PALETTE[0]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -154,12 +158,47 @@ function EditForm({
       return;
     }
 
+    const heightNum = heightValue.trim() ? Number(heightValue) : null;
+    if (heightNum !== null) {
+      const [min, max] = heightUnit === 'cm' ? [50, 274] : [20, 108];
+      if (!Number.isFinite(heightNum) || heightNum < min || heightNum > max) {
+        setFormError(`Height must be between ${min} and ${max} ${heightUnit}.`);
+        return;
+      }
+    }
+
+    const weightNum = weightValue.trim() ? Number(weightValue) : null;
+    if (weightNum !== null) {
+      const [min, max] = weightUnit === 'kg' ? [1, 300] : [1, 660];
+      if (!Number.isFinite(weightNum) || weightNum < min || weightNum > max) {
+        setFormError(`Weight must be between ${min} and ${max} ${weightUnit}.`);
+        return;
+      }
+    }
+
+    // Only bump the *_updated_at timestamp when the value actually
+    // changed, so re-saving the form (e.g. to change just the
+    // relationship) doesn't make an untouched height/weight look
+    // freshly measured.
+    const heightChanged =
+      heightNum !== (profile.height_value ?? null) ||
+      (heightNum !== null && heightUnit !== (profile.height_unit ?? 'in'));
+    const weightChanged =
+      weightNum !== (profile.weight_value ?? null) ||
+      (weightNum !== null && weightUnit !== (profile.weight_unit ?? 'lb'));
+
     const input: FamilyProfileInput = {
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
       relationship: relationship || null,
       birth_date: birthDate || null,
+      height_value: heightNum,
+      height_unit: heightUnit,
+      height_updated_at: heightNum === null ? null : heightChanged ? new Date().toISOString() : profile.height_updated_at,
+      weight_value: weightNum,
+      weight_unit: weightUnit,
+      weight_updated_at: weightNum === null ? null : weightChanged ? new Date().toISOString() : profile.weight_updated_at,
       avatar_color: avatarColor,
     };
 
@@ -218,6 +257,36 @@ function EditForm({
             autoCorrect={false}
           />
 
+          <FieldLabel>Height</FieldLabel>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.rowInput]}
+              value={heightValue}
+              onChangeText={setHeightValue}
+              keyboardType="numeric"
+              placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
+            />
+            <View style={styles.unitToggle}>
+              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => setHeightUnit('in')} />
+              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => setHeightUnit('cm')} />
+            </View>
+          </View>
+
+          <FieldLabel>Weight</FieldLabel>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.rowInput]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
+            />
+            <View style={styles.unitToggle}>
+              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => setWeightUnit('lb')} />
+              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => setWeightUnit('kg')} />
+            </View>
+          </View>
+
           <FieldLabel>Avatar color</FieldLabel>
           <View style={styles.colorRow}>
             {AVATAR_COLOR_PALETTE.map((color) => (
@@ -260,6 +329,16 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
+function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
+      <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
@@ -269,6 +348,13 @@ const styles = StyleSheet.create({
   error: { color: Brand.danger, marginVertical: Spacing.two },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
+  rowInput: { flex: 1 },
+  unitToggle: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
+  unitButtonActive: { backgroundColor: Brand.card },
+  unitText: { color: Brand.textMuted },
+  unitTextActive: { color: Brand.text, fontWeight: '700' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   chip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
   chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },

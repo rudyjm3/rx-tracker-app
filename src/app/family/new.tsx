@@ -9,9 +9,9 @@ import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { AVATAR_COLOR_PALETTE, FAMILY_RELATIONSHIPS, createFamilyProfile, type FamilyProfileInput } from '@/lib/family';
 
-// Height/weight and profile_picture/photo upload are skipped this round —
-// no image picker is installed, and they're a separate scope (see AGENTS
-// task notes for this feature).
+// profile_picture/photo upload is skipped this round — no image picker is
+// installed, and it's a separate scope (see AGENTS task notes for this
+// feature).
 export default function NewFamilyMemberScreen() {
   const { refreshFamilyProfiles, setActiveProfileId } = useActiveProfile();
 
@@ -20,6 +20,10 @@ export default function NewFamilyMemberScreen() {
   const [displayName, setDisplayName] = useState('');
   const [relationship, setRelationship] = useState<string>('');
   const [birthDate, setBirthDate] = useState('');
+  const [heightValue, setHeightValue] = useState('');
+  const [heightUnit, setHeightUnit] = useState<'in' | 'cm'>('in');
+  const [weightValue, setWeightValue] = useState('');
+  const [weightUnit, setWeightUnit] = useState<'lb' | 'kg'>('lb');
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLOR_PALETTE[0]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -38,12 +42,34 @@ export default function NewFamilyMemberScreen() {
       return;
     }
 
+    const heightNum = heightValue.trim() ? Number(heightValue) : null;
+    if (heightNum !== null) {
+      const [min, max] = heightUnit === 'cm' ? [50, 274] : [20, 108];
+      if (!Number.isFinite(heightNum) || heightNum < min || heightNum > max) {
+        setFormError(`Height must be between ${min} and ${max} ${heightUnit}.`);
+        return;
+      }
+    }
+
+    const weightNum = weightValue.trim() ? Number(weightValue) : null;
+    if (weightNum !== null) {
+      const [min, max] = weightUnit === 'kg' ? [1, 300] : [1, 660];
+      if (!Number.isFinite(weightNum) || weightNum < min || weightNum > max) {
+        setFormError(`Weight must be between ${min} and ${max} ${weightUnit}.`);
+        return;
+      }
+    }
+
     const input: FamilyProfileInput = {
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
       relationship: relationship || null,
       birth_date: birthDate || null,
+      height_value: heightNum,
+      height_unit: heightUnit,
+      weight_value: weightNum,
+      weight_unit: weightUnit,
       avatar_color: avatarColor,
     };
 
@@ -113,6 +139,36 @@ export default function NewFamilyMemberScreen() {
             autoCorrect={false}
           />
 
+          <FieldLabel>Height</FieldLabel>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.rowInput]}
+              value={heightValue}
+              onChangeText={setHeightValue}
+              keyboardType="numeric"
+              placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
+            />
+            <View style={styles.unitToggle}>
+              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => setHeightUnit('in')} />
+              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => setHeightUnit('cm')} />
+            </View>
+          </View>
+
+          <FieldLabel>Weight</FieldLabel>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.rowInput]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
+            />
+            <View style={styles.unitToggle}>
+              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => setWeightUnit('lb')} />
+              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => setWeightUnit('kg')} />
+            </View>
+          </View>
+
           <FieldLabel>Avatar color</FieldLabel>
           <View style={styles.colorRow}>
             {AVATAR_COLOR_PALETTE.map((color) => (
@@ -151,6 +207,16 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
+function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
+      <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
@@ -159,6 +225,13 @@ const styles = StyleSheet.create({
   error: { color: Brand.danger, marginVertical: Spacing.two },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
+  rowInput: { flex: 1 },
+  unitToggle: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
+  unitButtonActive: { backgroundColor: Brand.card },
+  unitText: { color: Brand.textMuted },
+  unitTextActive: { color: Brand.text, fontWeight: '700' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   chip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
   chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
