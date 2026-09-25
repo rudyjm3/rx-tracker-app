@@ -7,7 +7,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useActiveProfile } from '@/lib/active-profile';
-import { AVATAR_COLOR_PALETTE, FAMILY_RELATIONSHIPS, createFamilyProfile, type FamilyProfileInput } from '@/lib/family';
+import {
+  AVATAR_COLOR_PALETTE,
+  FAMILY_RELATIONSHIPS,
+  convertHeight,
+  convertWeight,
+  createFamilyProfile,
+  type FamilyProfileInput,
+} from '@/lib/family';
 
 // profile_picture/photo upload is skipped this round — no image picker is
 // installed, and it's a separate scope (see AGENTS task notes for this
@@ -29,6 +36,25 @@ export default function NewFamilyMemberScreen() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // Switching units must convert (not reinterpret) any value already
+  // typed — tapping "cm" on a field showing 65 (in) should show ~165
+  // (cm), not silently turn into 65cm.
+  function handleHeightUnitChange(unit: 'in' | 'cm') {
+    setHeightValue((prev) => {
+      const num = prev.trim() ? Number(prev) : null;
+      return num !== null && Number.isFinite(num) ? String(convertHeight(num, heightUnit, unit)) : prev;
+    });
+    setHeightUnit(unit);
+  }
+
+  function handleWeightUnitChange(unit: 'lb' | 'kg') {
+    setWeightValue((prev) => {
+      const num = prev.trim() ? Number(prev) : null;
+      return num !== null && Number.isFinite(num) ? String(convertWeight(num, weightUnit, unit)) : prev;
+    });
+    setWeightUnit(unit);
+  }
 
   async function handleCreate() {
     setFormError(null);
@@ -149,8 +175,8 @@ export default function NewFamilyMemberScreen() {
               placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
             />
             <View style={styles.unitToggle}>
-              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => setHeightUnit('in')} />
-              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => setHeightUnit('cm')} />
+              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => handleHeightUnitChange('in')} />
+              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => handleHeightUnitChange('cm')} />
             </View>
           </View>
 
@@ -164,8 +190,8 @@ export default function NewFamilyMemberScreen() {
               placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
             />
             <View style={styles.unitToggle}>
-              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => setWeightUnit('lb')} />
-              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => setWeightUnit('kg')} />
+              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => handleWeightUnitChange('lb')} />
+              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => handleWeightUnitChange('kg')} />
             </View>
           </View>
 

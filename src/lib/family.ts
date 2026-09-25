@@ -41,6 +41,25 @@ export interface FamilyProfileInput {
   avatar_color?: string | null;
 }
 
+const CM_PER_INCH = 2.54;
+const KG_PER_LB = 0.45359237;
+
+/** Converts a height value between "in" and "cm", rounded to 1 decimal. */
+export function convertHeight(value: number, fromUnit: 'in' | 'cm', toUnit: 'in' | 'cm'): number {
+  if (fromUnit === toUnit) return value;
+  const cm = fromUnit === 'in' ? value * CM_PER_INCH : value;
+  const converted = toUnit === 'in' ? cm / CM_PER_INCH : cm;
+  return Math.round(converted * 10) / 10;
+}
+
+/** Converts a weight value between "lb" and "kg", rounded to 1 decimal. */
+export function convertWeight(value: number, fromUnit: 'lb' | 'kg', toUnit: 'lb' | 'kg'): number {
+  if (fromUnit === toUnit) return value;
+  const kg = fromUnit === 'lb' ? value * KG_PER_LB : value;
+  const converted = toUnit === 'lb' ? kg / KG_PER_LB : kg;
+  return Math.round(converted * 10) / 10;
+}
+
 function fallbackDisplayName(firstName: string | null | undefined, lastName: string | null | undefined): string {
   const first = (firstName ?? "").trim();
   const last = (lastName ?? "").trim();

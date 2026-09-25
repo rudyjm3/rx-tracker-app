@@ -10,6 +10,8 @@ import { useActiveProfile } from '@/lib/active-profile';
 import {
   AVATAR_COLOR_PALETTE,
   FAMILY_RELATIONSHIPS,
+  convertHeight,
+  convertWeight,
   deleteFamilyProfile,
   getFamilyProfile,
   updateFamilyProfile,
@@ -146,6 +148,25 @@ function EditForm({
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // Switching units must convert (not reinterpret) any value already
+  // typed — tapping "cm" on a field showing 65 (in) should show ~165
+  // (cm), not silently turn into 65cm.
+  function handleHeightUnitChange(unit: 'in' | 'cm') {
+    setHeightValue((prev) => {
+      const num = prev.trim() ? Number(prev) : null;
+      return num !== null && Number.isFinite(num) ? String(convertHeight(num, heightUnit, unit)) : prev;
+    });
+    setHeightUnit(unit);
+  }
+
+  function handleWeightUnitChange(unit: 'lb' | 'kg') {
+    setWeightValue((prev) => {
+      const num = prev.trim() ? Number(prev) : null;
+      return num !== null && Number.isFinite(num) ? String(convertWeight(num, weightUnit, unit)) : prev;
+    });
+    setWeightUnit(unit);
+  }
+
   async function handleSave() {
     setFormError(null);
 
@@ -267,8 +288,8 @@ function EditForm({
               placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
             />
             <View style={styles.unitToggle}>
-              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => setHeightUnit('in')} />
-              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => setHeightUnit('cm')} />
+              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => handleHeightUnitChange('in')} />
+              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => handleHeightUnitChange('cm')} />
             </View>
           </View>
 
@@ -282,8 +303,8 @@ function EditForm({
               placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
             />
             <View style={styles.unitToggle}>
-              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => setWeightUnit('lb')} />
-              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => setWeightUnit('kg')} />
+              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => handleWeightUnitChange('lb')} />
+              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => handleWeightUnitChange('kg')} />
             </View>
           </View>
 
