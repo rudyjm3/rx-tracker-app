@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,20 +7,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
-import type { Medication, MedicationType } from '@/lib/types/medications';
+import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
+import type { Medication } from '@/lib/types/medications';
 import { daysUntilRunout, scheduleSummary } from '@/lib/utils';
-
-const TYPE_LABELS: Record<MedicationType, string> = {
-  prescription: 'Rx',
-  otc: 'OTC',
-  supplement: 'Supplement',
-};
-
-const TYPE_COLORS: Record<MedicationType, string> = {
-  prescription: '#0754a8',
-  otc: '#0a8ac8',
-  supplement: '#f5a524',
-};
 
 type ListTab = 'active' | 'inactive';
 
@@ -108,15 +97,16 @@ function MedicationCard({ medication }: { medication: Medication }) {
   const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
 
   return (
-    <ThemedView type="backgroundElement" style={styles.card}>
+    <Pressable onPress={() => router.push(`/medications/${medication.id}`)}>
+      <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.cardHeader}>
         <ThemedText type="smallBold" style={styles.medName}>
           {medication.name}
           {medication.dose ? ` — ${medication.dose}` : ''}
         </ThemedText>
-        <View style={[styles.typeBadge, { backgroundColor: TYPE_COLORS[medication.medication_type] + '22' }]}>
-          <ThemedText type="small" style={{ color: TYPE_COLORS[medication.medication_type], fontWeight: '700' }}>
-            {TYPE_LABELS[medication.medication_type]}
+        <View style={[styles.typeBadge, { backgroundColor: MEDICATION_TYPE_COLORS[medication.medication_type] + '22' }]}>
+          <ThemedText type="small" style={{ color: MEDICATION_TYPE_COLORS[medication.medication_type], fontWeight: '700' }}>
+            {MEDICATION_TYPE_LABELS[medication.medication_type]}
           </ThemedText>
         </View>
       </View>
@@ -148,7 +138,8 @@ function MedicationCard({ medication }: { medication: Medication }) {
           </ThemedText>
         </View>
       )}
-    </ThemedView>
+      </ThemedView>
+    </Pressable>
   );
 }
 
