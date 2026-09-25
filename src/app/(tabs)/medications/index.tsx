@@ -69,14 +69,21 @@ export default function MedicationsScreen() {
           <ThemedText type="title" style={styles.title}>
             Medications
           </ThemedText>
-          <Pressable
-            style={styles.addButton}
-            onPress={() => router.push('/medications/new')}
-            hitSlop={8}
-            accessibilityLabel="Add medication"
-          >
-            <ThemedText style={styles.addButtonText}>+</ThemedText>
-          </Pressable>
+          <View style={styles.titleActions}>
+            <Pressable style={styles.groupsButton} onPress={() => router.push('/groups')} hitSlop={8}>
+              <ThemedText type="small" style={styles.groupsButtonText}>
+                Manage groups
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={styles.addButton}
+              onPress={() => router.push('/medications/new')}
+              hitSlop={8}
+              accessibilityLabel="Add medication"
+            >
+              <ThemedText style={styles.addButtonText}>+</ThemedText>
+            </Pressable>
+          </View>
         </View>
 
         {familyProfiles.length > 0 && <ProfileSwitcher />}
@@ -191,6 +198,15 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
   title: { fontSize: 28, lineHeight: 34 },
+  titleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  groupsButton: {
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  groupsButtonText: { color: Brand.deepBlue, fontWeight: '600' },
   addButton: {
     width: 36,
     height: 36,
