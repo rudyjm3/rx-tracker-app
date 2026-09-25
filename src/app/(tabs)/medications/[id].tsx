@@ -269,8 +269,11 @@ function EditForm({
         setFormError('Enter a valid interval in hours.');
         return;
       }
-      if (form.firstDoseTime && !TIME_RE.test(form.firstDoseTime)) {
-        setFormError('First dose time must be HH:MM (24h).');
+      // generateDaySlots only generates interval slots when
+      // first_dose_time is set — an empty one here would save fine but
+      // silently drop the medication from every schedule/dashboard view.
+      if (!form.firstDoseTime || !TIME_RE.test(form.firstDoseTime)) {
+        setFormError('First dose time is required for interval schedules — use HH:MM (24h).');
         return;
       }
     }

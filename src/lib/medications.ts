@@ -125,30 +125,25 @@ export async function updateMedication(
   if (error) throw error;
 }
 
+// Runs as the atomic set_medication_status RPC rather than a separate
+// update + insert, so a dropped connection between them can't leave a
+// medication discontinued/resumed with no matching audit event.
 export async function deactivateMedication(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("medications")
-    .update({ active: false, updated_at: new Date().toISOString() })
-    .eq("id", id);
+  const { error } = await supabase.rpc("set_medication_status", {
+    p_medication_id: id,
+    p_active: false,
+    p_event: "discontinued",
+  });
   if (error) throw error;
-
-  const { error: eventError } = await supabase
-    .from("medication_status_events")
-    .insert({ medication_id: id, event: "discontinued", reason: "", comment: "" });
-  if (eventError) throw eventError;
 }
 
 export async function activateMedication(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("medications")
-    .update({ active: true, updated_at: new Date().toISOString() })
-    .eq("id", id);
+  const { error } = await supabase.rpc("set_medication_status", {
+    p_medication_id: id,
+    p_active: true,
+    p_event: "resumed",
+  });
   if (error) throw error;
-
-  const { error: eventError } = await supabase
-    .from("medication_status_events")
-    .insert({ medication_id: id, event: "resumed", reason: "", comment: "" });
-  if (eventError) throw eventError;
 }
 
 export async function getGroups(profileId?: string | null): Promise<MedicationGroup[]> {

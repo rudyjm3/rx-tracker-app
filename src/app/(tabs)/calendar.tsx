@@ -52,16 +52,19 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       load(month);
-      // Only re-fetch on focus for the currently selected month; changing
-      // months (below) fetches directly.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [load]),
+      // month is a real dependency here — leaving it out let this effect
+      // capture whatever month was selected when the screen first
+      // mounted, so refocusing after navigating to a different month
+      // silently reloaded the wrong one (grid/header showed the new
+      // month, data was the old one).
+    }, [load, month]),
   );
 
   function changeMonth(delta: 1 | -1) {
-    const next = delta === 1 ? bounds.nextMonth : bounds.prevMonth;
-    setMonth(next);
-    load(next);
+    // No explicit load() call here — the focus effect above now depends
+    // on `month`, so it re-runs and fetches the new month itself while
+    // this screen is focused.
+    setMonth(delta === 1 ? bounds.nextMonth : bounds.prevMonth);
   }
 
   const cells: { date: string | null; day: number | null }[] = [];

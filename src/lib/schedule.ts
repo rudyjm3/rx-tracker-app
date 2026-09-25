@@ -109,7 +109,14 @@ export function generateDaySlots(
       }
     } else if (med.schedule_mode === "interval" && med.interval_hours && med.first_dose_time) {
       const stepMinutes = med.interval_hours * 60;
-      let minutes = timeToMinutes(med.first_dose_time.slice(0, 5));
+      // first_dose_time is the anchor of an ongoing cycle, not "today's
+      // first dose" — e.g. an every-8h medication anchored at 20:00 still
+      // has occurrences at 04:00 and 12:00 today. Start from the anchor's
+      // phase within a 24h day (anchor mod step) rather than literally at
+      // the anchor's own time-of-day, so every day replays the same full
+      // cycle instead of only the tail from the anchor's clock time to
+      // midnight.
+      let minutes = timeToMinutes(med.first_dose_time.slice(0, 5)) % stepMinutes;
       while (minutes < 24 * 60) {
         const h = String(Math.floor(minutes / 60)).padStart(2, "0");
         const m = String(minutes % 60).padStart(2, "0");
