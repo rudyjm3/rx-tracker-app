@@ -11,5 +11,11 @@ export interface FamilyProfile {
   avatar_color: string | null;
   relationship: string | null;
   birth_date: string | null;
+  height_value: number | null;
+  height_unit: string | null;
+  weight_value: number | null;
+  weight_unit: string | null;
+  height_updated_at: string | null;
+  weight_updated_at: string | null;
   created_at: string;
 }

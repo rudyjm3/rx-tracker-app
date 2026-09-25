@@ -32,7 +32,32 @@ export interface FamilyProfileInput {
   last_name?: string | null;
   relationship?: string | null;
   birth_date?: string | null;
+  height_value?: number | null;
+  height_unit?: string | null;
+  weight_value?: number | null;
+  weight_unit?: string | null;
+  height_updated_at?: string | null;
+  weight_updated_at?: string | null;
   avatar_color?: string | null;
+}
+
+const CM_PER_INCH = 2.54;
+const KG_PER_LB = 0.45359237;
+
+/** Converts a height value between "in" and "cm", rounded to 1 decimal. */
+export function convertHeight(value: number, fromUnit: 'in' | 'cm', toUnit: 'in' | 'cm'): number {
+  if (fromUnit === toUnit) return value;
+  const cm = fromUnit === 'in' ? value * CM_PER_INCH : value;
+  const converted = toUnit === 'in' ? cm / CM_PER_INCH : cm;
+  return Math.round(converted * 10) / 10;
+}
+
+/** Converts a weight value between "lb" and "kg", rounded to 1 decimal. */
+export function convertWeight(value: number, fromUnit: 'lb' | 'kg', toUnit: 'lb' | 'kg'): number {
+  if (fromUnit === toUnit) return value;
+  const kg = fromUnit === 'lb' ? value * KG_PER_LB : value;
+  const converted = toUnit === 'lb' ? kg / KG_PER_LB : kg;
+  return Math.round(converted * 10) / 10;
 }
 
 function fallbackDisplayName(firstName: string | null | undefined, lastName: string | null | undefined): string {
@@ -82,6 +107,12 @@ export async function createFamilyProfile(input: FamilyProfileInput): Promise<Fa
       last_name: input.last_name ?? null,
       relationship: input.relationship ?? null,
       birth_date: input.birth_date ?? null,
+      height_value: input.height_value ?? null,
+      height_unit: input.height_value != null ? (input.height_unit ?? "in") : null,
+      weight_value: input.weight_value ?? null,
+      weight_unit: input.weight_value != null ? (input.weight_unit ?? "lb") : null,
+      height_updated_at: input.height_value != null ? (input.height_updated_at ?? new Date().toISOString()) : null,
+      weight_updated_at: input.weight_value != null ? (input.weight_updated_at ?? new Date().toISOString()) : null,
       avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
     })
     .select()
@@ -99,6 +130,12 @@ export async function updateFamilyProfile(id: string, input: FamilyProfileInput)
       last_name: input.last_name ?? null,
       relationship: input.relationship ?? null,
       birth_date: input.birth_date ?? null,
+      height_value: input.height_value ?? null,
+      height_unit: input.height_value != null ? (input.height_unit ?? "in") : null,
+      weight_value: input.weight_value ?? null,
+      weight_unit: input.weight_value != null ? (input.weight_unit ?? "lb") : null,
+      height_updated_at: input.height_value != null ? (input.height_updated_at ?? null) : null,
+      weight_updated_at: input.weight_value != null ? (input.weight_updated_at ?? null) : null,
       avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
     })
     .eq("id", id);
