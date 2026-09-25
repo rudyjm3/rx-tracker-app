@@ -9,24 +9,34 @@
 // lib/schedule.ts (`minutes = timeToMinutes(anchor) % stepMinutes`, then
 // walk forward by the interval through the 24h day) so the two features
 // never disagree about what a medication's daily times are.
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 
-import { getSetting, setSetting } from "@/lib/app-settings";
 import { getActiveMedications } from "@/lib/medications";
-import { timeToMinutes } from "@/lib/utils";
+import { localDateString, timeToMinutes } from "@/lib/utils";
 import type { Medication } from "@/lib/types/medications";
 
-// Same getSetting/setSetting-backed on/off flag pattern as
-// MOOD_TAGS_SEEDED_KEY in lib/pain-mood.ts.
+// This preference is intentionally per-device local storage (AsyncStorage),
+// NOT the Supabase-backed app_settings get/setSetting helpers used
+// elsewhere in this app. Reminders are scheduled with the OS notification
+// service on *this* device, so whether they're on has to be a per-device
+// fact: an account-wide (Supabase-synced) boolean would mean toggling
+// reminders on one phone silently flips them on/off on every other phone
+// signed into the same account, without that device's user ever tapping
+// the switch or granting notification permission there.
 const LOCAL_REMINDERS_ENABLED_KEY = "local_reminders_enabled";
 
 export async function getRemindersEnabledSetting(): Promise<boolean> {
-  const value = await getSetting(LOCAL_REMINDERS_ENABLED_KEY);
-  return value === "1";
+  try {
+    const value = await AsyncStorage.getItem(LOCAL_REMINDERS_ENABLED_KEY);
+    return value === "1";
+  } catch {
+    return false;
+  }
 }
 
 export async function setRemindersEnabledSetting(enabled: boolean): Promise<void> {
-  await setSetting(LOCAL_REMINDERS_ENABLED_KEY, enabled ? "1" : "0");
+  await AsyncStorage.setItem(LOCAL_REMINDERS_ENABLED_KEY, enabled ? "1" : "0");
 }
 
 export interface ReminderTime {
@@ -63,19 +73,21 @@ function getNotificationsModule(): typeof import("expo-notifications") | null {
  *   - NOT as_needed (PRN meds are deferred scope — a PRN dose has no fixed
  *     time to remind about, so it's intentionally skipped here; the web
  *     app's PRN handling doesn't apply to on-device scheduled reminders)
+ *   - start_date/end_date cover "today" (same string comparison
+ *     generateDaySlots uses against a rendered day's date), so a
+ *     future-dated course doesn't start reminding early and a completed
+ *     course doesn't keep reminding after its end_date.
  *
- * Gap (documented, not fixed here): end_date isn't enforced against
- * "today" the way generateDaySlots enforces it per rendered day. A local
- * DAILY trigger just repeats forever once scheduled — there's no
- * "expire this trigger on date X" primitive — so a medication whose
- * end_date has passed keeps reminding until the next resync (sign-in,
- * app foreground, or a medication edit) notices it's no longer active/
- * within range and cancels it. start_date is similarly not screened
- * against "today" (a future-dated medication currently gets its reminders
- * scheduled early); both are acceptable for a locally-scheduled repeating
- * reminder and get cleaned up on the next resync rather than never.
+ * A local DAILY trigger just repeats forever once scheduled — there's no
+ * "expire this trigger on date X" primitive — so a medication that crosses
+ * out of its start/end window still gets cleaned up by the next resync
+ * (sign-in, app foreground, or a medication edit) rather than instantly,
+ * but it's never scheduled fresh while out of range.
  */
-export function computeReminderTimes(medications: Medication[]): ReminderTime[] {
+export function computeReminderTimes(
+  medications: Medication[],
+  today: string = localDateString(),
+): ReminderTime[] {
   const reminders: ReminderTime[] = [];
 
   for (const med of medications) {
@@ -83,6 +95,8 @@ export function computeReminderTimes(medications: Medication[]): ReminderTime[] 
     if (!med.reminders_enabled) continue;
     if (!med.dashboard_enabled) continue;
     if (med.as_needed) continue;
+    if (med.start_date && today < med.start_date) continue;
+    if (med.end_date && today > med.end_date) continue;
 
     const times = new Set<string>();
 

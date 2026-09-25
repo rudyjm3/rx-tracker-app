@@ -3,7 +3,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 
-import { addNotificationResponseListener, resyncIfRemindersEnabled } from '@/lib/notifications';
+import {
+  addNotificationResponseListener,
+  cancelAllReminderNotifications,
+  resyncIfRemindersEnabled,
+} from '@/lib/notifications';
 import { AuthProvider, useAuth } from '@/lib/supabase/AuthProvider';
 
 SplashScreen.preventAutoHideAsync();
@@ -17,6 +21,7 @@ const FOREGROUND_RESYNC_MIN_INTERVAL_MS = 60_000;
 function RootNavigation() {
   const { loading, session } = useAuth();
   const lastForegroundResyncAt = useRef(0);
+  const lastUserId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading) SplashScreen.hideAsync();
@@ -24,9 +29,27 @@ function RootNavigation() {
 
   // Resync once after sign-in / on launch when a session exists — resync
   // itself checks the local_reminders_enabled setting and no-ops if it's
-  // off, and no-ops entirely on web.
+  // off, and no-ops entirely on web. When the session ends (sign-out) or
+  // switches to a different account, cancel every scheduled local
+  // reminder instead — otherwise the previous account's medication
+  // schedule (names/doses/times) keeps firing on this device even after
+  // that account's Supabase session is gone, and signing into a new
+  // account whose reminders setting happens to be off would just no-op
+  // the resync and leave the old schedules in place.
   useEffect(() => {
-    if (!session) return;
+    const currentUserId = session?.user.id ?? null;
+    const previousUserId = lastUserId.current;
+    lastUserId.current = currentUserId;
+
+    if (!currentUserId) {
+      if (previousUserId !== null) cancelAllReminderNotifications();
+      return;
+    }
+
+    if (previousUserId !== null && previousUserId !== currentUserId) {
+      cancelAllReminderNotifications();
+    }
+
     lastForegroundResyncAt.current = Date.now();
     resyncIfRemindersEnabled();
   }, [session]);
