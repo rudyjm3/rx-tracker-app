@@ -61,7 +61,16 @@ export default function EditFamilyMemberScreen() {
             try {
               await deleteFamilyProfile(profile.id);
               if (activeProfileId === profile.id) setActiveProfileId(null);
-              await refreshFamilyProfiles();
+              try {
+                // A failed refresh here doesn't mean the delete failed —
+                // the row is already gone — so it must not report the
+                // operation as failed. The family list screen also
+                // refreshes on its own focus, so this list is caught up
+                // either way.
+                await refreshFamilyProfiles();
+              } catch {
+                // Ignored — see above.
+              }
               router.back();
             } catch (e) {
               Alert.alert('Failed', e instanceof Error ? e.message : 'Something went wrong');
@@ -96,7 +105,16 @@ export default function EditFamilyMemberScreen() {
     <EditForm
       profile={profile}
       onSaved={async () => {
-        await refreshFamilyProfiles();
+        try {
+          // A failed refresh here doesn't mean the save failed — the row
+          // is already committed — so it must not report the operation
+          // as failed to the form's caller. The family list screen also
+          // refreshes on its own focus, so this list is caught up either
+          // way.
+          await refreshFamilyProfiles();
+        } catch {
+          // Ignored — see above.
+        }
         router.back();
       }}
       onRemove={handleRemove}

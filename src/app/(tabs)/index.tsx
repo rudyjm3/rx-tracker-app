@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,7 +27,17 @@ export default function DashboardScreen() {
   const [actingKey, setActingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Bumped on every load() call and captured per-call as requestId — if a
+  // newer call starts (e.g. the active profile changes again) before an
+  // older one's fetch resolves, the older call's result is a stale
+  // response for a profile that's no longer selected and must be
+  // discarded rather than overwriting state a newer call already set,
+  // which could otherwise show one profile's doses under another's
+  // selected chip and let a dose get recorded against the wrong person.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async (isRefresh = false) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
@@ -40,12 +50,15 @@ export default function DashboardScreen() {
         getTodayLogs(date),
         getTodayPostpones(date),
       ]);
+      if (requestIdRef.current !== requestId) return;
       const slots = generateDaySlots(date, medications, groups, groupMembers, doseLogs, postpones);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }

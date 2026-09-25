@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +23,13 @@ export default function MedicationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // See the Dashboard's identical guard: bumped on every load() call so a
+  // slower, stale response (e.g. from a profile that's no longer selected)
+  // can't overwrite state a newer call already set.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async (activeTab: ListTab, isRefresh = false) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
@@ -32,10 +38,13 @@ export default function MedicationsScreen() {
         activeTab === 'active'
           ? await getActiveMedications(activeProfileId)
           : await getInactiveMedications(activeProfileId);
+      if (requestIdRef.current !== requestId) return;
       setMedications(data);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load medications');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }

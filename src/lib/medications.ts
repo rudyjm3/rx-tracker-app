@@ -54,6 +54,24 @@ export async function getActiveMedications(profileId?: string | null): Promise<M
   return data as Medication[];
 }
 
+/**
+ * Like getActiveMedications, but returns active medications across every
+ * profile (the owner and every family member) rather than being scoped to
+ * one. Used only by the local reminder resync (lib/notifications.ts),
+ * which schedules device notifications from every profile's medications
+ * — not just whichever profile happens to be selected in the UI — so an
+ * omitted profileId there must not silently fall back to "owner only".
+ */
+export async function getAllActiveMedicationsAcrossProfiles(): Promise<Medication[]> {
+  const { data, error } = await supabase
+    .from("medications")
+    .select("*, medication_schedule_times(*)")
+    .eq("active", true)
+    .order("sort_order");
+  if (error) throw error;
+  return data as Medication[];
+}
+
 export async function getInactiveMedications(profileId?: string | null): Promise<Medication[]> {
   let query = supabase
     .from("medications")

@@ -50,7 +50,16 @@ export default function NewFamilyMemberScreen() {
     setSaving(true);
     try {
       const created = await createFamilyProfile(input);
-      await refreshFamilyProfiles();
+      try {
+        // A failed refresh here doesn't mean the create failed — the row
+        // is already committed — so it must not land in the outer catch
+        // and report the operation as failed (which would invite a
+        // duplicate on retry). The family list screen also refreshes on
+        // its own focus, so this list is caught up either way.
+        await refreshFamilyProfiles();
+      } catch {
+        // Ignored — see above.
+      }
       setActiveProfileId(created.id);
       router.back();
     } catch (e) {
