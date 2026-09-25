@@ -2,6 +2,7 @@
 // medications list and the detail/edit screen. Colors ported from
 // rx-tracker-web's components/ui/MedTypeBadge.tsx (brand-blue/deep-blue/
 // status-warning).
+import { Brand } from "@/constants/theme";
 import type { MedicationType } from "@/lib/types/medications";
 
 export const MEDICATION_TYPE_LABELS: Record<MedicationType, string> = {
@@ -11,9 +12,9 @@ export const MEDICATION_TYPE_LABELS: Record<MedicationType, string> = {
 };
 
 export const MEDICATION_TYPE_COLORS: Record<MedicationType, string> = {
-  prescription: "#0754a8",
-  otc: "#0a8ac8",
-  supplement: "#f5a524",
+  prescription: Brand.deepBlue,
+  otc: Brand.blue,
+  supplement: Brand.warning,
 };
 
 export const MEDICATION_TYPE_OPTIONS: MedicationType[] = ["prescription", "otc", "supplement"];

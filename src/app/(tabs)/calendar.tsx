@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, Spacing } from '@/constants/theme';
 import { calendarDayColor, currentMonth, monthBounds, type CalendarDayColor } from '@/lib/calendar';
 import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker, type CalendarLogRow } from '@/lib/dose-logs';
 import { localDateString, to12h } from '@/lib/utils';
@@ -13,11 +13,11 @@ import { localDateString, to12h } from '@/lib/utils';
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 const DAY_COLORS: Record<CalendarDayColor, { bg: string; text: string }> = {
-  future: { bg: 'transparent', text: '#60646C' },
-  missed: { bg: '#e5484d', text: '#ffffff' },
-  skipped: { bg: '#f5a524', text: '#ffffff' },
-  taken: { bg: '#18bfa6', text: '#ffffff' },
-  empty: { bg: 'transparent', text: '#000000' },
+  future: { bg: 'transparent', text: Brand.textMuted },
+  missed: { bg: Brand.danger, text: '#ffffff' },
+  skipped: { bg: Brand.warning, text: '#ffffff' },
+  taken: { bg: Brand.success, text: '#ffffff' },
+  empty: { bg: 'transparent', text: Brand.text },
 };
 
 export default function CalendarScreen() {
@@ -203,14 +203,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
   arrow: { fontSize: 28, paddingHorizontal: Spacing.two },
   monthLabel: { fontSize: 20, lineHeight: 26 },
-  error: { color: '#D0342C', marginBottom: Spacing.two },
+  error: { color: Brand.danger, marginBottom: Spacing.two },
   weekdayRow: { flexDirection: 'row' },
   weekdayLabel: { width: CELL_SIZE, textAlign: 'center' },
   loading: { marginTop: Spacing.five },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: CELL_SIZE, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  todayRing: { borderWidth: 2, borderColor: '#208AEF' },
+  todayRing: { borderWidth: 2, borderColor: Brand.deepBlue },
   legend: { flexDirection: 'row', gap: Spacing.four, marginTop: Spacing.three, justifyContent: 'center' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
@@ -219,10 +219,10 @@ const styles = StyleSheet.create({
   modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
   modalList: { maxHeight: 320 },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#8A8F99' },
+  logRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
   logTime: { width: 76 },
   logName: { flex: 1 },
   logStatus: { textTransform: 'capitalize', fontWeight: '600' },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  closeButtonText: { fontWeight: '600', color: '#208AEF' },
+  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });

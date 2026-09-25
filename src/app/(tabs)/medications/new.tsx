@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import type { MedicationType, ScheduleMode } from '@/lib/types/medications';
@@ -358,27 +358,27 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
   title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
-  error: { color: '#D0342C', marginVertical: Spacing.two },
+  error: { color: Brand.danger, marginVertical: Spacing.two },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  primaryButton: { flex: 1, backgroundColor: '#208AEF', borderRadius: Spacing.two, paddingVertical: Spacing.three, alignItems: 'center' },
+  primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: '#8A8F99', borderRadius: Spacing.two, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: '#8A8F99', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: Spacing.two },
   rowItem: { flex: 1 },
-  segmented: { flexDirection: 'row', backgroundColor: '#F0F0F3', borderRadius: Spacing.two, padding: 2 },
+  segmented: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: '#ffffff' },
-  segmentText: { color: '#60646C' },
-  segmentTextActive: { color: '#000000' },
+  segmentButtonActive: { backgroundColor: Brand.card },
+  segmentText: { color: Brand.textMuted },
+  segmentTextActive: { color: Brand.text },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
   timesList: { gap: Spacing.two, marginTop: Spacing.one },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   timeInput: { width: 100 },
-  removeTime: { color: '#D0342C', marginLeft: 'auto' },
-  addTime: { color: '#208AEF', fontWeight: '600', marginTop: Spacing.one },
+  removeTime: { color: Brand.danger, marginLeft: 'auto' },
+  addTime: { color: Brand.deepBlue, fontWeight: '600', marginTop: Spacing.one },
 });
