@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import {
   createStandaloneLog,
   getMoodTags,
@@ -29,6 +30,7 @@ const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 
 export default function PainMoodScreen() {
+  const theme = useTheme();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
   const [painLevel, setPainLevel] = useState(DEFAULT_LEVEL);
@@ -117,7 +119,7 @@ export default function PainMoodScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
@@ -175,10 +177,11 @@ export default function PainMoodScreen() {
 
           <FieldLabel>Note (optional)</FieldLabel>
           <TextInput
-            style={[styles.input, styles.multiline]}
+            style={[styles.input, styles.multiline, { color: theme.text }]}
             value={note}
             onChangeText={setNote}
             placeholder="How are you feeling?"
+            placeholderTextColor={theme.textSecondary}
             multiline
           />
 
