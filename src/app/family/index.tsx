@@ -68,7 +68,7 @@ export default function FamilyListScreen() {
 
 function FamilyMemberCard({ profile }: { profile: FamilyProfile }) {
   return (
-    <Pressable onPress={() => router.push(`/family/${profile.id}`)}>
+    <Pressable onPress={() => router.push({ pathname: '/family/[id]', params: { id: profile.id } })}>
       <ThemedView type="backgroundElement" style={styles.card}>
         <View style={[styles.avatar, { backgroundColor: profile.avatar_color ?? Brand.deepBlue }]}>
           <ThemedText style={styles.avatarText}>{profile.display_name.charAt(0).toUpperCase()}</ThemedText>
