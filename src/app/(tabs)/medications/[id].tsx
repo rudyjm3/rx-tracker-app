@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { adjustQuantity, getRefillHistory, logRefill } from '@/lib/inventory';
 import {
   activateMedication,
   deactivateMedication,
@@ -25,23 +27,27 @@ import {
 } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
-import type { Medication, MedicationType, ScheduleMode } from '@/lib/types/medications';
-import { daysUntilRunout, scheduleSummary, to12h } from '@/lib/utils';
+import type { Medication, MedicationRefill, MedicationType, ScheduleMode } from '@/lib/types/medications';
+import { daysUntilRunout, localDateString, scheduleSummary, to12h } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
 export default function MedicationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
+  const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setMedication(await getMedication(id));
+      const med = await getMedication(id);
+      setMedication(med);
+      setRefillHistory(med.inventory_enabled ? await getRefillHistory(id) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load medication');
     } finally {
@@ -110,7 +116,7 @@ export default function MedicationDetailScreen() {
     );
   }
 
-  const hasInventory = medication.inventory_enabled && medication.starting_quantity;
+  const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
 
   return (
@@ -145,6 +151,17 @@ export default function MedicationDetailScreen() {
             />
           )}
 
+          {hasInventory && (
+            <View style={styles.actions}>
+              <Pressable style={styles.secondaryButton} onPress={() => setRefillSheetMode('refill')}>
+                <ThemedText style={styles.secondaryButtonText}>Log Refill</ThemedText>
+              </Pressable>
+              <Pressable style={styles.secondaryButton} onPress={() => setRefillSheetMode('adjust')}>
+                <ThemedText style={styles.secondaryButtonText}>Adjust Quantity</ThemedText>
+              </Pressable>
+            </View>
+          )}
+
           <View style={styles.actions}>
             <Pressable style={styles.primaryButton} onPress={() => setEditing(true)}>
               <ThemedText style={styles.primaryButtonText}>Edit</ThemedText>
@@ -155,9 +172,195 @@ export default function MedicationDetailScreen() {
               </ThemedText>
             </Pressable>
           </View>
+
+          {hasInventory && refillHistory.length > 0 && (
+            <View style={styles.historySection}>
+              <ThemedText type="smallBold" style={styles.sectionTitle}>
+                Refill History
+              </ThemedText>
+              {refillHistory.map((entry) => (
+                <RefillHistoryRow key={entry.id} entry={entry} unit={medication.inventory_unit} />
+              ))}
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
+
+      {hasInventory && refillSheetMode && (
+        <RefillSheet
+          mode={refillSheetMode}
+          medication={medication}
+          onClose={() => setRefillSheetMode(null)}
+          onSaved={async () => {
+            setRefillSheetMode(null);
+            await load();
+          }}
+        />
+      )}
     </ThemedView>
+  );
+}
+
+function RefillHistoryRow({ entry, unit }: { entry: MedicationRefill; unit: string }) {
+  const isAdjustment = entry.entry_type === 'adjustment';
+  const sign = entry.amount >= 0 ? '+' : '';
+  return (
+    <View style={styles.historyRow}>
+      <View style={styles.historyMain}>
+        <ThemedText type="small">{entry.refill_date}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {isAdjustment ? 'Adjustment' : 'Refill'} · {sign}
+          {entry.amount} {unit} · {entry.pills_on_hand} on hand after
+        </ThemedText>
+        {entry.note ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.historyNote}>
+            {entry.note}
+          </ThemedText>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function RefillSheet({
+  mode,
+  medication,
+  onClose,
+  onSaved,
+}: {
+  mode: 'refill' | 'adjust';
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [refillDate, setRefillDate] = useState(localDateString());
+  const [amount, setAmount] = useState('');
+  const [newQuantity, setNewQuantity] = useState(
+    medication.current_quantity != null ? String(medication.current_quantity) : '0',
+  );
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    if (mode === 'refill') {
+      const amountValue = Number(amount);
+      if (!amount || !Number.isFinite(amountValue) || amountValue < 0) {
+        setFormError('Amount added must be zero or greater.');
+        return;
+      }
+      setSaving(true);
+      try {
+        await logRefill(medication.id, amountValue, null, note, refillDate);
+        onSaved();
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : 'Failed to log refill');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      const quantityValue = Number(newQuantity);
+      if (!newQuantity || !Number.isFinite(quantityValue) || quantityValue < 0) {
+        setFormError('Quantity must be zero or greater.');
+        return;
+      }
+      setSaving(true);
+      try {
+        await adjustQuantity(medication.id, quantityValue, note);
+        onSaved();
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : 'Failed to adjust quantity');
+      } finally {
+        setSaving(false);
+      }
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  {mode === 'refill' ? 'Log Refill' : 'Adjust Quantity'}
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                {mode === 'refill' ? (
+                  <>
+                    <FieldLabel>Refill date</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={refillDate}
+                      onChangeText={setRefillDate}
+                      placeholder="YYYY-MM-DD"
+                    />
+                    <FieldLabel>{`Amount added (${medication.inventory_unit})`}</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="e.g. 30"
+                    />
+                    <FieldLabel>Note (optional)</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={note}
+                      onChangeText={setNote}
+                      placeholder="e.g. 30-day supply"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                      Current count: {medication.current_quantity ?? 0} {medication.inventory_unit}
+                    </ThemedText>
+                    <FieldLabel>{`Correct current quantity (${medication.inventory_unit})`}</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={newQuantity}
+                      onChangeText={setNewQuantity}
+                    />
+                    <FieldLabel>Reason (optional)</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={note}
+                      onChangeText={setNote}
+                      placeholder="e.g. recount, dropped a pill"
+                    />
+                  </>
+                )}
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primaryButton, saving && styles.disabled]}
+                    onPress={handleSubmit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>
+                        {mode === 'refill' ? 'Log Refill' : 'Save'}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -530,6 +733,15 @@ const styles = StyleSheet.create({
   inactiveBanner: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2, marginTop: Spacing.two },
   detailRow: { marginTop: Spacing.three, gap: 2 },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
+  historySection: { marginTop: Spacing.four, gap: Spacing.two },
+  sectionTitle: { marginBottom: Spacing.one },
+  historyRow: { flexDirection: 'row', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
+  historyMain: { flex: 1, gap: 2 },
+  historyNote: { fontStyle: 'italic' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheetWrapper: { maxHeight: '85%' },
+  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
+  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.two },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
   secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },

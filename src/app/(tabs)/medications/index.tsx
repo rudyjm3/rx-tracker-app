@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -94,6 +95,8 @@ export default function MedicationsScreen() {
             contentContainerStyle={styles.scrollContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} />}
           >
+            <LowSupplyBanner medications={medications} />
+
             {medications.length === 0 && (
               <ThemedText themeColor="textSecondary">
                 {tab === 'active' ? 'No active medications yet.' : 'No inactive medications.'}
@@ -120,7 +123,7 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
 }
 
 function MedicationCard({ medication }: { medication: Medication }) {
-  const hasInventory = medication.inventory_enabled && medication.starting_quantity;
+  const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
   const starting = medication.starting_quantity ?? 0;
   const fraction = hasInventory && starting > 0 ? Math.max(0, Math.min(1, current / starting)) : 0;
@@ -135,10 +138,19 @@ function MedicationCard({ medication }: { medication: Medication }) {
           {medication.name}
           {medication.dose ? ` — ${medication.dose}` : ''}
         </ThemedText>
-        <View style={[styles.typeBadge, { backgroundColor: MEDICATION_TYPE_COLORS[medication.medication_type] + '22' }]}>
-          <ThemedText type="small" style={{ color: MEDICATION_TYPE_COLORS[medication.medication_type], fontWeight: '700' }}>
-            {MEDICATION_TYPE_LABELS[medication.medication_type]}
-          </ThemedText>
+        <View style={styles.badgeGroup}>
+          {isLowSupply && (
+            <View style={[styles.typeBadge, { backgroundColor: Brand.warning + '22' }]}>
+              <ThemedText type="small" style={{ color: Brand.warning, fontWeight: '700' }}>
+                Low supply
+              </ThemedText>
+            </View>
+          )}
+          <View style={[styles.typeBadge, { backgroundColor: MEDICATION_TYPE_COLORS[medication.medication_type] + '22' }]}>
+            <ThemedText type="small" style={{ color: MEDICATION_TYPE_COLORS[medication.medication_type], fontWeight: '700' }}>
+              {MEDICATION_TYPE_LABELS[medication.medication_type]}
+            </ThemedText>
+          </View>
         </View>
       </View>
 
@@ -199,6 +211,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
   medName: { flex: 1 },
+  badgeGroup: { flexDirection: 'row', gap: Spacing.one },
   typeBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   instructions: { marginTop: Spacing.half },
   inventorySection: { marginTop: Spacing.two, gap: Spacing.one },
