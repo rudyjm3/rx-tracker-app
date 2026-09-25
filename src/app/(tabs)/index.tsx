@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
@@ -168,18 +168,18 @@ function EventRow({
   const displayTime = formatEventTime(event.time);
 
   return (
-    <ThemedView style={styles.eventRow}>
+    <View style={styles.eventRow}>
       <ThemedText type={emphasized ? 'subtitle' : 'default'} style={emphasized ? styles.emphasizedTime : undefined}>
         {displayTime}
       </ThemedText>
       <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
       {slots.map((slot) => (
-        <ThemedView key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
+        <View key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
           <ThemedText type="small" style={styles.slotName}>
             {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
           </ThemedText>
           {slot.status === 'pending' ? (
-            <ThemedView style={styles.actions}>
+            <View style={styles.actions}>
               <ActionButton
                 label="Skip"
                 onPress={() => onAction(slot, 'skipped')}
@@ -191,15 +191,15 @@ function EventRow({
                 onPress={() => onAction(slot, 'taken')}
                 busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
               />
-            </ThemedView>
+            </View>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" style={styles.statusLabel}>
               {slot.status}
             </ThemedText>
           )}
-        </ThemedView>
+        </View>
       ))}
-    </ThemedView>
+    </View>
   );
 }
 
@@ -225,7 +225,7 @@ function ActionButton({
       ]}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={variant === 'secondary' ? '#60646C' : '#ffffff'} />
+        <ActivityIndicator size="small" color={variant === 'secondary' ? Brand.textMuted : '#ffffff'} />
       ) : (
         <ThemedText
           type="small"
@@ -244,11 +244,11 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },
   title: { fontSize: 28, lineHeight: 34 },
-  error: { color: '#D0342C' },
-  heroCard: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  error: { color: Brand.danger },
+  heroCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   doneText: { fontSize: 16, marginTop: Spacing.one },
   sectionTitle: { marginTop: Spacing.two },
-  scheduleCard: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  scheduleCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   eventRow: { gap: Spacing.one },
   emphasizedTime: { marginBottom: Spacing.half },
   slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
@@ -256,14 +256,14 @@ const styles = StyleSheet.create({
   statusLabel: { textTransform: 'capitalize' },
   actions: { flexDirection: 'row', gap: Spacing.two },
   actionButton: {
-    backgroundColor: '#208AEF',
-    borderRadius: Spacing.two,
+    backgroundColor: Brand.deepBlue,
+    borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     minWidth: 64,
     alignItems: 'center',
   },
-  actionButtonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8A8F99' },
+  actionButtonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Brand.border },
   actionButtonDisabled: { opacity: 0.6 },
   actionText: { color: '#ffffff', fontWeight: '600' },
   actionTextSecondary: { fontWeight: '600' },

@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function LoginScreen() {
@@ -98,16 +98,16 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
   input: {
     borderWidth: 1,
-    borderColor: '#8A8F99',
-    borderRadius: Spacing.two,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
   },
-  error: { color: '#D0342C' },
+  error: { color: Brand.danger },
   button: {
-    backgroundColor: '#208AEF',
-    borderRadius: Spacing.two,
+    backgroundColor: Brand.deepBlue,
+    borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
     alignItems: 'center',
     marginTop: Spacing.two,

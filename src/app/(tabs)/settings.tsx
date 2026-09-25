@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SettingsScreen() {
@@ -43,15 +43,15 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four, gap: Spacing.three },
   title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
-  card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   note: { marginTop: Spacing.one },
   button: {
-    borderRadius: Spacing.two,
+    borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#D0342C',
+    borderColor: Brand.danger,
     marginTop: Spacing.two,
   },
-  buttonText: { color: '#D0342C', fontWeight: '600' },
+  buttonText: { color: Brand.danger, fontWeight: '600' },
 });

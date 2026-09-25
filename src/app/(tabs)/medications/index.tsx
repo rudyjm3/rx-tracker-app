@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
 import type { Medication } from '@/lib/types/medications';
@@ -137,7 +137,7 @@ function MedicationCard({ medication }: { medication: Medication }) {
             <View
               style={[
                 styles.inventoryBarFill,
-                { width: `${fraction * 100}%`, backgroundColor: isLowSupply ? '#e5484d' : '#18bfa6' },
+                { width: `${fraction * 100}%`, backgroundColor: isLowSupply ? Brand.danger : Brand.success },
               ]}
             />
           </View>
@@ -161,27 +161,27 @@ const styles = StyleSheet.create({
   addButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#208AEF',
+    borderRadius: BorderRadius.md,
+    backgroundColor: Brand.deepBlue,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addButtonText: { color: '#ffffff', fontSize: 22, lineHeight: 24, fontWeight: '600' },
-  segmented: { flexDirection: 'row', backgroundColor: '#F0F0F3', borderRadius: Spacing.two, padding: 2, marginBottom: Spacing.three },
+  segmented: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2, marginBottom: Spacing.three },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: '#ffffff' },
-  segmentText: { color: '#60646C' },
-  segmentTextActive: { color: '#000000' },
-  error: { color: '#D0342C', marginBottom: Spacing.two },
+  segmentButtonActive: { backgroundColor: Brand.card },
+  segmentText: { color: Brand.textMuted },
+  segmentTextActive: { color: Brand.text },
+  error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
-  card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
   medName: { flex: 1 },
   typeBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   instructions: { marginTop: Spacing.half },
   inventorySection: { marginTop: Spacing.two, gap: Spacing.one },
-  inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: '#E0E1E6', overflow: 'hidden' },
+  inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: Brand.border, overflow: 'hidden' },
   inventoryBarFill: { height: '100%', borderRadius: 3 },
-  lowSupplyText: { color: '#e5484d', fontWeight: '600' },
+  lowSupplyText: { color: Brand.danger, fontWeight: '600' },
 });
