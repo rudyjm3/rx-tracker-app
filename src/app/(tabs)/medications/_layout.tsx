@@ -5,6 +5,7 @@ export default function MedicationsStackLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: 'Medications', headerShown: false }} />
       <Stack.Screen name="[id]" options={{ title: 'Medication', headerBackTitle: 'Medications' }} />
+      <Stack.Screen name="new" options={{ title: 'New medication', headerBackTitle: 'Medications', presentation: 'modal' }} />
     </Stack>
   );
 }

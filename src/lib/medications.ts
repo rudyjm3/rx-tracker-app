@@ -1,6 +1,6 @@
-// Ported subset of rx-tracker-web's lib/medications.ts — the reads and
-// the single-medication edit path the app needs so far. createMedication
-// (the Add Medication wizard) and group management come later.
+// Ported subset of rx-tracker-web's lib/medications.ts — the reads, the
+// single-medication edit path, and the Add Medication create path. Group
+// management comes later.
 import { supabase } from "@/lib/supabase/client";
 import type { FeedbackType, Medication, MedicationGroup, MedicationType, ScheduleMode } from "@/lib/types/medications";
 
@@ -70,6 +70,56 @@ export async function getMedication(id: string): Promise<Medication> {
     .from("medications")
     .select("*, medication_schedule_times(*)")
     .eq("id", id)
+    .single();
+  if (error) throw error;
+  return data as Medication;
+}
+
+/**
+ * Runs as the atomic `create_medication` RPC (see rx-tracker-web's
+ * supabase/schema.sql) rather than separate insert/insert client
+ * requests, so a dropped connection between them can't leave a
+ * medication created with no schedule times, silently missing from
+ * every schedule/dashboard view. The RPC also computes `dose`
+ * server-side, matching updateMedication below.
+ */
+export async function createMedication(
+  input: MedicationInput,
+  scheduleTimes: ScheduleTimeInput[],
+): Promise<Medication> {
+  const { data, error } = await supabase
+    .rpc("create_medication", {
+      p_medication: {
+        profile_id: input.profile_id ?? null,
+        name: input.name,
+        dose_amount: input.dose_amount ?? null,
+        dose_unit: input.dose_unit ?? null,
+        dose_form: input.dose_form ?? null,
+        instructions: input.instructions ?? "",
+        schedule_mode: input.schedule_mode,
+        interval_hours: input.interval_hours ?? null,
+        first_dose_time: input.first_dose_time ?? null,
+        as_needed: input.as_needed,
+        medication_type: input.medication_type,
+        inventory_type: input.inventory_type,
+        inventory_unit: input.inventory_unit,
+        starting_quantity: input.starting_quantity ?? null,
+        quantity_per_dose: input.quantity_per_dose,
+        low_supply_threshold: input.low_supply_threshold,
+        feedback_type: input.feedback_type,
+        start_date: input.start_date ?? null,
+        end_date: input.end_date ?? null,
+        dashboard_enabled: input.dashboard_enabled,
+        reminders_enabled: input.reminders_enabled,
+        adherence_enabled: input.adherence_enabled,
+        inventory_enabled: input.inventory_enabled,
+      },
+      p_schedule_times: scheduleTimes.map((t) => ({
+        reminder_time: t.reminder_time,
+        quantity_per_dose: t.quantity_per_dose ?? null,
+      })),
+    })
+    .select()
     .single();
   if (error) throw error;
   return data as Medication;
