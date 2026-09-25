@@ -1,13 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Brand, Spacing } from '@/constants/theme';
+import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import { calendarDayColor, currentMonth, monthBounds, type CalendarDayColor } from '@/lib/calendar';
 import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker, type CalendarLogRow } from '@/lib/dose-logs';
+import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import { localDateString, to12h } from '@/lib/utils';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -21,6 +23,7 @@ const DAY_COLORS: Record<CalendarDayColor, { bg: string; text: string }> = {
 };
 
 export default function CalendarScreen() {
+  const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
   const [logs, setLogs] = useState<CalendarLogRow[]>([]);
@@ -31,32 +34,48 @@ export default function CalendarScreen() {
   const bounds = useMemo(() => monthBounds(month), [month]);
   const today = localDateString();
 
+  // See the Dashboard's identical guard: bumped on every load() call so a
+  // slower, stale response (e.g. from a profile that's no longer selected)
+  // can't overwrite state a newer call already set.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async (m: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const b = monthBounds(m);
-      const [markerData, logData] = await Promise.all([
-        getCalendarMarkers(b.monthStart, b.monthEnd),
-        getCalendarLogs(b.monthStart, b.monthEnd),
+      const [activeMeds, inactiveMeds] = await Promise.all([
+        getActiveMedications(activeProfileId),
+        getInactiveMedications(activeProfileId),
       ]);
+      if (requestIdRef.current !== requestId) return;
+      const medicationIds = [...activeMeds, ...inactiveMeds].map((med) => med.id);
+      const [markerData, logData] = await Promise.all([
+        getCalendarMarkers(b.monthStart, b.monthEnd, medicationIds),
+        getCalendarLogs(b.monthStart, b.monthEnd, medicationIds),
+      ]);
+      if (requestIdRef.current !== requestId) return;
       setMarkers(markerData);
       setLogs(logData);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load calendar');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       setLoading(false);
     }
-  }, []);
+  }, [activeProfileId]);
 
+  // load() (and this callback) changes identity whenever activeProfileId
+  // or month changes, and useFocusEffect re-invokes its callback on
+  // identity changes while the screen is already focused (not just on
+  // focus transitions) — so switching profiles or navigating to a
+  // different month reloads immediately, not just the next time this
+  // screen regains focus.
   useFocusEffect(
     useCallback(() => {
       load(month);
-      // month is a real dependency here — leaving it out let this effect
-      // capture whatever month was selected when the screen first
-      // mounted, so refocusing after navigating to a different month
-      // silently reloaded the wrong one (grid/header showed the new
-      // month, data was the old one).
     }, [load, month]),
   );
 
@@ -80,6 +99,17 @@ export default function CalendarScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <View style={styles.titleRow}>
+          <ThemedText type="title" style={styles.pageTitle}>
+            Calendar
+          </ThemedText>
+          <Pressable style={styles.historyButton} onPress={() => router.push('/history')} hitSlop={8}>
+            <ThemedText type="small" style={styles.historyButtonText}>
+              View history
+            </ThemedText>
+          </Pressable>
+        </View>
+
         <View style={styles.header}>
           <Pressable onPress={() => changeMonth(-1)} hitSlop={12}>
             <ThemedText type="subtitle" style={styles.arrow}>
@@ -200,6 +230,16 @@ const CELL_SIZE = '14.28%' as const;
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
+  pageTitle: { fontSize: 28, lineHeight: 34 },
+  historyButton: {
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  historyButtonText: { color: Brand.deepBlue, fontWeight: '600' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
   arrow: { fontSize: 28, paddingHorizontal: Spacing.two },
   monthLabel: { fontSize: 20, lineHeight: 26 },

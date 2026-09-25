@@ -33,6 +33,31 @@ export function formatLate(minutes: number): string {
   return mins > 0 ? `${hrs}hr ${mins}mins late` : `${hrs}hr late`;
 }
 
+interface LateCheckLog {
+  status: string;
+  taken_at: string | null;
+  scheduled_for_date: string;
+  scheduled_time: string;
+}
+
+export function isLate(log: LateCheckLog, graceMinutes: number): boolean {
+  if (log.status !== "taken" || !log.taken_at) return false;
+  const scheduled = new Date(`${log.scheduled_for_date}T${log.scheduled_time}`);
+  const threshold = new Date(scheduled.getTime() + graceMinutes * 60000);
+  return new Date(log.taken_at) > threshold;
+}
+
+// How many minutes past the grace threshold a taken dose was logged, or
+// null if it wasn't late (or isn't a taken dose). Used where the actual
+// "Xmins late" label is shown, not just a late/on-time boolean.
+export function minutesLate(log: LateCheckLog, graceMinutes: number): number | null {
+  if (log.status !== "taken" || !log.taken_at) return null;
+  const scheduled = new Date(`${log.scheduled_for_date}T${log.scheduled_time}`);
+  const threshold = new Date(scheduled.getTime() + graceMinutes * 60000);
+  const diffMs = new Date(log.taken_at).getTime() - threshold.getTime();
+  return diffMs > 0 ? Math.ceil(diffMs / 60000) : null;
+}
+
 // Single source of truth for "how many doses a day" a schedule implies.
 export function dosesPerDay(
   scheduleMode: "fixed_times" | "interval",
