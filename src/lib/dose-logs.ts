@@ -99,10 +99,20 @@ export async function getCalendarMarkers(
   return markers;
 }
 
+const CALENDAR_LOGS_PAGE_SIZE = 1000;
+
 /**
  * Raw dose_logs for a date range, joined with medication name/dose, for
  * the calendar's day-detail view and the History screen's list (which
  * passes an arbitrary range, not necessarily a calendar month).
+ *
+ * Paged via .range() rather than a single query: History's 90-day preset
+ * can exceed Supabase's default row cap on a profile with a lot of
+ * dose_logs, and since the query orders oldest-first, a silently
+ * truncated response would be missing the newest rows — exactly backwards
+ * for a history feature. getCalendarMarkers doesn't need this: it only
+ * selects two narrow columns for aggregation and its callers only ever
+ * pass single-month ranges, so it stays well under the row cap.
  *
  * See getCalendarMarkers above for the medicationIds scoping convention.
  */
@@ -115,15 +125,29 @@ export async function getCalendarLogs(
   // nothing," short-circuited rather than sent as `medication_id=in.()`.
   if (medicationIds && medicationIds.length === 0) return [];
 
-  let query = supabase
-    .from("dose_logs")
-    .select("*, medications(name, dose, dose_amount, dose_unit)")
-    .gte("scheduled_for_date", monthStart)
-    .lte("scheduled_for_date", monthEnd);
-  if (medicationIds) query = query.in("medication_id", medicationIds);
-  const { data, error } = await query
-    .order("scheduled_for_date", { ascending: true })
-    .order("scheduled_time", { ascending: true });
-  if (error) throw error;
-  return data as CalendarLogRow[];
+  const rows: CalendarLogRow[] = [];
+  for (let page = 0; ; page++) {
+    let query = supabase
+      .from("dose_logs")
+      .select("*, medications(name, dose, dose_amount, dose_unit)")
+      .gte("scheduled_for_date", monthStart)
+      .lte("scheduled_for_date", monthEnd);
+    if (medicationIds) query = query.in("medication_id", medicationIds);
+    const from = page * CALENDAR_LOGS_PAGE_SIZE;
+    const { data, error } = await query
+      .order("scheduled_for_date", { ascending: true })
+      .order("scheduled_time", { ascending: true })
+      // scheduled_for_date + scheduled_time alone aren't unique — multiple
+      // medications can share a slot — so without a final unique tie-breaker
+      // a row tied at a page boundary can shift between requests and end up
+      // duplicated in one page and skipped in the next. `id` is unique and
+      // stable across all pages.
+      .order("id", { ascending: true })
+      .range(from, from + CALENDAR_LOGS_PAGE_SIZE - 1);
+    if (error) throw error;
+    const pageRows = data as CalendarLogRow[];
+    rows.push(...pageRows);
+    if (pageRows.length < CALENDAR_LOGS_PAGE_SIZE) break;
+  }
+  return rows;
 }

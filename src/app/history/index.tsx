@@ -103,6 +103,7 @@ export default function HistoryScreen() {
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load history');
+      setLogs([]);
     } finally {
       if (requestIdRef.current !== requestId) return;
       setLoading(false);
