@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -168,18 +168,18 @@ function EventRow({
   const displayTime = formatEventTime(event.time);
 
   return (
-    <ThemedView style={styles.eventRow}>
+    <View style={styles.eventRow}>
       <ThemedText type={emphasized ? 'subtitle' : 'default'} style={emphasized ? styles.emphasizedTime : undefined}>
         {displayTime}
       </ThemedText>
       <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
       {slots.map((slot) => (
-        <ThemedView key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
+        <View key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
           <ThemedText type="small" style={styles.slotName}>
             {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
           </ThemedText>
           {slot.status === 'pending' ? (
-            <ThemedView style={styles.actions}>
+            <View style={styles.actions}>
               <ActionButton
                 label="Skip"
                 onPress={() => onAction(slot, 'skipped')}
@@ -191,15 +191,15 @@ function EventRow({
                 onPress={() => onAction(slot, 'taken')}
                 busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
               />
-            </ThemedView>
+            </View>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" style={styles.statusLabel}>
               {slot.status}
             </ThemedText>
           )}
-        </ThemedView>
+        </View>
       ))}
-    </ThemedView>
+    </View>
   );
 }
 

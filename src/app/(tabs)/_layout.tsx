@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs } from 'expo-router';
 
-import { Brand, Colors } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -16,7 +16,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Brand.deepBlue,
+        tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: { backgroundColor: theme.background },
       }}

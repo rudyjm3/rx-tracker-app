@@ -41,6 +41,11 @@ export const Colors = {
     backgroundElement: Brand.card,
     backgroundSelected: Brand.border,
     textSecondary: Brand.textMuted,
+    // rx-deep-blue reads at ~5.4:1 against the light background/card
+    // surfaces below; against dark mode's near-black background it drops
+    // to ~2.8:1, so dark mode gets rx-cyan instead (same brand family,
+    // ~11:1 on black).
+    accent: Brand.deepBlue,
   },
   dark: {
     text: '#ffffff',
@@ -48,6 +53,7 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    accent: Brand.cyan,
   },
 } as const;
 
