@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
+import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { MedicationType, ScheduleMode } from '@/lib/types/medications';
 import { to12h } from '@/lib/utils';
 
@@ -154,6 +155,7 @@ export default function NewMedicationScreen() {
     setSaving(true);
     try {
       const created = await createMedication(input, scheduleTimes);
+      resyncIfRemindersEnabled();
       router.replace(`/medications/${created.id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to create medication');
