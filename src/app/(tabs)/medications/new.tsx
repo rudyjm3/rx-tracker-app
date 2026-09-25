@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
@@ -55,6 +56,7 @@ const initialState: NewMedicationFormState = {
 };
 
 export default function NewMedicationScreen() {
+  const { activeProfileId } = useActiveProfile();
   const [form, setForm] = useState<NewMedicationFormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function NewMedicationScreen() {
       dashboard_enabled: true,
       reminders_enabled: true,
       adherence_enabled: true,
-      profile_id: null,
+      profile_id: activeProfileId,
     };
 
     const scheduleTimes: ScheduleTimeInput[] =

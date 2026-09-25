@@ -3,9 +3,11 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
 import type { Medication } from '@/lib/types/medications';
@@ -14,6 +16,7 @@ import { daysUntilRunout, scheduleSummary } from '@/lib/utils';
 type ListTab = 'active' | 'inactive';
 
 export default function MedicationsScreen() {
+  const { activeProfileId, familyProfiles } = useActiveProfile();
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +29,9 @@ export default function MedicationsScreen() {
     setError(null);
     try {
       const data =
-        activeTab === 'active' ? await getActiveMedications(null) : await getInactiveMedications(null);
+        activeTab === 'active'
+          ? await getActiveMedications(activeProfileId)
+          : await getInactiveMedications(activeProfileId);
       setMedications(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load medications');
@@ -34,8 +39,13 @@ export default function MedicationsScreen() {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, []);
+  }, [activeProfileId]);
 
+  // load() (and this callback) changes identity whenever activeProfileId
+  // or tab changes, and useFocusEffect re-invokes its callback on identity
+  // changes while the screen is already focused (not just on focus
+  // transitions) — so switching profiles from the chip row here reloads
+  // immediately, not just the next time this screen regains focus.
   useFocusEffect(
     useCallback(() => {
       load(tab);
@@ -58,6 +68,8 @@ export default function MedicationsScreen() {
             <ThemedText style={styles.addButtonText}>+</ThemedText>
           </Pressable>
         </View>
+
+        {familyProfiles.length > 0 && <ProfileSwitcher />}
 
         <View style={styles.segmented}>
           <SegmentButton label="Active" active={tab === 'active'} onPress={() => setTab('active')} />

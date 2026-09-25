@@ -1,0 +1,111 @@
+// Ported subset of rx-tracker-web's lib/family.ts — plain single-table
+// Supabase calls, using this app's `supabase` client import style (see
+// lib/medications.ts) rather than web's createClient(). No RPC needed here
+// (unlike medication writes): family_profiles rows have no cross-table
+// invariants to keep atomic.
+import { supabase } from "@/lib/supabase/client";
+import { getCurrentUserId } from "@/lib/medications";
+import type { FamilyProfile } from "@/lib/types/profile";
+
+export const FAMILY_RELATIONSHIPS = [
+  "Spouse",
+  "Partner",
+  "Child",
+  "Parent",
+  "Sibling",
+  "Caregiver",
+  "Other",
+] as const;
+
+export const AVATAR_COLOR_PALETTE = [
+  "#6366f1",
+  "#ec4899",
+  "#10b981",
+  "#f59e0b",
+  "#3b82f6",
+  "#ef4444",
+];
+
+export interface FamilyProfileInput {
+  display_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  relationship?: string | null;
+  birth_date?: string | null;
+  avatar_color?: string | null;
+}
+
+function fallbackDisplayName(firstName: string | null | undefined, lastName: string | null | undefined): string {
+  const first = (firstName ?? "").trim();
+  const last = (lastName ?? "").trim();
+  if (first && last) return `${first} ${last.charAt(0).toUpperCase()}.`;
+  if (first) return first;
+  if (last) return last;
+  return "";
+}
+
+function resolveDisplayName(input: FamilyProfileInput): string {
+  const trimmed = input.display_name?.trim();
+  if (trimmed) return trimmed;
+  const fallback = fallbackDisplayName(input.first_name, input.last_name);
+  if (!fallback) throw new Error("Enter a display name or a first name.");
+  return fallback;
+}
+
+export async function getFamilyProfiles(): Promise<FamilyProfile[]> {
+  const { data, error } = await supabase
+    .from("family_profiles")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data as FamilyProfile[];
+}
+
+export async function getFamilyProfile(id: string): Promise<FamilyProfile> {
+  const { data, error } = await supabase
+    .from("family_profiles")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return data as FamilyProfile;
+}
+
+export async function createFamilyProfile(input: FamilyProfileInput): Promise<FamilyProfile> {
+  const userId = await getCurrentUserId();
+  const { data, error } = await supabase
+    .from("family_profiles")
+    .insert({
+      user_id: userId,
+      display_name: resolveDisplayName(input),
+      first_name: input.first_name ?? null,
+      last_name: input.last_name ?? null,
+      relationship: input.relationship ?? null,
+      birth_date: input.birth_date ?? null,
+      avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as FamilyProfile;
+}
+
+export async function updateFamilyProfile(id: string, input: FamilyProfileInput): Promise<void> {
+  const { error } = await supabase
+    .from("family_profiles")
+    .update({
+      display_name: resolveDisplayName(input),
+      first_name: input.first_name ?? null,
+      last_name: input.last_name ?? null,
+      relationship: input.relationship ?? null,
+      birth_date: input.birth_date ?? null,
+      avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteFamilyProfile(id: string): Promise<void> {
+  const { error } = await supabase.from("family_profiles").delete().eq("id", id);
+  if (error) throw error;
+}

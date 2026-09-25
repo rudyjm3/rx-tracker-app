@@ -3,15 +3,18 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import { localDateString, to12h } from '@/lib/utils';
 
 export default function DashboardScreen() {
+  const { activeProfileId, familyProfiles } = useActiveProfile();
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
   // The date these events were built for — kept alongside them rather than
   // recomputed from localDateString() at action time, so a Take/Skip tap
@@ -31,8 +34,8 @@ export default function DashboardScreen() {
     try {
       const date = localDateString();
       const [medications, groups, groupMembers, doseLogs, postpones] = await Promise.all([
-        getActiveMedications(null),
-        getGroups(null),
+        getActiveMedications(activeProfileId),
+        getGroups(activeProfileId),
         getGroupMembers(),
         getTodayLogs(date),
         getTodayPostpones(date),
@@ -46,8 +49,13 @@ export default function DashboardScreen() {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, []);
+  }, [activeProfileId]);
 
+  // load() (and this callback) changes identity whenever activeProfileId
+  // changes, and useFocusEffect re-invokes its callback on identity
+  // changes while the screen is already focused (not just on focus
+  // transitions) — so switching profiles from the chip row here reloads
+  // immediately, not just the next time this screen regains focus.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -98,6 +106,8 @@ export default function DashboardScreen() {
           <ThemedText type="title" style={styles.title}>
             Today
           </ThemedText>
+
+          {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {error && <ThemedText style={styles.error}>{error}</ThemedText>}
 
