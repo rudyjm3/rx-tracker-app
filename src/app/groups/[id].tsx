@@ -16,6 +16,7 @@ import {
   type GroupInput,
   type GroupMemberInput,
 } from '@/lib/medications';
+import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { Medication, MedicationGroup } from '@/lib/types/medications';
 import { to12h } from '@/lib/utils';
 
@@ -72,6 +73,7 @@ export default function EditGroupScreen() {
           onPress: async () => {
             try {
               await deleteGroup(group.id);
+              resyncIfRemindersEnabled();
               router.back();
             } catch (e) {
               Alert.alert('Failed', e instanceof Error ? e.message : 'Something went wrong');
@@ -155,6 +157,14 @@ function EditForm({
       setFormError(`"${scheduledTime}" isn't a valid time — use HH:MM (24h).`);
       return;
     }
+    for (const qty of Object.values(selected)) {
+      if (!qty.trim()) continue;
+      const num = Number(qty);
+      if (!Number.isFinite(num) || num <= 0) {
+        setFormError('Quantity overrides must be positive numbers.');
+        return;
+      }
+    }
 
     // Preserve the group's existing profile assignment — editing doesn't
     // move a group between profiles, same as medications.
@@ -172,6 +182,7 @@ function EditForm({
     setSaving(true);
     try {
       await updateGroup(group.id, input, members);
+      resyncIfRemindersEnabled();
       router.back();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save changes');
@@ -296,7 +307,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   timeInput: { width: 100 },
-  memberList: { gap: Spacing.two, marginTop: Spacing.one, maxHeight: 320 },
+  // No maxHeight here — this list flows in the screen's outer ScrollView,
+  // so a long list scrolls with the rest of the form instead of being
+  // clipped in its own fixed-height box and colliding with the buttons
+  // below it.
+  memberList: { gap: Spacing.two, marginTop: Spacing.one },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   memberRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   checkbox: {

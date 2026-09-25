@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { createGroup, getActiveMedications, type GroupInput, type GroupMemberInput } from '@/lib/medications';
+import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { Medication } from '@/lib/types/medications';
 import { to12h } from '@/lib/utils';
 
@@ -65,6 +66,14 @@ export default function NewGroupScreen() {
       setFormError(`"${scheduledTime}" isn't a valid time — use HH:MM (24h).`);
       return;
     }
+    for (const qty of Object.values(selected)) {
+      if (!qty.trim()) continue;
+      const num = Number(qty);
+      if (!Number.isFinite(num) || num <= 0) {
+        setFormError('Quantity overrides must be positive numbers.');
+        return;
+      }
+    }
 
     const input: GroupInput = {
       name: name.trim(),
@@ -80,6 +89,7 @@ export default function NewGroupScreen() {
     setSaving(true);
     try {
       await createGroup(input, members);
+      resyncIfRemindersEnabled();
       router.back();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to create group');
@@ -202,7 +212,11 @@ const styles = StyleSheet.create({
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   timeInput: { width: 100 },
   loading: { marginTop: Spacing.three },
-  memberList: { gap: Spacing.two, marginTop: Spacing.one, maxHeight: 320 },
+  // No maxHeight here — this list flows in the screen's outer ScrollView,
+  // so a long list scrolls with the rest of the form instead of being
+  // clipped in its own fixed-height box and colliding with the buttons
+  // below it.
+  memberList: { gap: Spacing.two, marginTop: Spacing.one },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   memberRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   checkbox: {
