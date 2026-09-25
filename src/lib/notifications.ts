@@ -52,6 +52,7 @@ export interface ReminderTime {
 // notifications module doesn't exist at all, so importing or calling into
 // it must never run, let alone throw, on web/SSR.
 const isNotificationsSupported = Platform.OS !== "web";
+let notificationsModule: typeof import("expo-notifications") | null | undefined;
 
 // Lazily require expo-notifications only on native platforms. A static
 // top-level `import * as Notifications from "expo-notifications"` would
@@ -59,8 +60,17 @@ const isNotificationsSupported = Platform.OS !== "web";
 // shim), but every *call* into it is guarded below regardless.
 function getNotificationsModule(): typeof import("expo-notifications") | null {
   if (!isNotificationsSupported) return null;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require("expo-notifications") as typeof import("expo-notifications");
+  if (notificationsModule !== undefined) return notificationsModule;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    notificationsModule = require("expo-notifications") as typeof import("expo-notifications");
+  } catch (e) {
+    notificationsModule = null;
+    console.warn("expo-notifications is unavailable in this runtime", e);
+  }
+
+  return notificationsModule;
 }
 
 /**
