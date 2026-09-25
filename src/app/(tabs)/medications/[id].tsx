@@ -116,7 +116,7 @@ export default function MedicationDetailScreen() {
     );
   }
 
-  const hasInventory = medication.inventory_enabled && medication.starting_quantity;
+  const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
 
   return (

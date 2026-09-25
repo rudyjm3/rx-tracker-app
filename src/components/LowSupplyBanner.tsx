@@ -19,7 +19,7 @@ export function LowSupplyBanner({ medications }: { medications: Medication[] }) 
       <ThemedText type="smallBold" style={styles.title}>
         Low supply
       </ThemedText>
-      <ThemedText type="small" style={styles.text}>
+      <ThemedText type="small">
         {lowSupply
           .map((m) => `${m.name}${m.dose ? ` — ${m.dose}` : ''} (${m.current_quantity} ${m.inventory_unit} left)`)
           .join(', ')}
@@ -38,5 +38,4 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: { color: Brand.warning },
-  text: { color: Brand.text },
 });

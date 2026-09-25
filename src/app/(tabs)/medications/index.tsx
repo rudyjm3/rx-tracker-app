@@ -123,7 +123,7 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
 }
 
 function MedicationCard({ medication }: { medication: Medication }) {
-  const hasInventory = medication.inventory_enabled && medication.starting_quantity;
+  const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
   const starting = medication.starting_quantity ?? 0;
   const fraction = hasInventory && starting > 0 ? Math.max(0, Math.min(1, current / starting)) : 0;
