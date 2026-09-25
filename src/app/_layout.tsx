@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 
+import { ActiveProfileProvider } from '@/lib/active-profile';
 import {
   addNotificationResponseListener,
   cancelAllReminderNotifications,
@@ -84,7 +85,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <RootNavigation />
+        <ActiveProfileProvider>
+          <RootNavigation />
+        </ActiveProfileProvider>
       </AuthProvider>
     </ThemeProvider>
   );

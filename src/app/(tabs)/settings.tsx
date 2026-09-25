@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
 import { Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -126,6 +127,13 @@ export default function SettingsScreen() {
             </ThemedText>
           )}
         </ThemedView>
+
+        <Pressable style={styles.card} onPress={() => router.push('/family')}>
+          <ThemedText type="smallBold">Manage Family</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+            Add family members and track their medications from this account.
+          </ThemedText>
+        </Pressable>
 
         <Pressable style={styles.button} onPress={signOut}>
           <ThemedText style={styles.buttonText}>Sign out</ThemedText>

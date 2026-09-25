@@ -12,7 +12,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 
-import { getActiveMedications } from "@/lib/medications";
+import { getAllActiveMedicationsAcrossProfiles } from "@/lib/medications";
 import { localDateString, timeToMinutes } from "@/lib/utils";
 import type { Medication } from "@/lib/types/medications";
 
@@ -67,7 +67,8 @@ function getNotificationsModule(): typeof import("expo-notifications") | null {
  * Computes the set of daily local reminder times for a list of active
  * medications, mirroring generateDaySlots' schedule math but scoped to
  * only what should ever produce a device notification:
- *   - active (caller passes getActiveMedications(), so always true)
+ *   - active (caller passes getAllActiveMedicationsAcrossProfiles(), so
+ *     always true)
  *   - reminders_enabled
  *   - dashboard_enabled
  *   - NOT as_needed (PRN meds are deferred scope — a PRN dose has no fixed
@@ -169,7 +170,7 @@ export async function resyncReminderNotifications(): Promise<void> {
 
     await Notifications.cancelAllScheduledNotificationsAsync();
 
-    const medications = await getActiveMedications();
+    const medications = await getAllActiveMedicationsAcrossProfiles();
     const reminders = computeReminderTimes(medications);
 
     for (const reminder of reminders) {

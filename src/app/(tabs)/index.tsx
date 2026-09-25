@@ -1,17 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import { localDateString, to12h } from '@/lib/utils';
 
 export default function DashboardScreen() {
+  const { activeProfileId, familyProfiles } = useActiveProfile();
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
   // The date these events were built for — kept alongside them rather than
   // recomputed from localDateString() at action time, so a Take/Skip tap
@@ -24,30 +27,48 @@ export default function DashboardScreen() {
   const [actingKey, setActingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Bumped on every load() call and captured per-call as requestId — if a
+  // newer call starts (e.g. the active profile changes again) before an
+  // older one's fetch resolves, the older call's result is a stale
+  // response for a profile that's no longer selected and must be
+  // discarded rather than overwriting state a newer call already set,
+  // which could otherwise show one profile's doses under another's
+  // selected chip and let a dose get recorded against the wrong person.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async (isRefresh = false) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
       const date = localDateString();
       const [medications, groups, groupMembers, doseLogs, postpones] = await Promise.all([
-        getActiveMedications(null),
-        getGroups(null),
+        getActiveMedications(activeProfileId),
+        getGroups(activeProfileId),
         getGroupMembers(),
         getTodayLogs(date),
         getTodayPostpones(date),
       ]);
+      if (requestIdRef.current !== requestId) return;
       const slots = generateDaySlots(date, medications, groups, groupMembers, doseLogs, postpones);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, []);
+  }, [activeProfileId]);
 
+  // load() (and this callback) changes identity whenever activeProfileId
+  // changes, and useFocusEffect re-invokes its callback on identity
+  // changes while the screen is already focused (not just on focus
+  // transitions) — so switching profiles from the chip row here reloads
+  // immediately, not just the next time this screen regains focus.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -98,6 +119,8 @@ export default function DashboardScreen() {
           <ThemedText type="title" style={styles.title}>
             Today
           </ThemedText>
+
+          {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {error && <ThemedText style={styles.error}>{error}</ThemedText>}
 
