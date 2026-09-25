@@ -76,6 +76,12 @@ export async function getCalendarMarkers(
   monthEnd: string,
   medicationIds?: string[],
 ): Promise<Record<string, CalendarDayMarker>> {
+  // A provided-but-empty scope (e.g. a profile with no medications at all)
+  // means "match nothing" — short-circuit rather than send
+  // `medication_id=in.()`, which PostgREST rejects as malformed instead of
+  // treating as an empty result.
+  if (medicationIds && medicationIds.length === 0) return {};
+
   let query = supabase
     .from("dose_logs")
     .select("scheduled_for_date, status")
@@ -105,6 +111,10 @@ export async function getCalendarLogs(
   monthEnd: string,
   medicationIds?: string[],
 ): Promise<CalendarLogRow[]> {
+  // See getCalendarMarkers above: a provided-but-empty scope means "match
+  // nothing," short-circuited rather than sent as `medication_id=in.()`.
+  if (medicationIds && medicationIds.length === 0) return [];
+
   let query = supabase
     .from("dose_logs")
     .select("*, medications(name, dose, dose_amount, dose_unit)")

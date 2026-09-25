@@ -26,7 +26,10 @@ const DEFAULT_RANGE: RangeKey = '30';
 function rangeForKey(key: RangeKey): { startDate: string; endDate: string } {
   const days = RANGE_PRESETS.find((r) => r.key === key)!.days;
   const start = new Date();
-  start.setDate(start.getDate() - days);
+  // getCalendarLogs bounds are inclusive (gte/lte), so today counts as one
+  // of the `days` — subtract days - 1 to land on exactly `days` calendar
+  // dates (e.g. "Last 7 days" = today + 6 prior, not today + 7 prior).
+  start.setDate(start.getDate() - (days - 1));
   return { startDate: localDateString(start), endDate: localDateString() };
 }
 
@@ -248,7 +251,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   filterValue: { marginTop: Spacing.half, fontWeight: '600' },
-  rangeRow: { flexDirection: 'row', gap: Spacing.two, marginBottom: Spacing.three },
+  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginBottom: Spacing.three },
   rangeChip: {
     borderRadius: 999,
     borderWidth: 1,
