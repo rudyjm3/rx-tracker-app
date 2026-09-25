@@ -45,9 +45,19 @@ export default function MedicationsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
-          Medications
-        </ThemedText>
+        <View style={styles.titleRow}>
+          <ThemedText type="title" style={styles.title}>
+            Medications
+          </ThemedText>
+          <Pressable
+            style={styles.addButton}
+            onPress={() => router.push('/medications/new')}
+            hitSlop={8}
+            accessibilityLabel="Add medication"
+          >
+            <ThemedText style={styles.addButtonText}>+</ThemedText>
+          </Pressable>
+        </View>
 
         <View style={styles.segmented}>
           <SegmentButton label="Active" active={tab === 'active'} onPress={() => setTab('active')} />
@@ -146,7 +156,17 @@ function MedicationCard({ medication }: { medication: Medication }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.three },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
+  title: { fontSize: 28, lineHeight: 34 },
+  addButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#208AEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: { color: '#ffffff', fontSize: 22, lineHeight: 24, fontWeight: '600' },
   segmented: { flexDirection: 'row', backgroundColor: '#F0F0F3', borderRadius: Spacing.two, padding: 2, marginBottom: Spacing.three },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
   segmentButtonActive: { backgroundColor: '#ffffff' },
