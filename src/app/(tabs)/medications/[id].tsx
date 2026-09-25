@@ -179,7 +179,7 @@ interface EditFormState {
   instructions: string;
   asNeeded: boolean;
   scheduleMode: ScheduleMode;
-  times: string[]; // "HH:MM" strings, fixed_times mode
+  times: ScheduleTimeFormEntry[]; // fixed_times mode
   intervalHours: string;
   firstDoseTime: string;
   quantityPerDose: string;
@@ -187,6 +187,16 @@ interface EditFormState {
   inventoryUnit: string;
   startingQuantity: string;
   lowSupplyThreshold: string;
+}
+
+// A per-time quantity_per_dose override isn't editable in this form yet,
+// but it must still round-trip through save — otherwise an unrelated edit
+// silently resets every schedule row's override to the medication-wide
+// default (updateMedication deletes and reinserts all individual schedule
+// rows on every save).
+interface ScheduleTimeFormEntry {
+  time: string; // "HH:MM"
+  quantityPerDose: number | null;
 }
 
 function toFormState(med: Medication): EditFormState {
@@ -201,8 +211,8 @@ function toFormState(med: Medication): EditFormState {
     scheduleMode: med.schedule_mode,
     times: (med.medication_schedule_times ?? [])
       .filter((t) => !t.group_id)
-      .map((t) => t.reminder_time.slice(0, 5))
-      .sort(),
+      .map((t) => ({ time: t.reminder_time.slice(0, 5), quantityPerDose: t.quantity_per_dose }))
+      .sort((a, b) => a.time.localeCompare(b.time)),
     intervalHours: med.interval_hours != null ? String(med.interval_hours) : '',
     firstDoseTime: med.first_dose_time ? med.first_dose_time.slice(0, 5) : '',
     quantityPerDose: String(med.quantity_per_dose),
@@ -231,13 +241,13 @@ function EditForm({
   }
 
   function addTime() {
-    update('times', [...form.times, '08:00']);
+    update('times', [...form.times, { time: '08:00', quantityPerDose: null }]);
   }
   function removeTime(index: number) {
     update('times', form.times.filter((_, i) => i !== index));
   }
   function updateTime(index: number, value: string) {
-    update('times', form.times.map((t, i) => (i === index ? value : t)));
+    update('times', form.times.map((t, i) => (i === index ? { ...t, time: value } : t)));
   }
 
   async function handleSave() {
@@ -248,9 +258,9 @@ function EditForm({
       return;
     }
     if (!form.asNeeded && form.scheduleMode === 'fixed_times') {
-      const invalid = form.times.find((t) => !TIME_RE.test(t));
+      const invalid = form.times.find((t) => !TIME_RE.test(t.time));
       if (invalid !== undefined) {
-        setFormError(`"${invalid}" isn't a valid time — use HH:MM (24h).`);
+        setFormError(`"${invalid.time}" isn't a valid time — use HH:MM (24h).`);
         return;
       }
     }
@@ -296,7 +306,7 @@ function EditForm({
 
     const scheduleTimes: ScheduleTimeInput[] =
       !form.asNeeded && form.scheduleMode === 'fixed_times'
-        ? form.times.map((t) => ({ reminder_time: t }))
+        ? form.times.map((t) => ({ reminder_time: t.time, quantity_per_dose: t.quantityPerDose }))
         : [];
 
     setSaving(true);
@@ -395,12 +405,12 @@ function EditForm({
                     <View key={i} style={styles.timeRow}>
                       <TextInput
                         style={[styles.input, styles.timeInput]}
-                        value={t}
+                        value={t.time}
                         onChangeText={(v) => updateTime(i, v)}
                         placeholder="HH:MM"
                       />
                       <ThemedText type="small" themeColor="textSecondary">
-                        {TIME_RE.test(t) ? to12h(t) : ''}
+                        {TIME_RE.test(t.time) ? to12h(t.time) : ''}
                       </ThemedText>
                       <Pressable onPress={() => removeTime(i)} hitSlop={8}>
                         <ThemedText style={styles.removeTime}>Remove</ThemedText>

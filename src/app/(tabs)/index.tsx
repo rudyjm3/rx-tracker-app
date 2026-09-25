@@ -13,6 +13,12 @@ import { localDateString, to12h } from '@/lib/utils';
 
 export default function DashboardScreen() {
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
+  // The date these events were built for — kept alongside them rather than
+  // recomputed from localDateString() at action time, so a Take/Skip tap
+  // that happens to land right after local midnight still records against
+  // the date the on-screen slot actually belongs to, not "today" as of the
+  // tap.
+  const [scheduleDate, setScheduleDate] = useState(localDateString());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -32,6 +38,7 @@ export default function DashboardScreen() {
         getTodayPostpones(date),
       ]);
       const slots = generateDaySlots(date, medications, groups, groupMembers, doseLogs, postpones);
+      setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
@@ -53,7 +60,7 @@ export default function DashboardScreen() {
     try {
       await recordDose(
         slot.medication,
-        localDateString(),
+        scheduleDate,
         slot.scheduledTime,
         status,
         slot.quantityPerDose,
@@ -135,6 +142,13 @@ export default function DashboardScreen() {
   );
 }
 
+function formatEventTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return to12h(`${hh}:${mm}`);
+}
+
 function EventRow({
   event,
   actingKey,
@@ -148,11 +162,15 @@ function EventRow({
 }) {
   const slots = event.kind === 'group' ? event.members : [event.slot];
   const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
+  // event.time is the slot's effective due time (postponedUntil when
+  // snoozed, else its scheduledTime) — use it rather than the slot's own
+  // scheduledTime, which stays the original time even after a snooze.
+  const displayTime = formatEventTime(event.time);
 
   return (
     <ThemedView style={styles.eventRow}>
       <ThemedText type={emphasized ? 'subtitle' : 'default'} style={emphasized ? styles.emphasizedTime : undefined}>
-        {to12h(slots[0].scheduledTime)}
+        {displayTime}
       </ThemedText>
       <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
       {slots.map((slot) => (
