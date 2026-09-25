@@ -137,6 +137,12 @@ export async function getCalendarLogs(
     const { data, error } = await query
       .order("scheduled_for_date", { ascending: true })
       .order("scheduled_time", { ascending: true })
+      // scheduled_for_date + scheduled_time alone aren't unique — multiple
+      // medications can share a slot — so without a final unique tie-breaker
+      // a row tied at a page boundary can shift between requests and end up
+      // duplicated in one page and skipped in the next. `id` is unique and
+      // stable across all pages.
+      .order("id", { ascending: true })
       .range(from, from + CALENDAR_LOGS_PAGE_SIZE - 1);
     if (error) throw error;
     const pageRows = data as CalendarLogRow[];
