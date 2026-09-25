@@ -96,7 +96,8 @@ export default function NewMedicationScreen() {
       }
     }
     if (!form.asNeeded && form.scheduleMode === 'interval') {
-      if (!form.intervalHours || Number(form.intervalHours) <= 0) {
+      const intervalHours = Number(form.intervalHours);
+      if (!form.intervalHours || !Number.isFinite(intervalHours) || intervalHours <= 0) {
         setFormError('Enter a valid interval in hours.');
         return;
       }
@@ -113,9 +114,12 @@ export default function NewMedicationScreen() {
       setFormError('Dose quantity must be a positive number.');
       return;
     }
-    if (form.inventoryEnabled && !form.startingQuantity) {
-      setFormError('Starting quantity is required when tracking inventory.');
-      return;
+    if (form.inventoryEnabled) {
+      const startingQuantity = Number(form.startingQuantity);
+      if (!form.startingQuantity || !Number.isFinite(startingQuantity) || startingQuantity < 0) {
+        setFormError('Starting quantity must be zero or greater.');
+        return;
+      }
     }
 
     const input: MedicationInput = {
@@ -186,6 +190,9 @@ export default function NewMedicationScreen() {
               <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" />
             </View>
           </View>
+
+          <FieldLabel>Dose form</FieldLabel>
+          <TextInput style={styles.input} value={form.doseForm} onChangeText={(v) => update('doseForm', v)} placeholder="tablet" />
 
           <FieldLabel>Type</FieldLabel>
           <View style={styles.segmented}>
