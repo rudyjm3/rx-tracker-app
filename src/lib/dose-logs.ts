@@ -99,6 +99,46 @@ export async function getCalendarMarkers(
   return markers;
 }
 
+/**
+ * Edits an existing dose_logs row via the edit_dose_log RPC — same
+ * atomic inventory-adjustment shape as recordDose, but keyed by the
+ * log's own id (the row already exists). See rx-tracker-web's
+ * supabase/schema.sql for the function definition.
+ */
+export interface DoseLogEditInput {
+  status: DoseLogStatus;
+  takenAt?: string | null; // ISO; only applied when status === "taken"
+  painLevel?: number | null;
+  moodLevel?: number | null;
+  note?: string;
+  quantityPerDose?: number;
+  inventoryEnabled?: boolean;
+}
+
+export async function editDoseLog(logId: string, input: DoseLogEditInput): Promise<void> {
+  const { error } = await supabase.rpc("edit_dose_log", {
+    p_log_id: logId,
+    p_status: input.status,
+    p_taken_at: input.takenAt ?? null,
+    p_pain_level: input.painLevel ?? null,
+    p_mood_level: input.moodLevel ?? null,
+    p_note: input.note ?? null,
+    p_quantity_per_dose: input.quantityPerDose ?? null,
+    p_inventory_enabled: input.inventoryEnabled ?? false,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Deletes a dose_logs row via the delete_dose_log RPC, restoring
+ * deducted inventory if it was a 'taken' entry on an inventory-tracked
+ * medication.
+ */
+export async function deleteDoseLog(logId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_dose_log", { p_log_id: logId });
+  if (error) throw error;
+}
+
 const CALENDAR_LOGS_PAGE_SIZE = 1000;
 
 /**

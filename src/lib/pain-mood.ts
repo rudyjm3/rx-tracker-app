@@ -8,9 +8,17 @@ import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserId } from "@/lib/medications";
 import { getSetting, setSetting } from "@/lib/app-settings";
 import { Brand } from "@/constants/theme";
-import type { MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
+import type { Medication, MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
 
 export type WellbeingMetric = "pain" | "mood";
+
+export function medicationTracksPain(medication: Pick<Medication, "feedback_type">): boolean {
+  return medication.feedback_type === "pain" || medication.feedback_type === "both";
+}
+
+export function medicationTracksMood(medication: Pick<Medication, "feedback_type">): boolean {
+  return medication.feedback_type === "mood" || medication.feedback_type === "both";
+}
 
 // 3 severity bands, matching rx-tracker-web's levelColor() classic scheme
 // (its "teal mood chart" alternate scheme is out of scope here — see
