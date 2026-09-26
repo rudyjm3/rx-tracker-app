@@ -196,7 +196,12 @@ function MedicationCard({ medication }: { medication: Medication }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
+  // flexWrap lets the "Manage groups" + add-medication controls drop to
+  // their own row instead of clipping/overlapping the title on narrow
+  // screens or with larger accessibility text sizes — three items
+  // (title, groups button, add button) don't reliably fit one row at
+  // 320pt width the way Calendar's title + single button do.
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Spacing.two, alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
   title: { fontSize: 28, lineHeight: 34 },
   titleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   groupsButton: {
