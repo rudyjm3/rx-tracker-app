@@ -86,6 +86,34 @@ export interface MedicationRefill {
   created_at: string;
 }
 
+export type StatusEventType = "discontinued" | "resumed";
+
+export interface MedicationDoseChange {
+  id: string;
+  medication_id: string;
+  changed_at: string;
+  old_dose_amount: number | null;
+  old_dose_unit: string;
+  new_dose_amount: number | null;
+  new_dose_unit: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface MedicationStatusEvent {
+  id: string;
+  medication_id: string;
+  event: StatusEventType;
+  event_at: string;
+  reason: string;
+  comment: string;
+  created_at: string;
+}
+
+export type DoseHistoryEntry =
+  | { type: "dose_change"; at: string; data: MedicationDoseChange }
+  | { type: "status_event"; at: string; data: MedicationStatusEvent };
+
 export type DoseLogStatus = "taken" | "skipped" | "missed";
 
 export interface DoseLog {

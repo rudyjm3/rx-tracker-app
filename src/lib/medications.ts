@@ -2,7 +2,16 @@
 // single-medication edit path, and the Add Medication create path. Group
 // management comes later.
 import { supabase } from "@/lib/supabase/client";
-import type { FeedbackType, Medication, MedicationGroup, MedicationType, ScheduleMode } from "@/lib/types/medications";
+import type {
+  DoseHistoryEntry,
+  FeedbackType,
+  Medication,
+  MedicationDoseChange,
+  MedicationGroup,
+  MedicationStatusEvent,
+  MedicationType,
+  ScheduleMode,
+} from "@/lib/types/medications";
 
 export interface ScheduleTimeInput {
   reminder_time: string;
@@ -196,22 +205,53 @@ export async function updateMedication(
 // Runs as the atomic set_medication_status RPC rather than a separate
 // update + insert, so a dropped connection between them can't leave a
 // medication discontinued/resumed with no matching audit event.
-export async function deactivateMedication(id: string): Promise<void> {
+export async function deactivateMedication(id: string, reason = "", comment = ""): Promise<void> {
   const { error } = await supabase.rpc("set_medication_status", {
     p_medication_id: id,
     p_active: false,
     p_event: "discontinued",
+    p_reason: reason,
+    p_comment: comment,
   });
   if (error) throw error;
 }
 
-export async function activateMedication(id: string): Promise<void> {
+export async function activateMedication(id: string, reason = "", comment = ""): Promise<void> {
   const { error } = await supabase.rpc("set_medication_status", {
     p_medication_id: id,
     p_active: true,
     p_event: "resumed",
+    p_reason: reason,
+    p_comment: comment,
   });
   if (error) throw error;
+}
+
+// ── Dose history (dose changes + status events, merged) ────────────
+
+export async function getDoseHistory(medicationId: string): Promise<DoseHistoryEntry[]> {
+  const [changesResult, eventsResult] = await Promise.all([
+    supabase.from("medication_dose_changes").select("*").eq("medication_id", medicationId),
+    supabase.from("medication_status_events").select("*").eq("medication_id", medicationId),
+  ]);
+  if (changesResult.error) throw changesResult.error;
+  if (eventsResult.error) throw eventsResult.error;
+
+  const entries: DoseHistoryEntry[] = [
+    ...(changesResult.data as MedicationDoseChange[]).map((c) => ({
+      type: "dose_change" as const,
+      at: c.changed_at,
+      data: c,
+    })),
+    ...(eventsResult.data as MedicationStatusEvent[]).map((e) => ({
+      type: "status_event" as const,
+      at: e.event_at,
+      data: e,
+    })),
+  ];
+
+  entries.sort((a, b) => b.at.localeCompare(a.at));
+  return entries;
 }
 
 export async function getGroups(profileId?: string | null): Promise<MedicationGroup[]> {

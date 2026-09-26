@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -23,6 +22,7 @@ import { adjustQuantity, getRefillHistory, logRefill } from '@/lib/inventory';
 import {
   activateMedication,
   deactivateMedication,
+  getDoseHistory,
   getGroupMembers,
   getGroups,
   getMedication,
@@ -48,6 +48,7 @@ import {
   setSideEffectTagAlwaysShow,
 } from '@/lib/side-effect-tags';
 import type {
+  DoseHistoryEntry,
   DoseLog,
   Medication,
   MedicationGroup,
@@ -77,16 +78,21 @@ const SEVERITY_COLOR: Record<SideEffectSeverity, string> = {
   severe: Brand.danger,
 };
 
+const DISCONTINUE_REASONS = ["End of regimen", "Side effects", "Doctor's orders", "Other"] as const;
+const RESUME_REASONS = ["Doctor's orders", "Symptoms returned", "Retrying", "Restarting regimen", "Other"] as const;
+
 export default function MedicationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
   const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
+  const [doseHistory, setDoseHistory] = useState<DoseHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
   const [logDoseOpen, setLogDoseOpen] = useState(false);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
+  const [statusSheetDirection, setStatusSheetDirection] = useState<'discontinue' | 'resume' | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +101,7 @@ export default function MedicationDetailScreen() {
       const med = await getMedication(id);
       setMedication(med);
       setRefillHistory(med.inventory_enabled ? await getRefillHistory(id) : []);
+      setDoseHistory(await getDoseHistory(id));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load medication');
     } finally {
@@ -107,28 +114,6 @@ export default function MedicationDetailScreen() {
       load();
     }, [load]),
   );
-
-  async function handleToggleActive() {
-    if (!medication) return;
-    const action = medication.active ? 'Discontinue' : 'Resume';
-    Alert.alert(`${action} ${medication.name}?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: action,
-        style: medication.active ? 'destructive' : 'default',
-        onPress: async () => {
-          try {
-            if (medication.active) await deactivateMedication(medication.id);
-            else await activateMedication(medication.id);
-            resyncIfRemindersEnabled();
-            await load();
-          } catch (e) {
-            Alert.alert('Failed', e instanceof Error ? e.message : 'Something went wrong');
-          }
-        },
-      },
-    ]);
-  }
 
   if (loading) {
     return (
@@ -219,7 +204,10 @@ export default function MedicationDetailScreen() {
             <Pressable style={styles.primaryButton} onPress={() => setEditing(true)}>
               <ThemedText style={styles.primaryButtonText}>Edit</ThemedText>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={handleToggleActive}>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => setStatusSheetDirection(medication.active ? 'discontinue' : 'resume')}
+            >
               <ThemedText style={styles.secondaryButtonText}>
                 {medication.active ? 'Discontinue' : 'Resume'}
               </ThemedText>
@@ -239,6 +227,17 @@ export default function MedicationDetailScreen() {
               </ThemedText>
               {refillHistory.map((entry) => (
                 <RefillHistoryRow key={entry.id} entry={entry} unit={medication.inventory_unit} />
+              ))}
+            </View>
+          )}
+
+          {doseHistory.length > 0 && (
+            <View style={styles.historySection}>
+              <ThemedText type="smallBold" style={styles.sectionTitle}>
+                Dose & Status History
+              </ThemedText>
+              {doseHistory.map((entry) => (
+                <DoseHistoryRow key={`${entry.type}-${entry.data.id}`} entry={entry} />
               ))}
             </View>
           )}
@@ -271,6 +270,19 @@ export default function MedicationDetailScreen() {
       {sideEffectsOpen && (
         <SideEffectsSheet medication={medication} onClose={() => setSideEffectsOpen(false)} />
       )}
+
+      {statusSheetDirection && (
+        <StatusChangeSheet
+          direction={statusSheetDirection}
+          medication={medication}
+          onClose={() => setStatusSheetDirection(null)}
+          onSaved={async () => {
+            setStatusSheetDirection(null);
+            resyncIfRemindersEnabled();
+            await load();
+          }}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -291,6 +303,32 @@ function RefillHistoryRow({ entry, unit }: { entry: MedicationRefill; unit: stri
             {entry.note}
           </ThemedText>
         ) : null}
+      </View>
+    </View>
+  );
+}
+
+function DoseHistoryRow({ entry }: { entry: DoseHistoryEntry }) {
+  return (
+    <View style={styles.historyRow}>
+      <View style={styles.historyMain}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {new Date(entry.at).toLocaleDateString()}
+        </ThemedText>
+        {entry.type === 'dose_change' ? (
+          <ThemedText type="small">
+            Dose changed
+            {entry.data.old_dose_amount != null && ` from ${entry.data.old_dose_amount}${entry.data.old_dose_unit}`}
+            {entry.data.new_dose_amount != null && ` to ${entry.data.new_dose_amount}${entry.data.new_dose_unit}`}
+            {entry.data.comment && ` — ${entry.data.comment}`}
+          </ThemedText>
+        ) : (
+          <ThemedText type="small">
+            {entry.data.event === 'discontinued' ? 'Discontinued' : 'Resumed'}
+            {entry.data.reason && ` — ${entry.data.reason}`}
+            {entry.data.comment && ` (${entry.data.comment})`}
+          </ThemedText>
+        )}
       </View>
     </View>
   );
@@ -425,6 +463,107 @@ function RefillSheet({
                     ) : (
                       <ThemedText style={styles.primaryButtonText}>
                         {mode === 'refill' ? 'Log Refill' : 'Save'}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function StatusChangeSheet({
+  direction,
+  medication,
+  onClose,
+  onSaved,
+}: {
+  direction: 'discontinue' | 'resume';
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const theme = useTheme();
+  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
+  const reasons = direction === 'discontinue' ? DISCONTINUE_REASONS : RESUME_REASONS;
+  const [reason, setReason] = useState<string>(reasons[0]);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function requestClose() {
+    if (!saving) onClose();
+  }
+
+  async function handleSubmit() {
+    setFormError(null);
+    setSaving(true);
+    try {
+      if (direction === 'discontinue') await deactivateMedication(medication.id, reason, comment);
+      else await activateMedication(medication.id, reason, comment);
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={requestClose}>
+      <Pressable style={styles.modalBackdrop} onPress={requestClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  {direction === 'discontinue' ? 'Discontinue' : 'Resume'} — {medication.name}
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <FieldLabel>Reason</FieldLabel>
+                <View style={styles.statusRow}>
+                  {reasons.map((r) => (
+                    <Pressable
+                      key={r}
+                      style={[styles.statusChip, reason === r && styles.statusChipSelected]}
+                      onPress={() => setReason(r)}
+                    >
+                      <ThemedText type="small" style={reason === r ? styles.statusChipTextSelected : undefined}>
+                        {r}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <FieldLabel>Comment (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline, inputThemeStyle]}
+                  placeholderTextColor={theme.textSecondary}
+                  value={comment}
+                  onChangeText={setComment}
+                  multiline
+                />
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={requestClose} disabled={saving}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primaryButton, saving && styles.disabled]}
+                    onPress={handleSubmit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>
+                        {direction === 'discontinue' ? 'Discontinue Use' : 'Resume'}
                       </ThemedText>
                     )}
                   </Pressable>
@@ -1819,7 +1958,7 @@ const styles = StyleSheet.create({
   },
   editSheetWrapper: { maxHeight: '85%' },
   editSubtitle: { marginTop: -Spacing.two, marginBottom: Spacing.two },
-  statusRow: { flexDirection: 'row', gap: Spacing.two },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   statusChip: {
     borderWidth: 1,
     borderColor: Brand.border,
