@@ -1958,7 +1958,7 @@ const styles = StyleSheet.create({
   },
   editSheetWrapper: { maxHeight: '85%' },
   editSubtitle: { marginTop: -Spacing.two, marginBottom: Spacing.two },
-  statusRow: { flexDirection: 'row', gap: Spacing.two },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   statusChip: {
     borderWidth: 1,
     borderColor: Brand.border,
