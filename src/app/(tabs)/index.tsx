@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -22,6 +23,7 @@ import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
 import { recordDose, getTodayLogs, getTodayPostpones, type DoseFeedback } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
+import { getSupplyAlerts, SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS } from '@/lib/medication-ui';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
@@ -53,6 +55,7 @@ export default function DashboardScreen() {
   // sheet instead of calling recordDose immediately; Skip and a 'none'
   // medication's Take bypass this entirely.
   const [feedbackSlot, setFeedbackSlot] = useState<DaySlot | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   // Bumped on every load() call and captured per-call as requestId — if a
   // newer call starts (e.g. the active profile changes again) before an
@@ -172,6 +175,8 @@ export default function DashboardScreen() {
   );
   const nextEvent = pendingEvents[0] ?? null;
 
+  const supplyAlerts = getSupplyAlerts(medications);
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -183,13 +188,30 @@ export default function DashboardScreen() {
             <ThemedText type="title" style={styles.title}>
               Today
             </ThemedText>
-            {adherencePercent !== null && (
-              <View style={styles.adherenceChip}>
-                <ThemedText type="small" style={styles.adherenceChipText}>
-                  {adherencePercent}%
-                </ThemedText>
-              </View>
-            )}
+            <View style={styles.titleActions}>
+              {adherencePercent !== null && (
+                <View style={styles.adherenceChip}>
+                  <ThemedText type="small" style={styles.adherenceChipText}>
+                    {adherencePercent}%
+                  </ThemedText>
+                </View>
+              )}
+              {supplyAlerts.length > 0 && (
+                <Pressable
+                  style={styles.bellButton}
+                  onPress={() => setAlertsOpen(true)}
+                  hitSlop={8}
+                  accessibilityLabel={`Supply alerts (${supplyAlerts.length})`}
+                >
+                  <Ionicons name="notifications-outline" size={22} color={Brand.text} />
+                  <View style={styles.bellBadge}>
+                    <ThemedText type="small" style={styles.bellBadgeText}>
+                      {supplyAlerts.length}
+                    </ThemedText>
+                  </View>
+                </Pressable>
+              )}
+            </View>
           </View>
 
           {familyProfiles.length > 0 && <ProfileSwitcher />}
@@ -246,7 +268,65 @@ export default function DashboardScreen() {
           }}
         />
       )}
+
+      {alertsOpen && <AlertsSheet alerts={supplyAlerts} onClose={() => setAlertsOpen(false)} />}
     </ThemedView>
+  );
+}
+
+function AlertsSheet({
+  alerts,
+  onClose,
+}: {
+  alerts: ReturnType<typeof getSupplyAlerts>;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Supply alerts
+                </ThemedText>
+
+                {alerts.length === 0 ? (
+                  <ThemedText themeColor="textSecondary" style={styles.sheetSubtitle}>
+                    You&apos;re all caught up.
+                  </ThemedText>
+                ) : (
+                  alerts.map(({ medication, severity }) => (
+                    <Pressable
+                      key={medication.id}
+                      style={styles.alertRow}
+                      onPress={() => {
+                        onClose();
+                        router.push(`/medications/${medication.id}`);
+                      }}
+                    >
+                      <View style={styles.alertRowText}>
+                        <ThemedText type="smallBold">
+                          {medication.name}
+                          {medication.dose ? ` — ${medication.dose}` : ''}
+                        </ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {medication.current_quantity} {medication.inventory_unit} left
+                        </ThemedText>
+                      </View>
+                      <ThemedText type="small" style={{ color: SUPPLY_SEVERITY_COLORS[severity], fontWeight: '700' }}>
+                        {SUPPLY_SEVERITY_LABELS[severity]}
+                      </ThemedText>
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -520,8 +600,23 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   title: { fontSize: 28, lineHeight: 34 },
+  titleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  bellButton: { padding: Spacing.one },
+  bellBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Brand.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { color: '#ffffff', fontSize: 10, lineHeight: 12, fontWeight: '700' },
   adherenceChip: {
     borderRadius: 999,
     backgroundColor: Brand.bg,
@@ -559,6 +654,16 @@ const styles = StyleSheet.create({
   modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.half },
   sheetSubtitle: { marginBottom: Spacing.two },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: 1,
+    borderBottomColor: Brand.border,
+  },
+  alertRowText: { flex: 1, gap: 2 },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: {
     borderWidth: 1,
