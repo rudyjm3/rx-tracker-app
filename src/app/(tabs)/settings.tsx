@@ -128,6 +128,13 @@ export default function SettingsScreen() {
           )}
         </ThemedView>
 
+        <Pressable style={styles.card} onPress={() => router.push('/profile')}>
+          <ThemedText type="smallBold">My Profile</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+            Edit your name, birth date, height, and weight.
+          </ThemedText>
+        </Pressable>
+
         <Pressable style={styles.card} onPress={() => router.push('/family')}>
           <ThemedText type="smallBold">Manage Family</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
