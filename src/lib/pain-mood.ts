@@ -1,9 +1,8 @@
 // Ported subset of rx-tracker-web's lib/pain-mood.ts, scoped to this app's
 // first pass: standalone (medication_id null) pain/mood logging only. Dose-
-// linked logs, medication attachment, family-profile filtering, trend
-// charts (groupDailyAverages) and mood tag management (create/rename/
-// delete/always-show) aren't reachable from this app yet — see that file
-// for the full feature set this is ported from.
+// linked logs, medication attachment, and trend charts (groupDailyAverages)
+// aren't reachable from this app yet — see that file for the full feature
+// set this is ported from.
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserId } from "@/lib/medications";
 import { getSetting, setSetting } from "@/lib/app-settings";
@@ -45,6 +44,7 @@ export interface CreateStandaloneLogInput {
   note?: string;
   tags?: string;
   loggedAt?: string;
+  profileId?: string | null;
 }
 
 export async function createStandaloneLog(input: CreateStandaloneLogInput): Promise<void> {
@@ -52,7 +52,7 @@ export async function createStandaloneLog(input: CreateStandaloneLogInput): Prom
   const { error } = await supabase.from("standalone_pain_mood_logs").insert({
     user_id: userId,
     medication_id: null,
-    profile_id: null,
+    profile_id: input.profileId ?? null,
     log_type: input.logType,
     pain_level: input.painLevel ?? null,
     mood_level: input.moodLevel ?? null,
@@ -112,6 +112,48 @@ export async function getMoodTags(): Promise<MoodTag[]> {
   return data as MoodTag[];
 }
 
+// Standalone logs serialize a mood entry's tags as a comma-joined string
+// (see createStandaloneLog/toHistoryEntry), so a comma inside a tag's own
+// name would split it into two tags on the way back out. Reject it here
+// rather than at serialization time, since that's the only point a tag
+// name is ever actually chosen.
+function assertValidTagName(name: string): void {
+  if (name.includes(",")) {
+    throw new Error("Tag names can't contain commas.");
+  }
+}
+
+export async function createMoodTag(name: string, alwaysShow = true): Promise<MoodTag> {
+  assertValidTagName(name);
+  const userId = await getCurrentUserId();
+  const { data, error } = await supabase
+    .from("mood_tags")
+    .insert({ user_id: userId, name, always_show: alwaysShow })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MoodTag;
+}
+
+export async function renameMoodTag(id: string, name: string): Promise<void> {
+  assertValidTagName(name);
+  const { error } = await supabase.from("mood_tags").update({ name }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteMoodTag(id: string): Promise<void> {
+  const { error } = await supabase.from("mood_tags").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function setMoodTagAlwaysShow(id: string, alwaysShow: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("mood_tags")
+    .update({ always_show: alwaysShow })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 // ── History ──────────────────────────────────────────────────────────
 
 export interface StandaloneHistoryEntry {
@@ -142,13 +184,20 @@ function toHistoryEntry(log: StandalonePainMoodLog): StandaloneHistoryEntry {
 // tab shows one merged pain+mood history rather than web's separate
 // pain-tracking/mood-wellbeing pages, so an entry logged as "both" (or
 // just "pain"/"mood") is returned whole rather than filtered per-metric.
-export async function getStandaloneHistory(limit = 50): Promise<StandaloneHistoryEntry[]> {
-  const { data, error } = await supabase
+export async function getStandaloneHistory(
+  limit = 50,
+  profileId?: string | null,
+): Promise<StandaloneHistoryEntry[]> {
+  let query = supabase
     .from("standalone_pain_mood_logs")
     .select("*")
     .is("medication_id", null)
     .order("logged_at", { ascending: false })
     .limit(limit);
+  if (profileId !== undefined) {
+    query = profileId === null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return (data as StandalonePainMoodLog[]).map(toHistoryEntry);
 }

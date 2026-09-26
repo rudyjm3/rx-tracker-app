@@ -35,6 +35,10 @@ export async function getTodayPostpones(date: string): Promise<DosePostpone[]> {
  * client-side read-then-write, so a double-tap or two devices acting on
  * the same slot can't both read "no existing log" and both deduct
  * inventory for what should be a single dose.
+ *
+ * `feedback` (pain/mood level, note) is only meaningful for status
+ * "taken" — the RPC itself enforces that, resetting these columns to
+ * null/'' for any other status.
  */
 export async function recordDose(
   medication: Pick<Medication, "id" | "inventory_enabled">,
@@ -42,6 +46,7 @@ export async function recordDose(
   scheduledTime: string,
   status: Extract<DoseLogStatus, "taken" | "skipped">,
   quantityPerDose: number,
+  feedback?: DoseFeedback,
 ): Promise<void> {
   const { error } = await supabase.rpc("record_dose", {
     p_medication_id: medication.id,
@@ -50,9 +55,9 @@ export async function recordDose(
     p_status: status,
     p_quantity_per_dose: quantityPerDose,
     p_inventory_enabled: medication.inventory_enabled,
-    p_pain_level: null,
-    p_mood_level: null,
-    p_note: null,
+    p_pain_level: feedback?.painLevel ?? null,
+    p_mood_level: feedback?.moodLevel ?? null,
+    p_note: feedback?.note ?? null,
   });
   if (error) throw error;
 }

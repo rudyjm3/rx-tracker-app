@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,15 +14,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useActiveProfile } from '@/lib/active-profile';
 import {
+  createMoodTag,
   createStandaloneLog,
+  deleteMoodTag,
   getMoodTags,
   getStandaloneHistory,
   levelColor,
+  renameMoodTag,
+  setMoodTagAlwaysShow,
   type StandaloneHistoryEntry,
 } from '@/lib/pain-mood';
 import type { MoodTag } from '@/lib/types/medications';
@@ -31,6 +39,7 @@ const DEFAULT_LEVEL = 5;
 
 export default function PainMoodScreen() {
   const theme = useTheme();
+  const { activeProfileId, familyProfiles } = useActiveProfile();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
   const [painLevel, setPainLevel] = useState(DEFAULT_LEVEL);
@@ -40,28 +49,46 @@ export default function PainMoodScreen() {
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [manageTagsOpen, setManageTagsOpen] = useState(false);
 
   const [history, setHistory] = useState<StandaloneHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // See the Dashboard's identical guard: bumped on every load() call so a
+  // slower, stale response (e.g. from a profile that's no longer selected)
+  // can't overwrite state a newer call already set.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async (isRefresh = false) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setLoadError(null);
     try {
-      const [tags, entries] = await Promise.all([getMoodTags(), getStandaloneHistory(50)]);
+      const [tags, entries] = await Promise.all([
+        getMoodTags(),
+        getStandaloneHistory(50, activeProfileId),
+      ]);
+      if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
       setHistory(entries);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, []);
+  }, [activeProfileId]);
 
+  // load() (and this callback) changes identity whenever activeProfileId
+  // changes, and useFocusEffect re-invokes its callback on identity
+  // changes while the screen is already focused — so switching profiles
+  // from the chip row here reloads immediately, not just the next time
+  // this screen regains focus.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -107,6 +134,7 @@ export default function PainMoodScreen() {
         moodLevel: trackMood ? moodLevel : null,
         note: note.trim(),
         tags: trackMood ? tagNames : '',
+        profileId: activeProfileId,
       });
       resetForm();
       await load(true);
@@ -127,6 +155,8 @@ export default function PainMoodScreen() {
           <ThemedText type="title" style={styles.title}>
             Pain & Mood
           </ThemedText>
+
+          {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
@@ -155,7 +185,14 @@ export default function PainMoodScreen() {
                 onChange={setMoodLevel}
                 color={levelColor('mood', moodLevel)}
               />
-              <FieldLabel>Tags</FieldLabel>
+              <View style={styles.tagsHeaderRow}>
+                <FieldLabel>Tags</FieldLabel>
+                <Pressable onPress={() => setManageTagsOpen(true)}>
+                  <ThemedText type="small" style={styles.manageTagsLink}>
+                    Manage tags
+                  </ThemedText>
+                </Pressable>
+              </View>
               <View style={styles.tagList}>
                 {moodTags.map((tag) => {
                   const selected = selectedTagIds.has(tag.id);
@@ -208,7 +245,196 @@ export default function PainMoodScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {manageTagsOpen && (
+        <ManageTagsSheet
+          tags={moodTags}
+          onClose={() => setManageTagsOpen(false)}
+          onChanged={() => load()}
+        />
+      )}
     </ThemedView>
+  );
+}
+
+function ManageTagsSheet({
+  tags,
+  onClose,
+  onChanged,
+}: {
+  tags: MoodTag[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [localTags, setLocalTags] = useState(tags);
+  const [newTagName, setNewTagName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAdd() {
+    const name = newTagName.trim();
+    if (!name) return;
+    setError(null);
+    setAdding(true);
+    try {
+      const tag = await createMoodTag(name);
+      setLocalTags((prev) => [...prev, tag]);
+      setNewTagName('');
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add tag");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function startEditing(tag: MoodTag) {
+    setEditingId(tag.id);
+    setEditingName(tag.name);
+  }
+
+  async function handleRename(id: string) {
+    const name = editingName.trim();
+    if (!name) return;
+    setError(null);
+    setBusyId(id);
+    try {
+      await renameMoodTag(id, name);
+      setLocalTags((prev) => prev.map((t) => (t.id === id ? { ...t, name } : t)));
+      setEditingId(null);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't rename tag");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleToggleAlwaysShow(tag: MoodTag) {
+    setError(null);
+    setBusyId(tag.id);
+    try {
+      await setMoodTagAlwaysShow(tag.id, !tag.always_show);
+      setLocalTags((prev) =>
+        prev.map((t) => (t.id === tag.id ? { ...t, always_show: !t.always_show } : t)),
+      );
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't update tag");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function confirmDelete(tag: MoodTag) {
+    Alert.alert('Delete this tag?', `"${tag.name}" will be removed from the tag picker.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setError(null);
+          setBusyId(tag.id);
+          try {
+            await deleteMoodTag(tag.id);
+            setLocalTags((prev) => prev.filter((t) => t.id !== tag.id));
+            onChanged();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Couldn't delete tag");
+          } finally {
+            setBusyId(null);
+          }
+        },
+      },
+    ]);
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ThemedText type="subtitle" style={styles.modalTitle}>
+                Manage tags
+              </ThemedText>
+
+              {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
+              <ScrollView style={styles.manageTagsList}>
+                {localTags.map((tag) => (
+                  <View key={tag.id} style={styles.manageTagRow}>
+                    {editingId === tag.id ? (
+                      <TextInput
+                        style={[styles.input, styles.manageTagInput]}
+                        value={editingName}
+                        onChangeText={setEditingName}
+                        autoFocus
+                        onSubmitEditing={() => handleRename(tag.id)}
+                      />
+                    ) : (
+                      <Pressable style={styles.manageTagNameButton} onPress={() => startEditing(tag)}>
+                        <ThemedText>{tag.name}</ThemedText>
+                      </Pressable>
+                    )}
+
+                    <View style={styles.manageTagActions}>
+                      <View style={styles.manageTagAlwaysShow}>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Always show
+                        </ThemedText>
+                        <Switch
+                          value={tag.always_show}
+                          onValueChange={() => handleToggleAlwaysShow(tag)}
+                          disabled={busyId === tag.id}
+                        />
+                      </View>
+                      {editingId === tag.id ? (
+                        <Pressable
+                          onPress={() => handleRename(tag.id)}
+                          disabled={busyId === tag.id}
+                          hitSlop={8}
+                        >
+                          <ThemedText style={styles.manageTagSaveText}>Save</ThemedText>
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => confirmDelete(tag)} disabled={busyId === tag.id} hitSlop={8}>
+                          <ThemedText style={styles.deleteText}>Delete</ThemedText>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={styles.addTagRow}>
+                <TextInput
+                  style={[styles.input, styles.addTagInput]}
+                  value={newTagName}
+                  onChangeText={setNewTagName}
+                  placeholder="New tag name"
+                  onSubmitEditing={handleAdd}
+                />
+                <Pressable
+                  style={[styles.primaryButton, styles.addTagButton, (adding || !newTagName.trim()) && styles.disabled]}
+                  onPress={handleAdd}
+                  disabled={adding || !newTagName.trim()}
+                >
+                  {adding ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Add</ThemedText>}
+                </Pressable>
+              </View>
+
+              <Pressable style={styles.closeButton} onPress={onClose}>
+                <ThemedText style={styles.closeButtonText}>Done</ThemedText>
+              </Pressable>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -369,4 +595,31 @@ const styles = StyleSheet.create({
   levelBadgeText: { color: '#ffffff', fontWeight: '600' },
   historyNote: { marginTop: Spacing.half },
   historyTagChip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
+  tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheetWrapper: { maxHeight: '85%' },
+  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
+  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
+  manageTagsList: { maxHeight: 360 },
+  manageTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Brand.border,
+  },
+  manageTagNameButton: { flex: 1 },
+  manageTagInput: { flex: 1, paddingVertical: Spacing.one },
+  manageTagActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  manageTagAlwaysShow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  manageTagSaveText: { color: Brand.deepBlue, fontWeight: '600' },
+  deleteText: { color: Brand.danger, fontWeight: '600' },
+  addTagRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.three, alignItems: 'center' },
+  addTagInput: { flex: 1 },
+  addTagButton: { marginTop: 0, paddingHorizontal: Spacing.four, minWidth: 72 },
+  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
+  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });
