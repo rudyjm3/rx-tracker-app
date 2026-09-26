@@ -233,14 +233,6 @@ export async function getGroupMembers(): Promise<
 }
 
 // ── Medication groups (create/edit/delete) ─────────────────────────
-// Plain multi-step table writes, matching rx-tracker-web's
-// lib/medications.ts — medication_groups/medication_group_members are
-// ordinary RLS-scoped tables with no cross-table invariants that need an
-// atomic RPC (unlike medications, which has create_medication/
-// update_medication). A trigger on the member/group tables
-// (trg_sync_group_schedule_on_member_change, see rx-tracker-web's
-// supabase/schema.sql) keeps each member's medication_schedule_times row
-// in sync automatically.
 
 export interface GroupInput {
   name: string;
@@ -254,73 +246,64 @@ export interface GroupMemberInput {
   sort_order?: number;
 }
 
+/**
+ * Runs as the atomic `create_group` RPC (see rx-tracker-web's
+ * supabase/schema.sql) rather than separate insert/insert client
+ * requests, so a dropped connection between them can't leave a group
+ * created with no members.
+ */
 export async function createGroup(
   input: GroupInput,
   members: GroupMemberInput[],
 ): Promise<MedicationGroup> {
-  const userId = await getCurrentUserId();
-
-  const { data: group, error } = await supabase
-    .from("medication_groups")
-    .insert({
-      user_id: userId,
-      profile_id: input.profile_id ?? null,
-      name: input.name,
-      scheduled_time: input.scheduled_time,
-      active: true,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-
-  if (members.length > 0) {
-    const { error: memberError } = await supabase.from("medication_group_members").insert(
-      members.map((m, i) => ({
-        group_id: group.id,
+  const { data, error } = await supabase
+    .rpc("create_group", {
+      p_group: {
+        profile_id: input.profile_id ?? null,
+        name: input.name,
+        scheduled_time: input.scheduled_time,
+      },
+      p_members: members.map((m, i) => ({
         medication_id: m.medication_id,
         quantity_per_dose: m.quantity_per_dose ?? null,
         sort_order: m.sort_order ?? i,
       })),
-    );
-    if (memberError) throw memberError;
-  }
-
-  return group as MedicationGroup;
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MedicationGroup;
 }
 
+/**
+ * Runs as the atomic `update_group` RPC (see rx-tracker-web's
+ * supabase/schema.sql) rather than separate update/delete/insert client
+ * requests, so a dropped connection or constraint violation partway
+ * through the reinsert can't leave the group with zero members — which
+ * trg_cleanup_group_schedule_on_member_remove would then react to by
+ * clearing those medications' schedule times too. A failure anywhere
+ * inside the RPC rolls back the whole update and leaves the original
+ * membership untouched.
+ */
 export async function updateGroup(
   id: string,
   input: GroupInput,
   members: GroupMemberInput[],
 ): Promise<void> {
-  const { error } = await supabase
-    .from("medication_groups")
-    .update({
+  const { error } = await supabase.rpc("update_group", {
+    p_group_id: id,
+    p_group: {
+      profile_id: input.profile_id ?? null,
       name: input.name,
       scheduled_time: input.scheduled_time,
-      profile_id: input.profile_id ?? null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+    },
+    p_members: members.map((m, i) => ({
+      medication_id: m.medication_id,
+      quantity_per_dose: m.quantity_per_dose ?? null,
+      sort_order: m.sort_order ?? i,
+    })),
+  });
   if (error) throw error;
-
-  const { error: deleteError } = await supabase
-    .from("medication_group_members")
-    .delete()
-    .eq("group_id", id);
-  if (deleteError) throw deleteError;
-
-  if (members.length > 0) {
-    const { error: memberError } = await supabase.from("medication_group_members").insert(
-      members.map((m, i) => ({
-        group_id: id,
-        medication_id: m.medication_id,
-        quantity_per_dose: m.quantity_per_dose ?? null,
-        sort_order: m.sort_order ?? i,
-      })),
-    );
-    if (memberError) throw memberError;
-  }
 }
 
 export async function deleteGroup(id: string): Promise<void> {
