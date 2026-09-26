@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { confirmDestructive } from '@/lib/confirm';
 import { getTodayLogs, recordDoseAtTime, type DoseFeedback } from '@/lib/dose-logs';
 import { adjustQuantity, getRefillHistory, logRefill } from '@/lib/inventory';
 import {
@@ -32,6 +34,19 @@ import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medicatio
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import { generateDaySlots, type DaySlot } from '@/lib/schedule';
+import {
+  addSideEffect,
+  deleteSideEffect,
+  getSideEffects,
+  type SideEffectInput,
+} from '@/lib/side-effects';
+import {
+  createSideEffectTag,
+  deleteSideEffectTag,
+  getSideEffectTags,
+  renameSideEffectTag,
+  setSideEffectTagAlwaysShow,
+} from '@/lib/side-effect-tags';
 import type {
   DoseLog,
   Medication,
@@ -39,6 +54,9 @@ import type {
   MedicationRefill,
   MedicationType,
   ScheduleMode,
+  SideEffect,
+  SideEffectSeverity,
+  SideEffectTag,
 } from '@/lib/types/medications';
 import { daysUntilRunout, localDateString, scheduleSummary, to12h } from '@/lib/utils';
 
@@ -46,6 +64,18 @@ const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
+
+const SEVERITY_OPTIONS: { value: SideEffectSeverity; label: string }[] = [
+  { value: 'mild', label: 'Mild' },
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'severe', label: 'Severe' },
+];
+
+const SEVERITY_COLOR: Record<SideEffectSeverity, string> = {
+  mild: Brand.success,
+  moderate: Brand.warning,
+  severe: Brand.danger,
+};
 
 export default function MedicationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,6 +86,7 @@ export default function MedicationDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
   const [logDoseOpen, setLogDoseOpen] = useState(false);
+  const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -195,6 +226,12 @@ export default function MedicationDetailScreen() {
             </Pressable>
           </View>
 
+          <View style={styles.actions}>
+            <Pressable style={styles.secondaryButton} onPress={() => setSideEffectsOpen(true)}>
+              <ThemedText style={styles.secondaryButtonText}>Side Effects</ThemedText>
+            </Pressable>
+          </View>
+
           {hasInventory && refillHistory.length > 0 && (
             <View style={styles.historySection}>
               <ThemedText type="smallBold" style={styles.sectionTitle}>
@@ -229,6 +266,10 @@ export default function MedicationDetailScreen() {
             await load();
           }}
         />
+      )}
+
+      {sideEffectsOpen && (
+        <SideEffectsSheet medication={medication} onClose={() => setSideEffectsOpen(false)} />
       )}
     </ThemedView>
   );
@@ -740,6 +781,534 @@ function LogDoseSheet({
   );
 }
 
+/**
+ * Mirrors web's SideEffectModal: one form (date + severity + a multi-select
+ * tag picker + a note) submitting one `side_effects` row per selected tag,
+ * plus a delete-able list of this medication's existing entries below it.
+ */
+function SideEffectsSheet({
+  medication,
+  onClose,
+}: {
+  medication: Medication;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
+  const [occurredDate, setOccurredDate] = useState(localDateString());
+  const [severity, setSeverity] = useState<SideEffectSeverity>('mild');
+  const [tags, setTags] = useState<SideEffectTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState('');
+  const [entries, setEntries] = useState<SideEffect[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [manageTagsOpen, setManageTagsOpen] = useState(false);
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [addingTag, setAddingTag] = useState(false);
+
+  // See RefillSheet/Dashboard's identical guard: bumped on every load() call
+  // so a slower, stale response can't overwrite state a newer call already
+  // set.
+  const requestIdRef = useRef(0);
+
+  const busy = saving || deletingId !== null || addingTag;
+
+  const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [tagList, sideEffects] = await Promise.all([
+        getSideEffectTags(),
+        getSideEffects(medication.id),
+      ]);
+      if (requestIdRef.current !== requestId) return;
+      setTags(tagList);
+      setEntries(sideEffects);
+    } catch (e) {
+      if (requestIdRef.current !== requestId) return;
+      setLoadError(e instanceof Error ? e.message : 'Failed to load side effects');
+    } finally {
+      if (requestIdRef.current === requestId) setLoading(false);
+    }
+  }, [medication.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  function toggleTag(id: string) {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleAddTag() {
+    const name = newTagName.trim();
+    if (!name) return;
+    setFormError(null);
+    setAddingTag(true);
+    try {
+      const tag = await createSideEffectTag(name);
+      setTags((prev) => [...prev, tag]);
+      setSelectedTagIds((prev) => new Set(prev).add(tag.id));
+      setNewTagName('');
+      setShowAddTag(false);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't add side effect");
+    } finally {
+      setAddingTag(false);
+    }
+  }
+
+  function requestClose() {
+    if (!busy) onClose();
+  }
+
+  async function handleSubmit() {
+    setFormError(null);
+    if (selectedTagIds.size === 0) {
+      setFormError('Select at least one side effect.');
+      return;
+    }
+    const descriptions = tags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name);
+    setSaving(true);
+    try {
+      await Promise.all(
+        descriptions.map((description) => {
+          const input: SideEffectInput = {
+            occurred_date: occurredDate,
+            description,
+            severity,
+            note,
+          };
+          return addSideEffect(medication.id, input);
+        }),
+      );
+      setSelectedTagIds(new Set());
+      setNote('');
+      await load();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Failed to log side effect');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmDelete(entry: SideEffect) {
+    confirmDestructive(
+      'Delete this entry?',
+      `"${entry.description}" on ${entry.occurred_date} will be removed.`,
+      'Delete',
+      async () => {
+        setFormError(null);
+        setDeletingId(entry.id);
+        try {
+          await deleteSideEffect(entry.id);
+          await load();
+        } catch (e) {
+          setFormError(e instanceof Error ? e.message : "Couldn't delete this entry");
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={requestClose}>
+      <Pressable style={styles.modalBackdrop} onPress={requestClose}>
+        <Pressable style={styles.editSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Side Effects
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.editSubtitle}>
+                  {medication.name}
+                  {medication.dose ? ` — ${medication.dose}` : ''}
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <FieldLabel>Date</FieldLabel>
+                <TextInput
+                  style={[styles.input, inputThemeStyle]}
+                  placeholderTextColor={theme.textSecondary}
+                  value={occurredDate}
+                  onChangeText={setOccurredDate}
+                  placeholder="YYYY-MM-DD"
+                />
+
+                <FieldLabel>Severity</FieldLabel>
+                <View style={styles.statusRow}>
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      style={[styles.statusChip, severity === opt.value && styles.statusChipSelected]}
+                      onPress={() => setSeverity(opt.value)}
+                    >
+                      <ThemedText
+                        type="small"
+                        style={severity === opt.value ? styles.statusChipTextSelected : undefined}
+                      >
+                        {opt.label}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.tagsHeaderRow}>
+                  <FieldLabel>Side effects</FieldLabel>
+                  <View style={styles.tagsHeaderLinks}>
+                    <Pressable onPress={() => setShowAddTag((s) => !s)} hitSlop={8}>
+                      <ThemedText type="small" style={styles.manageTagsLink}>
+                        + Add new tag
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable onPress={() => setManageTagsOpen(true)} hitSlop={8}>
+                      <ThemedText type="small" style={styles.manageTagsLink}>
+                        Manage tags
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </View>
+                {loading ? (
+                  <ActivityIndicator style={styles.loading} />
+                ) : (
+                  <View style={styles.tagList}>
+                    {tags.map((tag) => {
+                      const selected = selectedTagIds.has(tag.id);
+                      return (
+                        <Pressable
+                          key={tag.id}
+                          style={[styles.tagChip, selected && styles.tagChipSelected]}
+                          onPress={() => toggleTag(tag.id)}
+                        >
+                          <ThemedText type="small" style={selected ? styles.tagTextSelected : styles.tagText}>
+                            {tag.name}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {showAddTag && (
+                  <View style={styles.addTagRow}>
+                    <TextInput
+                      style={[styles.input, styles.addTagInput, inputThemeStyle]}
+                      placeholderTextColor={theme.textSecondary}
+                      value={newTagName}
+                      onChangeText={setNewTagName}
+                      placeholder="Side effect name"
+                      maxLength={30}
+                      onSubmitEditing={handleAddTag}
+                    />
+                    <Pressable
+                      style={[styles.primaryButton, styles.addTagButton, (addingTag || !newTagName.trim()) && styles.disabled]}
+                      onPress={handleAddTag}
+                      disabled={addingTag || !newTagName.trim()}
+                    >
+                      {addingTag ? (
+                        <ActivityIndicator color="#ffffff" />
+                      ) : (
+                        <ThemedText style={styles.primaryButtonText}>Add</ThemedText>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
+
+                <FieldLabel>Notes (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline, inputThemeStyle]}
+                  placeholderTextColor={theme.textSecondary}
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                />
+
+                <Pressable
+                  style={[styles.primaryButton, (saving || selectedTagIds.size === 0) && styles.disabled]}
+                  onPress={handleSubmit}
+                  disabled={saving || selectedTagIds.size === 0}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <ThemedText style={styles.primaryButtonText}>Add side effect</ThemedText>
+                  )}
+                </Pressable>
+
+                <ThemedText type="smallBold" style={styles.sectionTitle}>
+                  Logged side effects
+                </ThemedText>
+
+                {loadError && <ThemedText style={styles.error}>{loadError}</ThemedText>}
+
+                {!loading && entries.length === 0 && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    No side effects logged yet.
+                  </ThemedText>
+                )}
+
+                {entries.map((entry) => (
+                  <ThemedView key={entry.id} type="backgroundElement" style={styles.sideEffectRow}>
+                    <View style={styles.sideEffectMain}>
+                      <View style={styles.sideEffectHeaderRow}>
+                        <View style={[styles.severityBadge, { backgroundColor: SEVERITY_COLOR[entry.severity] }]}>
+                          <ThemedText type="small" style={styles.severityBadgeText}>
+                            {entry.severity}
+                          </ThemedText>
+                        </View>
+                        <ThemedText type="small">{entry.description}</ThemedText>
+                      </View>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {entry.occurred_date}
+                      </ThemedText>
+                      {entry.note ? (
+                        <ThemedText type="small" themeColor="textSecondary" style={styles.historyNote}>
+                          {entry.note}
+                        </ThemedText>
+                      ) : null}
+                    </View>
+                    <Pressable
+                      onPress={() => confirmDelete(entry)}
+                      disabled={deletingId === entry.id}
+                      hitSlop={8}
+                    >
+                      <ThemedText type="small" style={styles.deleteText}>
+                        {deletingId === entry.id ? '…' : 'Delete'}
+                      </ThemedText>
+                    </Pressable>
+                  </ThemedView>
+                ))}
+
+                <Pressable style={styles.closeButton} onPress={requestClose} disabled={busy}>
+                  <ThemedText style={styles.closeButtonText}>Done</ThemedText>
+                </Pressable>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+
+      {manageTagsOpen && (
+        <ManageSideEffectTagsSheet
+          tags={tags}
+          onClose={() => setManageTagsOpen(false)}
+          onChanged={load}
+        />
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Reuses PR #16's mood-tag-management sheet (pain-mood.tsx's
+ * ManageTagsSheet) as the template — same structure, different
+ * table/functions (side_effect_tags instead of mood_tags).
+ */
+function ManageSideEffectTagsSheet({
+  tags,
+  onClose,
+  onChanged,
+}: {
+  tags: SideEffectTag[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const theme = useTheme();
+  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
+  const [localTags, setLocalTags] = useState(tags);
+  const [newTagName, setNewTagName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const busy = adding || busyId !== null;
+
+  function requestClose() {
+    if (!busy) onClose();
+  }
+
+  async function handleAdd() {
+    const name = newTagName.trim();
+    if (!name) return;
+    setError(null);
+    setAdding(true);
+    try {
+      const tag = await createSideEffectTag(name);
+      setLocalTags((prev) => [...prev, tag]);
+      setNewTagName('');
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add tag");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function startEditing(tag: SideEffectTag) {
+    setEditingId(tag.id);
+    setEditingName(tag.name);
+  }
+
+  async function handleRename(id: string) {
+    const name = editingName.trim();
+    if (!name) return;
+    setError(null);
+    setBusyId(id);
+    try {
+      await renameSideEffectTag(id, name);
+      setLocalTags((prev) => prev.map((t) => (t.id === id ? { ...t, name } : t)));
+      setEditingId(null);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't rename tag");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleToggleAlwaysShow(tag: SideEffectTag) {
+    setError(null);
+    setBusyId(tag.id);
+    try {
+      await setSideEffectTagAlwaysShow(tag.id, !tag.always_show);
+      setLocalTags((prev) =>
+        prev.map((t) => (t.id === tag.id ? { ...t, always_show: !t.always_show } : t)),
+      );
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't update tag");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function confirmDelete(tag: SideEffectTag) {
+    confirmDestructive(
+      'Delete this tag?',
+      `"${tag.name}" will be removed from the tag picker.`,
+      'Delete',
+      async () => {
+        setError(null);
+        setBusyId(tag.id);
+        try {
+          await deleteSideEffectTag(tag.id);
+          setLocalTags((prev) => prev.filter((t) => t.id !== tag.id));
+          onChanged();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Couldn't delete tag");
+        } finally {
+          setBusyId(null);
+        }
+      },
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={requestClose}>
+      <Pressable style={styles.modalBackdrop} onPress={requestClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ThemedText type="subtitle" style={styles.modalTitle}>
+                Manage tags
+              </ThemedText>
+
+              {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
+              <ScrollView style={styles.manageTagsList}>
+                {localTags.map((tag) => (
+                  <View key={tag.id} style={styles.manageTagRow}>
+                    {editingId === tag.id ? (
+                      <TextInput
+                        style={[styles.input, styles.manageTagInput, inputThemeStyle]}
+                        placeholderTextColor={theme.textSecondary}
+                        value={editingName}
+                        onChangeText={setEditingName}
+                        autoFocus
+                        onSubmitEditing={() => handleRename(tag.id)}
+                      />
+                    ) : (
+                      <Pressable style={styles.manageTagNameButton} onPress={() => startEditing(tag)}>
+                        <ThemedText>{tag.name}</ThemedText>
+                      </Pressable>
+                    )}
+
+                    <View style={styles.manageTagActions}>
+                      <View style={styles.manageTagAlwaysShow}>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Always show
+                        </ThemedText>
+                        <Switch
+                          value={tag.always_show}
+                          onValueChange={() => handleToggleAlwaysShow(tag)}
+                          disabled={busyId === tag.id}
+                        />
+                      </View>
+                      {editingId === tag.id ? (
+                        <Pressable
+                          onPress={() => handleRename(tag.id)}
+                          disabled={busyId === tag.id}
+                          hitSlop={8}
+                        >
+                          <ThemedText style={styles.manageTagSaveText}>Save</ThemedText>
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => confirmDelete(tag)} disabled={busyId === tag.id} hitSlop={8}>
+                          <ThemedText style={styles.deleteText}>Delete</ThemedText>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={styles.addTagRow}>
+                <TextInput
+                  style={[styles.input, styles.addTagInput, inputThemeStyle]}
+                  placeholderTextColor={theme.textSecondary}
+                  value={newTagName}
+                  onChangeText={setNewTagName}
+                  placeholder="New tag name"
+                  onSubmitEditing={handleAdd}
+                />
+                <Pressable
+                  style={[styles.primaryButton, styles.addTagButton, (adding || !newTagName.trim()) && styles.disabled]}
+                  onPress={handleAdd}
+                  disabled={adding || !newTagName.trim()}
+                >
+                  {adding ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Add</ThemedText>}
+                </Pressable>
+              </View>
+
+              <Pressable style={styles.closeButton} onPress={requestClose} disabled={busy}>
+                <ThemedText style={styles.closeButtonText}>Done</ThemedText>
+              </Pressable>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function LevelStepper({
   label,
   value,
@@ -1222,4 +1791,64 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editSheetWrapper: { maxHeight: '85%' },
+  editSubtitle: { marginTop: -Spacing.two, marginBottom: Spacing.two },
+  statusRow: { flexDirection: 'row', gap: Spacing.two },
+  statusChip: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+  },
+  statusChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  statusChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
+  tagsHeaderLinks: { flexDirection: 'row', gap: Spacing.three },
+  manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
+  tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one, marginTop: Spacing.one },
+  tagChip: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+  },
+  tagChipSelected: { backgroundColor: Brand.deepBlue, borderColor: Brand.deepBlue },
+  tagText: { color: Brand.textMuted },
+  tagTextSelected: { color: '#ffffff', fontWeight: '600' },
+  deleteText: { color: Brand.danger, fontWeight: '600' },
+  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
+  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
+  manageTagsList: { maxHeight: 360 },
+  manageTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Brand.border,
+  },
+  manageTagNameButton: { flex: 1 },
+  manageTagInput: { flex: 1, paddingVertical: Spacing.one },
+  manageTagActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  manageTagAlwaysShow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  manageTagSaveText: { color: Brand.deepBlue, fontWeight: '600' },
+  addTagRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.three, alignItems: 'center' },
+  addTagInput: { flex: 1 },
+  addTagButton: { marginTop: 0, paddingHorizontal: Spacing.four, minWidth: 72 },
+  sideEffectRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  sideEffectMain: { flex: 1, gap: 2 },
+  sideEffectHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  severityBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
+  severityBadgeText: { color: '#ffffff', fontWeight: '600' },
 });

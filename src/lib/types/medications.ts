@@ -137,3 +137,24 @@ export interface MoodTag {
   sort_order: number;
   created_at: string;
 }
+
+export type SideEffectSeverity = "mild" | "moderate" | "severe";
+
+export interface SideEffect {
+  id: string;
+  medication_id: string;
+  occurred_date: string;
+  description: string;
+  severity: SideEffectSeverity;
+  note: string;
+  created_at: string;
+}
+
+export interface SideEffectTag {
+  id: string;
+  user_id: string;
+  name: string;
+  always_show: boolean;
+  sort_order: number;
+  created_at: string;
+}

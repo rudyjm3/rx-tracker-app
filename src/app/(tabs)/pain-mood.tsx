@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -21,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
+import { confirmDestructive } from '@/lib/confirm';
 import {
   createMoodTag,
   createStandaloneLog,
@@ -37,22 +36,6 @@ import type { MoodTag } from '@/lib/types/medications';
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
-
-// Alert.alert's buttons are a no-op on web (react-native-web's Alert.alert
-// is an empty stub), which would make onConfirm unreachable there — fall
-// back to window.confirm on that platform so this confirmation actually
-// works cross-platform, matching AGENTS.md's cross-platform-compatibility
-// priority for this app.
-function confirmDestructive(title: string, message: string, confirmLabel: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-  ]);
-}
 
 export default function PainMoodScreen() {
   const theme = useTheme();
