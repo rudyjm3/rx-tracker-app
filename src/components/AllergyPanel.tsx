@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -43,6 +45,21 @@ const TYPE_OPTIONS: { value: AllergyType; label: string }[] = [
   { value: 'intolerance', label: 'Intolerance' },
 ];
 
+// Alert.alert's buttons are a no-op on web (react-native-web's Alert.alert
+// is an empty stub), which would make onConfirm unreachable there — fall
+// back to window.confirm on that platform, matching the pain/mood screen's
+// confirmDestructive helper.
+function confirmDestructive(title: string, message: string | undefined, confirmLabel: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(message ? `${title}\n\n${message}` : title)) onConfirm();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 interface AllergyPanelProps {
   profileId: string | null;
 }
@@ -54,7 +71,13 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProfileAllergyWithName | 'new' | null>(null);
 
+  // Bumped on every load() call so a slower, stale response (e.g. from a
+  // save that started before a newer one finished) can't overwrite state a
+  // newer call already set — same guard as History's identical pattern.
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -62,12 +85,14 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
         getAllergyCatalog(),
         getProfileAllergies(profileId),
       ]);
+      if (requestIdRef.current !== requestId) return;
       setCatalog(catalogData);
       setAllergies(allergyData);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load allergies');
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [profileId]);
 
@@ -78,21 +103,14 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
   );
 
   function confirmRemove(allergy: ProfileAllergyWithName) {
-    Alert.alert(`Remove ${allergy.name}?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteAllergy(allergy.id);
-            load();
-          } catch (e) {
-            Alert.alert('Failed', e instanceof Error ? e.message : "Couldn't remove allergy");
-          }
-        },
-      },
-    ]);
+    confirmDestructive(`Remove ${allergy.name}?`, undefined, 'Remove', async () => {
+      try {
+        await deleteAllergy(allergy.id);
+        load();
+      } catch (e) {
+        Alert.alert('Failed', e instanceof Error ? e.message : "Couldn't remove allergy");
+      }
+    });
   }
 
   return (
@@ -232,11 +250,16 @@ function AllergyFormSheet({
     }
   }
 
+  function requestClose() {
+    if (!saving) onClose();
+  }
+
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={requestClose}>
+      <Pressable style={styles.modalBackdrop} onPress={requestClose}>
         <Pressable style={styles.sheetWrapper} onPress={(e) => e.stopPropagation()}>
           <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
             <ScrollView>
               <ThemedText type="subtitle" style={styles.modalTitle}>
                 {existing ? 'Edit allergy' : 'Add allergy'}
@@ -350,7 +373,7 @@ function AllergyFormSheet({
               )}
 
               <View style={styles.actions}>
-                <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                <Pressable style={styles.secondaryButton} onPress={requestClose} disabled={saving}>
                   <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                 </Pressable>
                 <Pressable
@@ -366,6 +389,7 @@ function AllergyFormSheet({
                 </Pressable>
               </View>
             </ScrollView>
+            </SafeAreaView>
           </ThemedView>
         </Pressable>
       </Pressable>
@@ -375,6 +399,7 @@ function AllergyFormSheet({
           <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
             <Pressable style={styles.pickerSheetWrapper} onPress={(e) => e.stopPropagation()}>
               <ThemedView style={styles.modalSheet}>
+                <SafeAreaView edges={['bottom']}>
                 <ThemedText type="subtitle" style={styles.modalTitle}>
                   Allergy
                 </ThemedText>
@@ -402,6 +427,7 @@ function AllergyFormSheet({
                 <Pressable style={styles.closeButton} onPress={() => setPickerOpen(false)}>
                   <ThemedText style={styles.closeButtonText}>Close</ThemedText>
                 </Pressable>
+                </SafeAreaView>
               </ThemedView>
             </Pressable>
           </Pressable>
