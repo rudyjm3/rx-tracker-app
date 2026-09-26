@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getCurrentUserId } from "@/lib/medications";
 import { getSetting, setSetting } from "@/lib/app-settings";
 import { Brand } from "@/constants/theme";
+import { localDateString } from "@/lib/utils";
 import type { Medication, MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
 
 export type WellbeingMetric = "pain" | "mood";
@@ -200,4 +201,114 @@ export async function getStandaloneHistory(
   const { data, error } = await query;
   if (error) throw error;
   return (data as StandalonePainMoodLog[]).map(toHistoryEntry);
+}
+
+// ── Trend chart (date-range, ported from rx-tracker-web's TrendChart.tsx
+// and lib/pain-mood.ts) ─────────────────────────────────────────────
+
+export const RANGE_OPTIONS = [
+  { label: "Today", days: 0 as const },
+  { label: "7 days", days: 7 as const },
+  { label: "30 days", days: 30 as const },
+  { label: "90 days", days: 90 as const },
+];
+export type RangeDays = (typeof RANGE_OPTIONS)[number]["days"];
+
+export function rangeDatesForDays(
+  rangeDays: RangeDays,
+  today: string,
+): { start: string; end: string } {
+  if (rangeDays === 0) return { start: today, end: today };
+  const end = new Date(`${today}T00:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (rangeDays - 1));
+  return { start: localDateString(start), end: today };
+}
+
+export interface TrendPoint {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  time: string; // "HH:MM"
+  level: number;
+}
+
+function levelColumn(metric: WellbeingMetric): "pain_level" | "mood_level" {
+  return metric === "pain" ? "pain_level" : "mood_level";
+}
+
+// logged_at is stored as a UTC instant (timestamptz); bucket it into the
+// device's local date/time (matching localDateString/to12h elsewhere in
+// this file) rather than splitting the raw ISO string, which would read
+// off UTC components and misplace entries near local midnight for any
+// user not on UTC.
+function mapStandaloneLogToTrendPoint(
+  log: StandalonePainMoodLog,
+  col: "pain_level" | "mood_level",
+): TrendPoint {
+  const loggedAt = new Date(log.logged_at);
+  const hours = String(loggedAt.getHours()).padStart(2, "0");
+  const minutes = String(loggedAt.getMinutes()).padStart(2, "0");
+  return {
+    id: log.id,
+    date: localDateString(loggedAt),
+    time: `${hours}:${minutes}`,
+    level: log[col] as number,
+  };
+}
+
+// Adapted from rx-tracker-web's getStandaloneTrendPoints, scoped to
+// medicationId: null (dose-linked trend points aren't reachable from this
+// app — see AGENTS.md/task notes) and profile-scoped the same way
+// getStandaloneHistory already is.
+export async function getStandaloneTrend(
+  metric: WellbeingMetric,
+  startDate: string,
+  endDate: string,
+  profileId?: string | null,
+): Promise<TrendPoint[]> {
+  const col = levelColumn(metric);
+  // startDate/endDate are local calendar dates — convert their local
+  // midnight/end-of-day boundaries to UTC instants before querying, so the
+  // range matches what the user sees as "today"/"the last N days" rather
+  // than UTC's version of those dates.
+  const startIso = new Date(`${startDate}T00:00:00`).toISOString();
+  const endIso = new Date(`${endDate}T23:59:59.999`).toISOString();
+  let query = supabase
+    .from("standalone_pain_mood_logs")
+    .select("*")
+    .is("medication_id", null)
+    .gte("logged_at", startIso)
+    .lte("logged_at", endIso);
+  if (profileId !== undefined) {
+    query = profileId === null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data as StandalonePainMoodLog[])
+    .filter((log) => log[col] !== null)
+    .map((log) => mapStandaloneLogToTrendPoint(log, col))
+    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+}
+
+export interface DailyAverage {
+  date: string;
+  level: number;
+}
+
+/**
+ * Groups trend points into one averaged level per date, sorted
+ * chronologically — the multi-day view's data shape, matching
+ * rx-tracker-web's groupDailyAverages.
+ */
+export function groupDailyAverages(points: TrendPoint[]): DailyAverage[] {
+  const byDate = new Map<string, { sum: number; count: number }>();
+  for (const p of points) {
+    const acc = byDate.get(p.date) ?? { sum: 0, count: 0 };
+    acc.sum += p.level;
+    acc.count += 1;
+    byDate.set(p.date, acc);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, { sum, count }]) => ({ date, level: sum / count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

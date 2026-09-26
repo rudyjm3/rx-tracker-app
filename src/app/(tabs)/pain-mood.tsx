@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TrendChart } from '@/components/TrendChart';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
@@ -26,16 +27,24 @@ import {
   deleteMoodTag,
   getMoodTags,
   getStandaloneHistory,
+  getStandaloneTrend,
   levelColor,
+  RANGE_OPTIONS,
+  rangeDatesForDays,
   renameMoodTag,
   setMoodTagAlwaysShow,
+  type RangeDays,
   type StandaloneHistoryEntry,
+  type TrendPoint,
+  type WellbeingMetric,
 } from '@/lib/pain-mood';
 import type { MoodTag } from '@/lib/types/medications';
+import { localDateString } from '@/lib/utils';
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
+const DEFAULT_RANGE_DAYS: RangeDays = 7;
 
 export default function PainMoodScreen() {
   const theme = useTheme();
@@ -55,6 +64,12 @@ export default function PainMoodScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [trendMetric, setTrendMetric] = useState<WellbeingMetric>('pain');
+  const [trendRangeDays, setTrendRangeDays] = useState<RangeDays>(DEFAULT_RANGE_DAYS);
+  const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
+  const [trendLoading, setTrendLoading] = useState(true);
+  const [trendError, setTrendError] = useState<string | null>(null);
 
   // See the Dashboard's identical guard: bumped on every load() call so a
   // slower, stale response (e.g. from a profile that's no longer selected)
@@ -108,6 +123,36 @@ export default function PainMoodScreen() {
     }, [load]),
   );
 
+  // Separate requestId guard from `load` above — the trend query is keyed
+  // off metric/range as well as profile, and shouldn't be gated by (or
+  // gate) the history/tags load's own race guard.
+  const trendRequestIdRef = useRef(0);
+
+  const loadTrend = useCallback(async () => {
+    const requestId = ++trendRequestIdRef.current;
+    setTrendLoading(true);
+    setTrendError(null);
+    try {
+      const { start, end } = rangeDatesForDays(trendRangeDays, localDateString());
+      const points = await getStandaloneTrend(trendMetric, start, end, activeProfileId);
+      if (trendRequestIdRef.current !== requestId) return;
+      setTrendPoints(points);
+    } catch (e) {
+      if (trendRequestIdRef.current !== requestId) return;
+      setTrendError(e instanceof Error ? e.message : 'Failed to load trend data');
+      setTrendPoints([]);
+    } finally {
+      if (trendRequestIdRef.current !== requestId) return;
+      setTrendLoading(false);
+    }
+  }, [activeProfileId, trendMetric, trendRangeDays]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadTrend();
+    }, [loadTrend]),
+  );
+
   function toggleTag(id: string) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev);
@@ -157,7 +202,7 @@ export default function PainMoodScreen() {
       // would otherwise win the requestId race and show the old profile's
       // history under the new profile's chip.
       if (activeProfileIdRef.current === profileIdAtSave) {
-        await load(true);
+        await Promise.all([load(true), loadTrend()]);
       }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save entry');
@@ -171,7 +216,15 @@ export default function PainMoodScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                load(true);
+                loadTrend();
+              }}
+            />
+          }
         >
           <ThemedText type="title" style={styles.title}>
             Pain & Mood
@@ -250,6 +303,52 @@ export default function PainMoodScreen() {
           >
             {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save entry</ThemedText>}
           </Pressable>
+
+          <ThemedText type="smallBold" style={styles.sectionTitle}>
+            Trend
+          </ThemedText>
+
+          <View style={styles.metricToggleRow}>
+            {(['pain', 'mood'] as const).map((m) => (
+              <Pressable
+                key={m}
+                style={[styles.metricChip, trendMetric === m && styles.metricChipSelected]}
+                onPress={() => setTrendMetric(m)}
+              >
+                <ThemedText
+                  type="small"
+                  style={trendMetric === m ? styles.metricChipTextSelected : undefined}
+                >
+                  {m === 'pain' ? 'Pain' : 'Mood'}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.rangeRow}>
+            {RANGE_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.days}
+                style={[styles.rangeChip, trendRangeDays === opt.days && styles.rangeChipSelected]}
+                onPress={() => setTrendRangeDays(opt.days)}
+              >
+                <ThemedText
+                  type="small"
+                  style={trendRangeDays === opt.days ? styles.rangeChipTextSelected : undefined}
+                >
+                  {opt.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
+          {trendError && <ThemedText style={styles.error}>{trendError}</ThemedText>}
+
+          {trendLoading ? (
+            <ActivityIndicator style={styles.historyLoading} />
+          ) : (
+            <TrendChart metric={trendMetric} points={trendPoints} rangeDays={trendRangeDays} />
+          )}
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
             Recent entries
@@ -606,6 +705,27 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
   disabled: { opacity: 0.6 },
   sectionTitle: { marginTop: Spacing.five },
+  metricToggleRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
+  metricChip: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.two,
+  },
+  metricChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  metricChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.two },
+  rangeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  rangeChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   historyLoading: { marginTop: Spacing.three },
   historyCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one, marginTop: Spacing.two },
   historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
