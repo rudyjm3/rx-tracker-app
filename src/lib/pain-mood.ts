@@ -236,15 +236,22 @@ function levelColumn(metric: WellbeingMetric): "pain_level" | "mood_level" {
   return metric === "pain" ? "pain_level" : "mood_level";
 }
 
+// logged_at is stored as a UTC instant (timestamptz); bucket it into the
+// device's local date/time (matching localDateString/to12h elsewhere in
+// this file) rather than splitting the raw ISO string, which would read
+// off UTC components and misplace entries near local midnight for any
+// user not on UTC.
 function mapStandaloneLogToTrendPoint(
   log: StandalonePainMoodLog,
   col: "pain_level" | "mood_level",
 ): TrendPoint {
-  const [date, time] = log.logged_at.split("T");
+  const loggedAt = new Date(log.logged_at);
+  const hours = String(loggedAt.getHours()).padStart(2, "0");
+  const minutes = String(loggedAt.getMinutes()).padStart(2, "0");
   return {
     id: log.id,
-    date,
-    time: (time ?? "00:00").slice(0, 5),
+    date: localDateString(loggedAt),
+    time: `${hours}:${minutes}`,
     level: log[col] as number,
   };
 }
@@ -260,12 +267,18 @@ export async function getStandaloneTrend(
   profileId?: string | null,
 ): Promise<TrendPoint[]> {
   const col = levelColumn(metric);
+  // startDate/endDate are local calendar dates — convert their local
+  // midnight/end-of-day boundaries to UTC instants before querying, so the
+  // range matches what the user sees as "today"/"the last N days" rather
+  // than UTC's version of those dates.
+  const startIso = new Date(`${startDate}T00:00:00`).toISOString();
+  const endIso = new Date(`${endDate}T23:59:59.999`).toISOString();
   let query = supabase
     .from("standalone_pain_mood_logs")
     .select("*")
     .is("medication_id", null)
-    .gte("logged_at", `${startDate}T00:00:00`)
-    .lte("logged_at", `${endDate}T23:59:59`);
+    .gte("logged_at", startIso)
+    .lte("logged_at", endIso);
   if (profileId !== undefined) {
     query = profileId === null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
   }

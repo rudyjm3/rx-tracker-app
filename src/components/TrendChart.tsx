@@ -26,6 +26,7 @@ const PADDING_BOTTOM = 28;
 const Y_TICKS = [1, 3, 5, 7, 10];
 const Y_MIN = 1;
 const Y_MAX = 10;
+const MAX_X_LABELS = 6;
 
 function yToPixel(level: number, innerHeight: number): number {
   const ratio = (level - Y_MIN) / (Y_MAX - Y_MIN);
@@ -195,6 +196,12 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
               </SvgText>
             ))}
             {dailyAverages.map((d, i) => {
+              // Cap the number of date labels drawn — one per day would
+              // overlap into an unreadable smear on a phone-width chart
+              // once the range (30/90 days) has more points than fit.
+              const step = Math.max(1, Math.ceil(dailyAverages.length / MAX_X_LABELS));
+              const isLast = i === dailyAverages.length - 1;
+              if (i % step !== 0 && !isLast) return null;
               const x =
                 dailyAverages.length > 1
                   ? PADDING_LEFT + (i / (dailyAverages.length - 1)) * innerWidth

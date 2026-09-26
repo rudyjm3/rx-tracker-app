@@ -202,7 +202,7 @@ export default function PainMoodScreen() {
       // would otherwise win the requestId race and show the old profile's
       // history under the new profile's chip.
       if (activeProfileIdRef.current === profileIdAtSave) {
-        await load(true);
+        await Promise.all([load(true), loadTrend()]);
       }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save entry');
@@ -216,7 +216,15 @@ export default function PainMoodScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                load(true);
+                loadTrend();
+              }}
+            />
+          }
         >
           <ThemedText type="title" style={styles.title}>
             Pain & Mood
