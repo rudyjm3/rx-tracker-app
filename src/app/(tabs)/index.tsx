@@ -1,6 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
@@ -11,11 +20,16 @@ import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { computeAdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
-import { recordDose, getTodayLogs, getTodayPostpones } from '@/lib/dose-logs';
+import { recordDose, getTodayLogs, getTodayPostpones, type DoseFeedback } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
+import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
 import { isLate, localDateString, to12h } from '@/lib/utils';
+
+const MIN_LEVEL = 1;
+const MAX_LEVEL = 10;
+const DEFAULT_LEVEL = 5;
 
 export default function DashboardScreen() {
   const { activeProfileId, familyProfiles } = useActiveProfile();
@@ -34,6 +48,11 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A medication whose feedback_type !== 'none' needs a quick pain/mood/
+  // note capture before the Take actually records — set here to open the
+  // sheet instead of calling recordDose immediately; Skip and a 'none'
+  // medication's Take bypass this entirely.
+  const [feedbackSlot, setFeedbackSlot] = useState<DaySlot | null>(null);
 
   // Bumped on every load() call and captured per-call as requestId — if a
   // newer call starts (e.g. the active profile changes again) before an
@@ -108,7 +127,7 @@ export default function DashboardScreen() {
     }, [load]),
   );
 
-  async function handleAction(slot: DaySlot, status: 'taken' | 'skipped') {
+  async function recordAndReload(slot: DaySlot, status: 'taken' | 'skipped', feedback?: DoseFeedback) {
     const key = `${slot.medicationId}|${slot.scheduledTime}`;
     setActingKey(key);
     try {
@@ -118,12 +137,23 @@ export default function DashboardScreen() {
         slot.scheduledTime,
         status,
         slot.quantityPerDose,
+        feedback,
       );
       await load(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to record dose');
     } finally {
       setActingKey(null);
+    }
+  }
+
+  async function handleAction(slot: DaySlot, status: 'taken' | 'skipped') {
+    if (status === 'taken' && slot.medication.feedback_type !== 'none') {
+      setFeedbackSlot(slot);
+      return;
+    }
+    try {
+      await recordAndReload(slot, status);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to record dose');
     }
   }
 
@@ -205,7 +235,187 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
       </SafeAreaView>
+
+      {feedbackSlot && (
+        <FeedbackSheet
+          slot={feedbackSlot}
+          onClose={() => setFeedbackSlot(null)}
+          onSubmit={async (feedback) => {
+            await recordAndReload(feedbackSlot, 'taken', feedback);
+            setFeedbackSlot(null);
+          }}
+        />
+      )}
     </ThemedView>
+  );
+}
+
+function FeedbackSheet({
+  slot,
+  onClose,
+  onSubmit,
+}: {
+  slot: DaySlot;
+  onClose: () => void;
+  onSubmit: (feedback?: DoseFeedback) => Promise<void>;
+}) {
+  const medication = slot.medication;
+  const trackPain = medicationTracksPain(medication);
+  const trackMood = medicationTracksMood(medication);
+  const [painLevel, setPainLevel] = useState(DEFAULT_LEVEL);
+  const [moodLevel, setMoodLevel] = useState(DEFAULT_LEVEL);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    setSaving(true);
+    const trimmedNote = note.trim();
+    const feedback: DoseFeedback | undefined =
+      trackPain || trackMood || trimmedNote
+        ? {
+            ...(trackPain ? { painLevel } : {}),
+            ...(trackMood ? { moodLevel } : {}),
+            ...(trimmedNote ? { note: trimmedNote } : {}),
+          }
+        : undefined;
+    try {
+      await onSubmit(feedback);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't record dose");
+      setSaving(false);
+    }
+  }
+
+  // Dismissing (backdrop tap or Android back) while a save is in flight
+  // would unmount this sheet before recordDose settles — if it then fails,
+  // the catch above updates only this now-unmounted component's state, so
+  // the dashboard would show no error and the user could believe the dose
+  // was recorded when it wasn't. Block dismissal until the request settles.
+  function handleDismiss() {
+    if (saving) return;
+    onClose();
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={handleDismiss}>
+      <Pressable style={styles.modalBackdrop} onPress={handleDismiss}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Take {medication.name}
+                </ThemedText>
+                {medication.dose ? (
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
+                    {medication.dose}
+                  </ThemedText>
+                ) : null}
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                {trackPain && (
+                  <LevelStepper
+                    label="Pain level"
+                    value={painLevel}
+                    onChange={setPainLevel}
+                    color={levelColor('pain', painLevel)}
+                  />
+                )}
+                {trackMood && (
+                  <LevelStepper
+                    label="Mood level"
+                    value={moodLevel}
+                    onChange={setMoodLevel}
+                    color={levelColor('mood', moodLevel)}
+                  />
+                )}
+
+                <FieldLabel>Note (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="How are you feeling?"
+                  multiline
+                />
+
+                <View style={styles.sheetActions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
+                    onPress={handleSubmit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.actionText}>Save &amp; take</ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function LevelStepper({
+  label,
+  value,
+  onChange,
+  color,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  color: string;
+}) {
+  return (
+    <View style={styles.stepperBlock}>
+      <FieldLabel>{label}</FieldLabel>
+      <View style={styles.stepperRow}>
+        <Pressable
+          style={styles.stepperButton}
+          onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
+          disabled={value <= MIN_LEVEL}
+          hitSlop={8}
+        >
+          <ThemedText style={styles.stepperButtonText}>−</ThemedText>
+        </Pressable>
+        <View style={[styles.stepperValue, { borderColor: color }]}>
+          <ThemedText type="smallBold" style={{ color }}>
+            {value}
+          </ThemedText>
+        </View>
+        <Pressable
+          style={styles.stepperButton}
+          onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
+          disabled={value >= MAX_LEVEL}
+          hitSlop={8}
+        >
+          <ThemedText style={styles.stepperButtonText}>+</ThemedText>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary">
+          out of {MAX_LEVEL}
+        </ThemedText>
+      </View>
+    </View>
+  );
+}
+
+function FieldLabel({ children }: { children: string }) {
+  return (
+    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
+      {children}
+    </ThemedText>
   );
 }
 
@@ -344,4 +554,50 @@ const styles = StyleSheet.create({
   actionButtonDisabled: { opacity: 0.6 },
   actionText: { color: '#ffffff', fontWeight: '600' },
   actionTextSecondary: { fontWeight: '600' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheetWrapper: { maxHeight: '85%' },
+  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
+  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.half },
+  sheetSubtitle: { marginBottom: Spacing.two },
+  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
+  input: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 16,
+  },
+  multiline: { minHeight: 80, textAlignVertical: 'top' },
+  stepperBlock: { marginTop: Spacing.one },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  stepperButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonText: { fontSize: 20, fontWeight: '600' },
+  stepperValue: {
+    width: 48,
+    height: 40,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetActions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
+  sheetPrimaryButton: { flex: 1, paddingVertical: Spacing.three },
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  secondaryButtonText: { fontWeight: '600' },
 });
