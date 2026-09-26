@@ -288,9 +288,19 @@ function FeedbackSheet({
     }
   }
 
+  // Dismissing (backdrop tap or Android back) while a save is in flight
+  // would unmount this sheet before recordDose settles — if it then fails,
+  // the catch above updates only this now-unmounted component's state, so
+  // the dashboard would show no error and the user could believe the dose
+  // was recorded when it wasn't. Block dismissal until the request settles.
+  function handleDismiss() {
+    if (saving) return;
+    onClose();
+  }
+
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={handleDismiss}>
+      <Pressable style={styles.modalBackdrop} onPress={handleDismiss}>
         <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
           <ThemedView style={styles.modalSheet}>
             <SafeAreaView edges={['bottom']}>

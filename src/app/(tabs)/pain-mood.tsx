@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -37,6 +38,22 @@ const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 
+// Alert.alert's buttons are a no-op on web (react-native-web's Alert.alert
+// is an empty stub), which would make onConfirm unreachable there — fall
+// back to window.confirm on that platform so this confirmation actually
+// works cross-platform, matching AGENTS.md's cross-platform-compatibility
+// priority for this app.
+function confirmDestructive(title: string, message: string, confirmLabel: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 export default function PainMoodScreen() {
   const theme = useTheme();
   const { activeProfileId, familyProfiles } = useActiveProfile();
@@ -61,6 +78,14 @@ export default function PainMoodScreen() {
   // can't overwrite state a newer call already set.
   const requestIdRef = useRef(0);
 
+  // Always holds the latest activeProfileId, independent of any async
+  // closure's stale snapshot of it — read by handleSave below to detect a
+  // profile switch that happened mid-save.
+  const activeProfileIdRef = useRef(activeProfileId);
+  useEffect(() => {
+    activeProfileIdRef.current = activeProfileId;
+  }, [activeProfileId]);
+
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
@@ -78,7 +103,12 @@ export default function PainMoodScreen() {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
     } finally {
-      if (requestIdRef.current !== requestId) return;
+      // Unlike the data above, the loading/refreshing flags aren't scoped
+      // to whichever request is newest — each call only ever owns the one
+      // flag matching its own isRefresh, so it must always release that
+      // flag itself. Gating this on requestId (like the data updates
+      // above) would leave a stale refresh's flag stuck on forever once a
+      // newer call — e.g. from a profile switch — became current.
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
@@ -126,6 +156,7 @@ export default function PainMoodScreen() {
       .map((t) => t.name)
       .join(',');
 
+    const profileIdAtSave = activeProfileId;
     setSaving(true);
     try {
       await createStandaloneLog({
@@ -134,10 +165,17 @@ export default function PainMoodScreen() {
         moodLevel: trackMood ? moodLevel : null,
         note: note.trim(),
         tags: trackMood ? tagNames : '',
-        profileId: activeProfileId,
+        profileId: profileIdAtSave,
       });
       resetForm();
-      await load(true);
+      // Skip the reload if the active profile changed while the insert was
+      // in flight — that switch already triggered its own load() for the
+      // new profile, and this stale one (still scoped to profileIdAtSave)
+      // would otherwise win the requestId race and show the old profile's
+      // history under the new profile's chip.
+      if (activeProfileIdRef.current === profileIdAtSave) {
+        await load(true);
+      }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save entry');
     } finally {
@@ -330,26 +368,24 @@ function ManageTagsSheet({
   }
 
   function confirmDelete(tag: MoodTag) {
-    Alert.alert('Delete this tag?', `"${tag.name}" will be removed from the tag picker.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setError(null);
-          setBusyId(tag.id);
-          try {
-            await deleteMoodTag(tag.id);
-            setLocalTags((prev) => prev.filter((t) => t.id !== tag.id));
-            onChanged();
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Couldn't delete tag");
-          } finally {
-            setBusyId(null);
-          }
-        },
+    confirmDestructive(
+      'Delete this tag?',
+      `"${tag.name}" will be removed from the tag picker.`,
+      'Delete',
+      async () => {
+        setError(null);
+        setBusyId(tag.id);
+        try {
+          await deleteMoodTag(tag.id);
+          setLocalTags((prev) => prev.filter((t) => t.id !== tag.id));
+          onChanged();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Couldn't delete tag");
+        } finally {
+          setBusyId(null);
+        }
       },
-    ]);
+    );
   }
 
   return (
