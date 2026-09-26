@@ -10,7 +10,8 @@ export async function getSideEffects(medicationId: string): Promise<SideEffect[]
     .from('side_effects')
     .select('*')
     .eq('medication_id', medicationId)
-    .order('occurred_date', { ascending: false });
+    .order('occurred_date', { ascending: false })
+    .limit(200);
   if (error) throw error;
   return data as SideEffect[];
 }
@@ -29,6 +30,28 @@ export async function addSideEffect(medicationId: string, input: SideEffectInput
     description: input.description,
     severity: input.severity,
     note: input.note ?? '',
+  });
+  if (error) throw error;
+}
+
+export interface SideEffectsInput {
+  occurred_date: string;
+  descriptions: string[];
+  severity: SideEffectSeverity;
+  note?: string;
+}
+
+// Inserts one side_effects row per description via the add_side_effects
+// RPC, all in a single transaction — so a multi-tag submission either
+// fully succeeds or fully rolls back, instead of the partial-commit risk
+// of firing one addSideEffect() per tag.
+export async function addSideEffects(medicationId: string, input: SideEffectsInput): Promise<void> {
+  const { error } = await supabase.rpc('add_side_effects', {
+    p_medication_id: medicationId,
+    p_occurred_date: input.occurred_date,
+    p_descriptions: input.descriptions,
+    p_severity: input.severity,
+    p_note: input.note ?? '',
   });
   if (error) throw error;
 }
