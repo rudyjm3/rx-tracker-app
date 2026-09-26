@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { convertHeight, convertWeight } from '@/lib/family';
 import { getUserProfile, upsertUserProfile, type UserProfileInput } from '@/lib/user-profile';
 import type { UserProfile } from '@/lib/types/profile';
@@ -63,6 +64,8 @@ export default function MyProfileScreen() {
 }
 
 function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: () => void }) {
+  const theme = useTheme();
+  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const [firstName, setFirstName] = useState(profile?.first_name ?? '');
   const [lastName, setLastName] = useState(profile?.last_name ?? '');
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
@@ -162,17 +165,36 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
           <FieldLabel>First name</FieldLabel>
-          <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} maxLength={50} />
+          <TextInput
+            style={[styles.input, inputThemeStyle]}
+            placeholderTextColor={theme.textSecondary}
+            value={firstName}
+            onChangeText={setFirstName}
+            maxLength={50}
+          />
 
           <FieldLabel>Last name</FieldLabel>
-          <TextInput style={styles.input} value={lastName} onChangeText={setLastName} maxLength={50} />
+          <TextInput
+            style={[styles.input, inputThemeStyle]}
+            placeholderTextColor={theme.textSecondary}
+            value={lastName}
+            onChangeText={setLastName}
+            maxLength={50}
+          />
 
           <FieldLabel>Display name (optional — defaults to first name)</FieldLabel>
-          <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} maxLength={100} />
+          <TextInput
+            style={[styles.input, inputThemeStyle]}
+            placeholderTextColor={theme.textSecondary}
+            value={displayName}
+            onChangeText={setDisplayName}
+            maxLength={100}
+          />
 
           <FieldLabel>Birth date (YYYY-MM-DD)</FieldLabel>
           <TextInput
-            style={styles.input}
+            style={[styles.input, inputThemeStyle]}
+            placeholderTextColor={theme.textSecondary}
             value={birthDate}
             onChangeText={setBirthDate}
             placeholder="1990-01-15"
@@ -183,7 +205,8 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
           <FieldLabel>Height</FieldLabel>
           <View style={styles.row}>
             <TextInput
-              style={[styles.input, styles.rowInput]}
+              style={[styles.input, styles.rowInput, inputThemeStyle]}
+              placeholderTextColor={theme.textSecondary}
               value={heightValue}
               onChangeText={setHeightValue}
               keyboardType="numeric"
@@ -198,7 +221,8 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
           <FieldLabel>Weight</FieldLabel>
           <View style={styles.row}>
             <TextInput
-              style={[styles.input, styles.rowInput]}
+              style={[styles.input, styles.rowInput, inputThemeStyle]}
+              placeholderTextColor={theme.textSecondary}
               value={weightValue}
               onChangeText={setWeightValue}
               keyboardType="numeric"

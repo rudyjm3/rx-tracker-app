@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { Linking, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -86,65 +86,67 @@ export default function SettingsScreen() {
           Settings
         </ThemedText>
 
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Signed in as
-          </ThemedText>
-          <ThemedText>{session?.user.email}</ThemedText>
-        </ThemedView>
-
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <View style={styles.reminderRow}>
-            <View style={styles.reminderLabel}>
-              <ThemedText type="smallBold">Enable medication reminders</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-                Get a notification on this device at each medication&apos;s scheduled time.
-                As-needed medications aren&apos;t reminded.
-              </ThemedText>
-            </View>
-            <Switch
-              value={remindersEnabled}
-              onValueChange={handleToggle}
-              disabled={busy || loadingSetting}
-              trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-            />
-          </View>
-
-          {permissionDenied && (
-            <ThemedView type="backgroundSelected" style={styles.permissionNotice}>
-              <ThemedText type="small">
-                Notifications are turned off for RxTracker in your device settings.
-              </ThemedText>
-              <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
-                <ThemedText type="linkPrimary">Open Settings</ThemedText>
-              </Pressable>
-            </ThemedView>
-          )}
-
-          {error && (
-            <ThemedText type="small" style={styles.error}>
-              {error}
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="small" themeColor="textSecondary">
+              Signed in as
             </ThemedText>
-          )}
-        </ThemedView>
+            <ThemedText>{session?.user.email}</ThemedText>
+          </ThemedView>
 
-        <Pressable style={styles.card} onPress={() => router.push('/profile')}>
-          <ThemedText type="smallBold">My Profile</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-            Edit your name, birth date, height, and weight.
-          </ThemedText>
-        </Pressable>
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="smallBold">Enable medication reminders</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Get a notification on this device at each medication&apos;s scheduled time.
+                  As-needed medications aren&apos;t reminded.
+                </ThemedText>
+              </View>
+              <Switch
+                value={remindersEnabled}
+                onValueChange={handleToggle}
+                disabled={busy || loadingSetting}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
 
-        <Pressable style={styles.card} onPress={() => router.push('/family')}>
-          <ThemedText type="smallBold">Manage Family</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-            Add family members and track their medications from this account.
-          </ThemedText>
-        </Pressable>
+            {permissionDenied && (
+              <ThemedView type="backgroundSelected" style={styles.permissionNotice}>
+                <ThemedText type="small">
+                  Notifications are turned off for RxTracker in your device settings.
+                </ThemedText>
+                <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
+                  <ThemedText type="linkPrimary">Open Settings</ThemedText>
+                </Pressable>
+              </ThemedView>
+            )}
 
-        <Pressable style={styles.button} onPress={signOut}>
-          <ThemedText style={styles.buttonText}>Sign out</ThemedText>
-        </Pressable>
+            {error && (
+              <ThemedText type="small" style={styles.error}>
+                {error}
+              </ThemedText>
+            )}
+          </ThemedView>
+
+          <Pressable style={styles.card} onPress={() => router.push('/profile')}>
+            <ThemedText type="smallBold">My Profile</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Edit your name, birth date, height, and weight.
+            </ThemedText>
+          </Pressable>
+
+          <Pressable style={styles.card} onPress={() => router.push('/family')}>
+            <ThemedText type="smallBold">Manage Family</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Add family members and track their medications from this account.
+            </ThemedText>
+          </Pressable>
+
+          <Pressable style={styles.button} onPress={signOut}>
+            <ThemedText style={styles.buttonText}>Sign out</ThemedText>
+          </Pressable>
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -152,8 +154,9 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four, gap: Spacing.three },
+  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
+  scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
   card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   note: { marginTop: Spacing.one },
   reminderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
