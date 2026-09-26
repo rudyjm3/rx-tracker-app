@@ -35,10 +35,9 @@ import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import { generateDaySlots, type DaySlot } from '@/lib/schedule';
 import {
-  addSideEffect,
+  addSideEffects,
   deleteSideEffect,
   getSideEffects,
-  type SideEffectInput,
 } from '@/lib/side-effects';
 import {
   createSideEffectTag,
@@ -1044,17 +1043,12 @@ function SideEffectsSheet({
     }
     setSaving(true);
     try {
-      await Promise.all(
-        descriptions.map((description) => {
-          const input: SideEffectInput = {
-            occurred_date: occurredDate,
-            description,
-            severity,
-            note,
-          };
-          return addSideEffect(medication.id, input);
-        }),
-      );
+      await addSideEffects(medication.id, {
+        occurred_date: occurredDate,
+        descriptions,
+        severity,
+        note,
+      });
       setSelectedTagIds(new Set());
       setNote('');
       await load();
