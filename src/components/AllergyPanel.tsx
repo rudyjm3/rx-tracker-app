@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +17,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { confirmDestructive } from '@/lib/confirm';
 import {
   ALLERGY_CATEGORIES,
   ALLERGY_CATEGORY_LABELS,
@@ -44,21 +44,6 @@ const TYPE_OPTIONS: { value: AllergyType; label: string }[] = [
   { value: 'allergy', label: 'Allergy' },
   { value: 'intolerance', label: 'Intolerance' },
 ];
-
-// Alert.alert's buttons are a no-op on web (react-native-web's Alert.alert
-// is an empty stub), which would make onConfirm unreachable there — fall
-// back to window.confirm on that platform, matching the pain/mood screen's
-// confirmDestructive helper.
-function confirmDestructive(title: string, message: string | undefined, confirmLabel: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(message ? `${title}\n\n${message}` : title)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-  ]);
-}
 
 interface AllergyPanelProps {
   profileId: string | null;
