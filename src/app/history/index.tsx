@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -126,46 +126,57 @@ export default function HistoryScreen() {
       : (medications.find((m) => m.id === selectedMedicationId) ?? null);
   const selectedLabel = selectedMedication ? medicationLabel(selectedMedication) : 'All medications';
 
+  const listHeader = (
+    <View>
+      <Pressable style={styles.filterField} onPress={() => setPickerOpen(true)}>
+        <ThemedText type="small" themeColor="textSecondary">
+          Medication
+        </ThemedText>
+        <ThemedText style={styles.filterValue}>{selectedLabel}</ThemedText>
+      </Pressable>
+
+      <View style={styles.rangeRow}>
+        {RANGE_PRESETS.map((preset) => (
+          <Pressable
+            key={preset.key}
+            style={[styles.rangeChip, rangeKey === preset.key && styles.rangeChipSelected]}
+            onPress={() => setRangeKey(preset.key)}
+          >
+            <ThemedText
+              type="small"
+              style={rangeKey === preset.key ? styles.rangeChipTextSelected : undefined}
+            >
+              Last {preset.label}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </View>
+
+      {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+    </View>
+  );
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <Pressable style={styles.filterField} onPress={() => setPickerOpen(true)}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Medication
-          </ThemedText>
-          <ThemedText style={styles.filterValue}>{selectedLabel}</ThemedText>
-        </Pressable>
-
-        <View style={styles.rangeRow}>
-          {RANGE_PRESETS.map((preset) => (
-            <Pressable
-              key={preset.key}
-              style={[styles.rangeChip, rangeKey === preset.key && styles.rangeChipSelected]}
-              onPress={() => setRangeKey(preset.key)}
-            >
-              <ThemedText
-                type="small"
-                style={rangeKey === preset.key ? styles.rangeChipTextSelected : undefined}
-              >
-                Last {preset.label}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
-
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
-
         {loading ? (
-          <ActivityIndicator style={styles.loading} />
+          <>
+            {listHeader}
+            <ActivityIndicator style={styles.loading} />
+          </>
         ) : (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            {logs.length === 0 && (
+          <FlatList
+            data={logs}
+            keyExtractor={(row) => row.id}
+            ListHeaderComponent={listHeader}
+            ListEmptyComponent={
               <ThemedText themeColor="textSecondary">No dose history for this filter.</ThemedText>
-            )}
-            {logs.map((row) => {
+            }
+            contentContainerStyle={styles.scrollContent}
+            renderItem={({ item: row }) => {
               const badge = statusBadge(row, graceMinutes);
               return (
-                <ThemedView key={row.id} type="backgroundElement" style={styles.row}>
+                <ThemedView type="backgroundElement" style={styles.row}>
                   <View style={styles.rowMain}>
                     <ThemedText type="smallBold">
                       {row.medications.name}
@@ -182,8 +193,8 @@ export default function HistoryScreen() {
                   </View>
                 </ThemedView>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         )}
       </SafeAreaView>
 
