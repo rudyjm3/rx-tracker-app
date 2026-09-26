@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AllergyPanel } from '@/components/AllergyPanel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -234,6 +235,10 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
             </View>
           </View>
 
+          <View style={styles.section}>
+            <AllergyPanel profileId={null} />
+          </View>
+
           <View style={styles.actions}>
             <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
               <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
@@ -282,6 +287,7 @@ const styles = StyleSheet.create({
   unitText: { color: Brand.textMuted },
   unitTextActive: { color: Brand.text, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
+  section: { marginTop: Spacing.five, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Brand.border },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
   secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
