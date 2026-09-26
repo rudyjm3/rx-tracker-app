@@ -11,6 +11,7 @@ export async function getSideEffects(medicationId: string): Promise<SideEffect[]
     .select('*')
     .eq('medication_id', medicationId)
     .order('occurred_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(200);
   if (error) throw error;
   return data as SideEffect[];
