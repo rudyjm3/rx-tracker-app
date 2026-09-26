@@ -224,7 +224,10 @@ export default function MedicationDetailScreen() {
         <LogDoseSheet
           medication={medication}
           onClose={() => setLogDoseOpen(false)}
-          onSaved={() => setLogDoseOpen(false)}
+          onSaved={async () => {
+            setLogDoseOpen(false);
+            await load();
+          }}
         />
       )}
     </ThemedView>
@@ -518,7 +521,13 @@ function LogDoseSheet({
 
   const slots = useMemo<DaySlot[]>(() => {
     if (!canLoadSlots) return [];
-    return generateDaySlots(date, [medication], groups, groupMembers, logs, []);
+    // This is the medication's own detail screen, not the Dashboard, so a
+    // medication hidden from the dashboard (dashboard_enabled: false) must
+    // still generate its normal slots here — same reasoning as History's
+    // resolveHistoricalQuantityPerDose.
+    return generateDaySlots(date, [medication], groups, groupMembers, logs, [], {
+      ignoreDashboardVisibility: true,
+    });
   }, [canLoadSlots, date, medication, groups, groupMembers, logs]);
 
   const pickableSlots = slots.filter((s) => !isTerminalSlot(s.status));
@@ -539,11 +548,15 @@ function LogDoseSheet({
       setFormError('Enter a valid time (HH:MM).');
       return;
     }
+    const normalizedTime = normalizeTime(time);
+    const takenAtIso = new Date(`${date}T${normalizedTime}:00`).toISOString();
+    if (new Date(takenAtIso).getTime() > Date.now()) {
+      setFormError("Time taken can't be in the future.");
+      return;
+    }
     setSaving(true);
     try {
-      const normalizedTime = normalizeTime(time);
       const scheduledTime = slot ? slot.scheduledTime : normalizedTime;
-      const takenAtIso = new Date(`${date}T${normalizedTime}:00`).toISOString();
       const quantityPerDose = slot?.quantityPerDose ?? medication.quantity_per_dose;
       const trimmedNote = note.trim();
       const feedback: DoseFeedback | undefined =
