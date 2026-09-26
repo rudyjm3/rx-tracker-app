@@ -172,16 +172,23 @@ function notificationContent(reminder: ReminderTime) {
  * Each of today's occurrences is checked against today's dose_logs and
  * dose_postpones before scheduling, so the device notification agrees
  * with what the Dashboard shows for that occurrence right now:
- *   - already taken/skipped today → skip entirely, nothing to alert.
+ *   - already taken/skipped today → suppress today's ping, but schedule
+ *     a one-shot DATE trigger for tomorrow's occurrence of the same
+ *     time instead of the normal recurring one — a single recurring
+ *     DAILY trigger is the only primitive for "this time, every day",
+ *     so dropping it entirely to silence today would also silence every
+ *     future day until the next resync (app foreground/launch) happens
+ *     to run before tomorrow's time arrives.
  *   - snoozed and still pending → a one-shot DATE trigger at the
  *     postponed time, replacing the normal recurring one for today.
  *   - snoozed but the postponed time already passed → skip (missed).
  *   - otherwise → the normal recurring DAILY trigger, unchanged.
  * There's no persisted "this occurrence was resynced" state: the next
  * resync just re-reads dose_logs/dose_postpones, and since
- * getTodayPostpones is date-scoped, a snooze from today stops matching
- * on its own once today is no longer today — tomorrow's occurrence
- * always falls through to the normal recurring case.
+ * getTodayLogs/getTodayPostpones are date-scoped, today's resolution
+ * stops matching on its own once today is no longer today — any resync
+ * from tomorrow onward falls through to the normal recurring case,
+ * which is what the one-shot above bridges the gap until.
  *
  * No-ops (never throws) on web or if anything in expo-notifications
  * fails, since a resync should never crash app launch or a save flow.
@@ -203,6 +210,7 @@ export async function resyncReminderNotifications(): Promise<void> {
       getTodayPostpones(today),
     ]);
     const reminders = computeReminderTimes(medications, today);
+    const medicationsById = new Map(medications.map((med) => [med.id, med]));
 
     const logsByKey = new Map<string, DoseLog>();
     for (const log of todayLogs) {
@@ -216,9 +224,25 @@ export async function resyncReminderNotifications(): Promise<void> {
     for (const reminder of reminders) {
       const key = `${reminder.medicationId}|${reminder.time}`;
       const log = logsByKey.get(key);
-      if (log && (log.status === "taken" || log.status === "skipped")) continue;
-
       const content = notificationContent(reminder);
+
+      if (log && (log.status === "taken" || log.status === "skipped")) {
+        const tomorrow = new Date(`${today}T${reminder.time}`);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        // Skip the bridging one-shot if the medication's course ends before
+        // tomorrow — otherwise a dose taken on the last day of a course
+        // would still ping once more the next day.
+        const med = medicationsById.get(reminder.medicationId);
+        const tomorrowStr = localDateString(tomorrow);
+        if (med?.end_date && tomorrowStr > med.end_date) continue;
+
+        await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: tomorrow.getTime() },
+        });
+        continue;
+      }
+
       const postpone = postponeByKey.get(key);
       if (postpone) {
         const postponedUntilMs = new Date(postpone.postponed_until).getTime();
