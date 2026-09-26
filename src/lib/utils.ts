@@ -64,6 +64,15 @@ export function minutesLate(log: LateCheckLog, graceMinutes: number): number | n
   return diffMs > 0 ? Math.ceil(diffMs / 60000) : null;
 }
 
+// Wall-clock time (12h) a timestamp falls on, in the device's local
+// timezone — used for "Snoozed until X:XX PM" labels.
+export function formatClockTime(iso: string): string {
+  const d = new Date(iso);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return to12h(`${h}:${m}`);
+}
+
 // Single source of truth for "how many doses a day" a schedule implies.
 export function dosesPerDay(
   scheduleMode: "fixed_times" | "interval",

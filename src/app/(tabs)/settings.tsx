@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import {
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -8,12 +17,24 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  browserTimezone,
+  getMissedGraceMinutes,
+  getSnoozeMinutes,
+  getUseDeviceTimezone,
+  MISSED_GRACE_MAX_MINUTES,
+  MISSED_GRACE_MIN_MINUTES,
+  setMissedGraceMinutes,
+  setSnoozeMinutes,
+  setUseDeviceTimezone,
+} from '@/lib/app-settings';
+import {
   cancelAllReminderNotifications,
   getRemindersEnabledSetting,
   requestReminderPermissions,
   resyncReminderNotifications,
   setRemindersEnabledSetting,
 } from '@/lib/notifications';
+import { SNOOZE_OPTIONS } from '@/lib/schedule';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SettingsScreen() {
@@ -25,6 +46,12 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const deviceTimezone = browserTimezone();
+  const [graceMinutesInput, setGraceMinutesInput] = useState('');
+  const [graceError, setGraceError] = useState<string | null>(null);
+  const [snoozeMinutes, setSnoozeMinutesState] = useState<number | null>(null);
+  const [useDeviceTimezone, setUseDeviceTimezoneState] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,10 +65,67 @@ export default function SettingsScreen() {
         if (!cancelled) setLoadingSetting(false);
       }
     })();
+    (async () => {
+      try {
+        const [grace, snooze, useDevice] = await Promise.all([
+          getMissedGraceMinutes(),
+          getSnoozeMinutes(),
+          getUseDeviceTimezone(),
+        ]);
+        if (cancelled) return;
+        setGraceMinutesInput(String(grace));
+        setSnoozeMinutesState(snooze);
+        setUseDeviceTimezoneState(useDevice);
+      } catch {
+        // No session yet — leave defaults in place.
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function handleGraceMinutesChange(text: string) {
+    setGraceMinutesInput(text.replace(/[^0-9]/g, ''));
+  }
+
+  async function handleGraceMinutesBlur() {
+    setGraceError(null);
+    const parsed = Number(graceMinutesInput);
+    if (
+      !Number.isInteger(parsed) ||
+      parsed < MISSED_GRACE_MIN_MINUTES ||
+      parsed > MISSED_GRACE_MAX_MINUTES
+    ) {
+      setGraceError(
+        `Enter a whole number between ${MISSED_GRACE_MIN_MINUTES} and ${MISSED_GRACE_MAX_MINUTES}.`,
+      );
+      return;
+    }
+    try {
+      await setMissedGraceMinutes(parsed);
+    } catch (e) {
+      setGraceError(e instanceof Error ? e.message : 'Failed to save grace period');
+    }
+  }
+
+  async function handleSnoozeSelect(minutes: number) {
+    setSnoozeMinutesState(minutes);
+    try {
+      await setSnoozeMinutes(minutes);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save snooze duration');
+    }
+  }
+
+  async function handleUseDeviceTimezoneToggle(value: boolean) {
+    setUseDeviceTimezoneState(value);
+    try {
+      await setUseDeviceTimezone(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save time zone setting');
+    }
+  }
 
   async function handleToggle(value: boolean) {
     setError(null);
@@ -129,6 +213,72 @@ export default function SettingsScreen() {
             )}
           </ThemedView>
 
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Missed dose grace period</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              How many minutes past the scheduled time before a pending dose is marked missed,
+              and after which a taken dose is flagged late.
+            </ThemedText>
+            <View style={styles.graceRow}>
+              <TextInput
+                style={styles.graceInput}
+                value={graceMinutesInput}
+                onChangeText={handleGraceMinutesChange}
+                onBlur={handleGraceMinutesBlur}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+              <ThemedText type="small" themeColor="textSecondary">
+                minutes
+              </ThemedText>
+            </View>
+            {graceError && (
+              <ThemedText type="small" style={styles.error}>
+                {graceError}
+              </ThemedText>
+            )}
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Default snooze duration</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Pre-selected when you snooze a dose from the dashboard.
+            </ThemedText>
+            <View style={styles.chipRow}>
+              {SNOOZE_OPTIONS.map((minutes) => (
+                <Pressable
+                  key={minutes}
+                  style={[styles.chip, snoozeMinutes === minutes && styles.chipSelected]}
+                  onPress={() => handleSnoozeSelect(minutes)}
+                >
+                  <ThemedText
+                    type="small"
+                    style={snoozeMinutes === minutes ? styles.chipTextSelected : undefined}
+                  >
+                    {minutes} min
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Time zone</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Detected: {deviceTimezone}
+            </ThemedText>
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="small">Use device time zone</ThemedText>
+              </View>
+              <Switch
+                value={useDeviceTimezone}
+                onValueChange={handleUseDeviceTimezoneToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+          </ThemedView>
+
           <Pressable style={styles.card} onPress={() => router.push('/profile')}>
             <ThemedText type="smallBold">My Profile</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
@@ -168,6 +318,27 @@ const styles = StyleSheet.create({
   },
   settingsButton: { alignSelf: 'flex-start' },
   error: { color: Brand.danger, marginTop: Spacing.one },
+  graceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
+  graceInput: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 16,
+    minWidth: 64,
+    textAlign: 'center',
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   button: {
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,

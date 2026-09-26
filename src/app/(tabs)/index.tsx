@@ -20,14 +20,26 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { computeAdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
-import { getMissedGraceMinutes } from '@/lib/app-settings';
-import { recordDose, getTodayLogs, getTodayPostpones, type DoseFeedback } from '@/lib/dose-logs';
+import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
+import {
+  postponeDose,
+  recordDose,
+  getTodayLogs,
+  getTodayPostpones,
+  type DoseFeedback,
+} from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { getSupplyAlerts, SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS } from '@/lib/medication-ui';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
-import { buildDoseEvents, generateDaySlots, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
+import {
+  buildDoseEvents,
+  generateDaySlots,
+  SNOOZE_OPTIONS,
+  type DaySlot,
+  type NextDoseEvent,
+} from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
-import { isLate, localDateString, to12h } from '@/lib/utils';
+import { formatClockTime, isLate, localDateString, to12h } from '@/lib/utils';
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -56,6 +68,9 @@ export default function DashboardScreen() {
   // medication's Take bypass this entirely.
   const [feedbackSlot, setFeedbackSlot] = useState<DaySlot | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  // A pending slot the user tapped Snooze on — opens the duration picker.
+  const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
+  const [defaultSnoozeMinutes, setDefaultSnoozeMinutes] = useState<number | null>(null);
 
   // Bumped on every load() call and captured per-call as requestId — if a
   // newer call starts (e.g. the active profile changes again) before an
@@ -73,16 +88,19 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const date = localDateString();
-      const [activeMedications, groups, groupMembers, doseLogs, postpones, graceMinutes] = await Promise.all([
-        getActiveMedications(activeProfileId),
-        getGroups(activeProfileId),
-        getGroupMembers(),
-        getTodayLogs(date),
-        getTodayPostpones(date),
-        getMissedGraceMinutes(),
-      ]);
+      const [activeMedications, groups, groupMembers, doseLogs, postpones, graceMinutes, snoozeMinutes] =
+        await Promise.all([
+          getActiveMedications(activeProfileId),
+          getGroups(activeProfileId),
+          getGroupMembers(),
+          getTodayLogs(date),
+          getTodayPostpones(date),
+          getMissedGraceMinutes(),
+          getSnoozeMinutes(),
+        ]);
       if (requestIdRef.current !== requestId) return;
       setMedications(activeMedications);
+      setDefaultSnoozeMinutes(snoozeMinutes);
       const slots = generateDaySlots(date, activeMedications, groups, groupMembers, doseLogs, postpones);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
@@ -160,6 +178,20 @@ export default function DashboardScreen() {
     }
   }
 
+  async function handleSnooze(slot: DaySlot, minutes: number) {
+    const key = `${slot.medicationId}|${slot.scheduledTime}`;
+    setActingKey(key);
+    try {
+      await postponeDose(slot.medicationId, scheduleDate, slot.scheduledTime, minutes);
+      await load(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to snooze dose');
+    } finally {
+      setActingKey(null);
+      setSnoozeSlot(null);
+    }
+  }
+
   if (loading) {
     return (
       <ThemedView style={styles.container}>
@@ -229,6 +261,7 @@ export default function DashboardScreen() {
                 event={nextEvent}
                 actingKey={actingKey}
                 onAction={handleAction}
+                onSnooze={setSnoozeSlot}
                 emphasized
               />
             ) : (
@@ -252,11 +285,20 @@ export default function DashboardScreen() {
               type="backgroundElement"
               style={styles.scheduleCard}
             >
-              <EventRow event={event} actingKey={actingKey} onAction={handleAction} />
+              <EventRow event={event} actingKey={actingKey} onAction={handleAction} onSnooze={setSnoozeSlot} />
             </ThemedView>
           ))}
         </ScrollView>
       </SafeAreaView>
+
+      {snoozeSlot && (
+        <SnoozeSheet
+          defaultMinutes={defaultSnoozeMinutes}
+          busy={actingKey === `${snoozeSlot.medicationId}|${snoozeSlot.scheduledTime}`}
+          onClose={() => setSnoozeSlot(null)}
+          onSelect={(minutes) => handleSnooze(snoozeSlot, minutes)}
+        />
+      )}
 
       {feedbackSlot && (
         <FeedbackSheet
@@ -510,11 +552,13 @@ function EventRow({
   event,
   actingKey,
   onAction,
+  onSnooze,
   emphasized,
 }: {
   event: NextDoseEvent;
   actingKey: string | null;
   onAction: (slot: DaySlot, status: 'taken' | 'skipped') => void;
+  onSnooze: (slot: DaySlot) => void;
   emphasized?: boolean;
 }) {
   const slots = event.kind === 'group' ? event.members : [event.slot];
@@ -532,14 +576,27 @@ function EventRow({
       <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
       {slots.map((slot) => (
         <View key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
-          <ThemedText type="small" style={styles.slotName}>
-            {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-          </ThemedText>
+          <View style={styles.slotNameColumn}>
+            <ThemedText type="small" style={styles.slotName}>
+              {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
+            </ThemedText>
+            {slot.status === 'pending' && slot.postponedUntil && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
+              </ThemedText>
+            )}
+          </View>
           {slot.status === 'pending' ? (
             <View style={styles.actions}>
               <ActionButton
                 label="Skip"
                 onPress={() => onAction(slot, 'skipped')}
+                busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
+                variant="secondary"
+              />
+              <ActionButton
+                label="Snooze"
+                onPress={() => onSnooze(slot)}
                 busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
                 variant="secondary"
               />
@@ -557,6 +614,57 @@ function EventRow({
         </View>
       ))}
     </View>
+  );
+}
+
+function SnoozeSheet({
+  defaultMinutes,
+  busy,
+  onClose,
+  onSelect,
+}: {
+  defaultMinutes: number | null;
+  busy: boolean;
+  onClose: () => void;
+  onSelect: (minutes: number) => void;
+}) {
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={busy ? undefined : onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={busy ? undefined : onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ThemedText type="subtitle" style={styles.modalTitle}>
+                Snooze dose
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
+                Choose how long to delay this dose.
+              </ThemedText>
+              <View style={styles.chipRow}>
+                {SNOOZE_OPTIONS.map((minutes) => (
+                  <Pressable
+                    key={minutes}
+                    style={[styles.chip, minutes === defaultMinutes && styles.chipSelected]}
+                    onPress={() => onSelect(minutes)}
+                    disabled={busy}
+                  >
+                    <ThemedText
+                      type="small"
+                      style={minutes === defaultMinutes ? styles.chipTextSelected : undefined}
+                    >
+                      {minutes} min
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable style={styles.secondaryButton} onPress={onClose} disabled={busy}>
+                <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+              </Pressable>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -634,9 +742,20 @@ const styles = StyleSheet.create({
   eventRow: { gap: Spacing.one },
   emphasizedTime: { marginBottom: Spacing.half },
   slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  slotNameColumn: { flex: 1, gap: Spacing.half },
   slotName: { flex: 1 },
   statusLabel: { textTransform: 'capitalize' },
   actions: { flexDirection: 'row', gap: Spacing.two },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.three },
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   actionButton: {
     backgroundColor: Brand.deepBlue,
     borderRadius: BorderRadius.sm,
