@@ -126,49 +126,41 @@ export default function HistoryScreen() {
       : (medications.find((m) => m.id === selectedMedicationId) ?? null);
   const selectedLabel = selectedMedication ? medicationLabel(selectedMedication) : 'All medications';
 
-  const listHeader = (
-    <View>
-      <Pressable style={styles.filterField} onPress={() => setPickerOpen(true)}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Medication
-        </ThemedText>
-        <ThemedText style={styles.filterValue}>{selectedLabel}</ThemedText>
-      </Pressable>
-
-      <View style={styles.rangeRow}>
-        {RANGE_PRESETS.map((preset) => (
-          <Pressable
-            key={preset.key}
-            style={[styles.rangeChip, rangeKey === preset.key && styles.rangeChipSelected]}
-            onPress={() => setRangeKey(preset.key)}
-          >
-            <ThemedText
-              type="small"
-              style={rangeKey === preset.key ? styles.rangeChipTextSelected : undefined}
-            >
-              Last {preset.label}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </View>
-
-      {error && <ThemedText style={styles.error}>{error}</ThemedText>}
-    </View>
-  );
-
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <Pressable style={styles.filterField} onPress={() => setPickerOpen(true)}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Medication
+          </ThemedText>
+          <ThemedText style={styles.filterValue}>{selectedLabel}</ThemedText>
+        </Pressable>
+
+        <View style={styles.rangeRow}>
+          {RANGE_PRESETS.map((preset) => (
+            <Pressable
+              key={preset.key}
+              style={[styles.rangeChip, rangeKey === preset.key && styles.rangeChipSelected]}
+              onPress={() => setRangeKey(preset.key)}
+            >
+              <ThemedText
+                type="small"
+                style={rangeKey === preset.key ? styles.rangeChipTextSelected : undefined}
+              >
+                Last {preset.label}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+
+        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
         {loading ? (
-          <>
-            {listHeader}
-            <ActivityIndicator style={styles.loading} />
-          </>
+          <ActivityIndicator style={styles.loading} />
         ) : (
           <FlatList
             data={logs}
             keyExtractor={(row) => row.id}
-            ListHeaderComponent={listHeader}
             ListEmptyComponent={
               <ThemedText themeColor="textSecondary">No dose history for this filter.</ThemedText>
             }
