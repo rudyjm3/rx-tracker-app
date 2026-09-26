@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
@@ -16,10 +16,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { getTodayLogs, recordDoseAtTime, type DoseFeedback } from '@/lib/dose-logs';
 import { adjustQuantity, getRefillHistory, logRefill } from '@/lib/inventory';
 import {
   activateMedication,
   deactivateMedication,
+  getGroupMembers,
+  getGroups,
   getMedication,
   updateMedication,
   type MedicationInput,
@@ -27,10 +30,22 @@ import {
 } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
-import type { Medication, MedicationRefill, MedicationType, ScheduleMode } from '@/lib/types/medications';
+import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
+import { generateDaySlots, type DaySlot } from '@/lib/schedule';
+import type {
+  DoseLog,
+  Medication,
+  MedicationGroup,
+  MedicationRefill,
+  MedicationType,
+  ScheduleMode,
+} from '@/lib/types/medications';
 import { daysUntilRunout, localDateString, scheduleSummary, to12h } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MIN_LEVEL = 1;
+const MAX_LEVEL = 10;
 
 export default function MedicationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,6 +55,7 @@ export default function MedicationDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
+  const [logDoseOpen, setLogDoseOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,6 +167,12 @@ export default function MedicationDetailScreen() {
             />
           )}
 
+          <View style={styles.actions}>
+            <Pressable style={styles.primaryButton} onPress={() => setLogDoseOpen(true)}>
+              <ThemedText style={styles.primaryButtonText}>Log Dose</ThemedText>
+            </Pressable>
+          </View>
+
           {hasInventory && (
             <View style={styles.actions}>
               <Pressable style={styles.secondaryButton} onPress={() => setRefillSheetMode('refill')}>
@@ -195,6 +217,14 @@ export default function MedicationDetailScreen() {
             setRefillSheetMode(null);
             await load();
           }}
+        />
+      )}
+
+      {logDoseOpen && (
+        <LogDoseSheet
+          medication={medication}
+          onClose={() => setLogDoseOpen(false)}
+          onSaved={() => setLogDoseOpen(false)}
         />
       )}
     </ThemedView>
@@ -361,6 +391,385 @@ function RefillSheet({
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+function nowHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Pads a single-digit hour ("9:05") to the two-digit form ("09:05") the
+// ECMAScript date-time string format requires.
+function normalizeTime(time: string): string {
+  const [hours, minutes] = time.split(':');
+  return `${hours.padStart(2, '0')}:${minutes}`;
+}
+
+function isTerminalSlot(status: DaySlot['status']): boolean {
+  return status === 'taken' || status === 'skipped';
+}
+
+type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_dose: number | null };
+
+/**
+ * Two-step "Log Dose" flow, ported from rx-tracker-web's LogPastDoseModal +
+ * DoseEntryForm: step 1 picks a date and one of that date's non-terminal
+ * (pending/missed) slots via generateDaySlots — the same slot list the
+ * dashboard's Take flow uses — or "Log at a custom time instead" for a
+ * free-form entry; step 2 records the actual time taken (and pain/mood/
+ * note, when tracked) via recordDoseAtTime. An as_needed medication with
+ * no group membership never gets a generateDaySlots slot at all, so it
+ * skips straight to step 2.
+ */
+function LogDoseSheet({
+  medication,
+  onClose,
+  onSaved,
+}: {
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const today = localDateString();
+  const [date, setDate] = useState(today);
+  const [slot, setSlot] = useState<DaySlot | null>(null);
+  const [entryStepChosen, setEntryStepChosen] = useState(false);
+
+  const [groups, setGroups] = useState<MedicationGroup[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMemberRow[]>([]);
+  const [logs, setLogs] = useState<DoseLog[]>([]);
+  const [loadingContext, setLoadingContext] = useState(true);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+
+  const [time, setTime] = useState(nowHHMM);
+  const [painLevel, setPainLevel] = useState(5);
+  const [moodLevel, setMoodLevel] = useState(5);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [contextReloadToken, setContextReloadToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingContext(true);
+      setContextError(null);
+      try {
+        const [groupList, groupMemberList] = await Promise.all([
+          getGroups(medication.profile_id),
+          getGroupMembers(),
+        ]);
+        if (cancelled) return;
+        setGroups(groupList);
+        setGroupMembers(groupMemberList);
+      } catch (e) {
+        if (!cancelled) {
+          setContextError(e instanceof Error ? e.message : 'Failed to load medication groups');
+        }
+      } finally {
+        if (!cancelled) setLoadingContext(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [medication.profile_id, contextReloadToken]);
+
+  const isGrouped = groupMembers.some((m) => m.medication_id === medication.id);
+  // Gated on loadingContext so a PRN medication doesn't briefly skip to
+  // step 2 before groupMembers has loaded and isGrouped is known.
+  const resolvingPrnGrouping = medication.as_needed && loadingContext;
+  const neverScheduled = medication.as_needed && !loadingContext && !contextError && !isGrouped;
+  const entryStep = entryStepChosen || neverScheduled;
+
+  const dateError = !DATE_RE.test(date)
+    ? 'Enter a valid date (YYYY-MM-DD).'
+    : date > today
+      ? "Date can't be in the future."
+      : null;
+  const canLoadSlots = !dateError && !neverScheduled && !resolvingPrnGrouping && !contextError;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!canLoadSlots) {
+        setLogs([]);
+        return;
+      }
+      setLoadingLogs(true);
+      try {
+        const logData = await getTodayLogs(date);
+        if (!cancelled) setLogs(logData);
+      } catch (e) {
+        if (!cancelled) {
+          setContextError(e instanceof Error ? e.message : 'Failed to load doses for this date');
+        }
+      } finally {
+        if (!cancelled) setLoadingLogs(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canLoadSlots, date]);
+
+  const slots = useMemo<DaySlot[]>(() => {
+    if (!canLoadSlots) return [];
+    return generateDaySlots(date, [medication], groups, groupMembers, logs, []);
+  }, [canLoadSlots, date, medication, groups, groupMembers, logs]);
+
+  const pickableSlots = slots.filter((s) => !isTerminalSlot(s.status));
+  const loadingSlots = resolvingPrnGrouping || loadingContext || loadingLogs;
+
+  const trackPain = medicationTracksPain(medication);
+  const trackMood = medicationTracksMood(medication);
+
+  function pickSlot(s: DaySlot | null) {
+    setSlot(s);
+    setTime(s ? s.scheduledTime : nowHHMM());
+    setEntryStepChosen(true);
+  }
+
+  async function handleSave() {
+    setFormError(null);
+    if (!TIME_RE.test(time)) {
+      setFormError('Enter a valid time (HH:MM).');
+      return;
+    }
+    setSaving(true);
+    try {
+      const normalizedTime = normalizeTime(time);
+      const scheduledTime = slot ? slot.scheduledTime : normalizedTime;
+      const takenAtIso = new Date(`${date}T${normalizedTime}:00`).toISOString();
+      const quantityPerDose = slot?.quantityPerDose ?? medication.quantity_per_dose;
+      const trimmedNote = note.trim();
+      const feedback: DoseFeedback | undefined =
+        trackPain || trackMood || trimmedNote
+          ? {
+              ...(trackPain ? { painLevel } : {}),
+              ...(trackMood ? { moodLevel } : {}),
+              ...(trimmedNote ? { note: trimmedNote } : {}),
+            }
+          : undefined;
+      await recordDoseAtTime(medication, date, scheduledTime, takenAtIso, quantityPerDose, feedback);
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't log dose");
+      setSaving(false);
+    }
+  }
+
+  const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const contextLabel = slot
+    ? `${dateLabel} · scheduled for ${to12h(slot.scheduledTime)}`
+    : neverScheduled
+      ? undefined
+      : dateLabel;
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Log Dose
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
+                  {medication.name}
+                  {medication.dose ? ` — ${medication.dose}` : ''}
+                </ThemedText>
+
+                {!entryStep ? (
+                  <>
+                    <FieldLabel>Date</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={date}
+                      onChangeText={(v) => {
+                        setDate(v);
+                        setSlot(null);
+                      }}
+                      placeholder="YYYY-MM-DD"
+                    />
+                    {dateError && <ThemedText style={styles.error}>{dateError}</ThemedText>}
+
+                    {contextError ? (
+                      <View style={styles.slotErrorBox}>
+                        <ThemedText style={styles.error}>
+                          Couldn&apos;t load medication groups. Try again before logging this dose.
+                        </ThemedText>
+                        <Pressable
+                          style={styles.secondaryButton}
+                          onPress={() => setContextReloadToken((t) => t + 1)}
+                        >
+                          <ThemedText style={styles.secondaryButtonText}>Retry</ThemedText>
+                        </Pressable>
+                      </View>
+                    ) : dateError ? null : loadingSlots ? (
+                      <ActivityIndicator style={styles.loading} />
+                    ) : pickableSlots.length > 0 ? (
+                      <View style={styles.slotsList}>
+                        {pickableSlots.map((s) => (
+                          <Pressable key={s.scheduledTime} style={styles.slotButton} onPress={() => pickSlot(s)}>
+                            <ThemedText type="smallBold">{to12h(s.scheduledTime)}</ThemedText>
+                            {s.status === 'missed' && (
+                              <ThemedText type="small" style={styles.slotMissedTag}>
+                                Missed
+                              </ThemedText>
+                            )}
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : (
+                      <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                        {slots.length === 0
+                          ? 'No scheduled doses for this date.'
+                          : 'Every scheduled dose for this date is already logged.'}
+                      </ThemedText>
+                    )}
+
+                    <View style={styles.actions}>
+                      <Pressable style={styles.secondaryButton} onPress={onClose}>
+                        <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.secondaryButton, !!dateError && styles.disabled]}
+                        onPress={() => pickSlot(null)}
+                        disabled={!!dateError}
+                      >
+                        <ThemedText style={styles.secondaryButtonText}>Log at a custom time instead</ThemedText>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    {contextLabel && (
+                      <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                        {contextLabel}
+                      </ThemedText>
+                    )}
+
+                    {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                    <FieldLabel>Actual time taken</FieldLabel>
+                    <TextInput style={styles.input} value={time} onChangeText={setTime} placeholder="HH:MM" />
+
+                    {trackPain && (
+                      <LevelStepper
+                        label="Pain level"
+                        value={painLevel}
+                        onChange={setPainLevel}
+                        color={levelColor('pain', painLevel)}
+                      />
+                    )}
+                    {trackMood && (
+                      <LevelStepper
+                        label="Mood level"
+                        value={moodLevel}
+                        onChange={setMoodLevel}
+                        color={levelColor('mood', moodLevel)}
+                      />
+                    )}
+
+                    <FieldLabel>Notes (optional)</FieldLabel>
+                    <TextInput
+                      style={[styles.input, styles.multiline]}
+                      value={note}
+                      onChangeText={setNote}
+                      multiline
+                      maxLength={255}
+                    />
+
+                    {!neverScheduled && (
+                      <Pressable
+                        onPress={() => setEntryStepChosen(false)}
+                        disabled={saving}
+                        hitSlop={8}
+                        style={styles.backLinkWrap}
+                      >
+                        <ThemedText style={styles.backLink}>← Back</ThemedText>
+                      </Pressable>
+                    )}
+
+                    <View style={styles.actions}>
+                      <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                        <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.primaryButton, saving && styles.disabled]}
+                        onPress={handleSave}
+                        disabled={saving}
+                      >
+                        {saving ? (
+                          <ActivityIndicator color="#ffffff" />
+                        ) : (
+                          <ThemedText style={styles.primaryButtonText}>Log Dose</ThemedText>
+                        )}
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function LevelStepper({
+  label,
+  value,
+  onChange,
+  color,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  color: string;
+}) {
+  return (
+    <View style={styles.stepperBlock}>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
+        {label}
+      </ThemedText>
+      <View style={styles.stepperRow}>
+        <Pressable
+          style={styles.stepperButton}
+          onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
+          disabled={value <= MIN_LEVEL}
+          hitSlop={8}
+        >
+          <ThemedText style={styles.stepperButtonText}>−</ThemedText>
+        </Pressable>
+        <View style={[styles.stepperValue, { borderColor: color }]}>
+          <ThemedText type="smallBold" style={{ color }}>
+            {value}
+          </ThemedText>
+        </View>
+        <Pressable
+          style={styles.stepperButton}
+          onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
+          disabled={value >= MAX_LEVEL}
+          hitSlop={8}
+        >
+          <ThemedText style={styles.stepperButtonText}>+</ThemedText>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary">
+          out of {MAX_LEVEL}
+        </ThemedText>
+      </View>
+    </View>
   );
 }
 
@@ -764,4 +1173,40 @@ const styles = StyleSheet.create({
   removeTime: { color: Brand.danger, marginLeft: 'auto' },
   addTime: { color: Brand.deepBlue, fontWeight: '600', marginTop: Spacing.one },
   hint: { marginTop: Spacing.one },
+  sheetSubtitle: { marginTop: -Spacing.two, marginBottom: Spacing.two },
+  loading: { marginTop: Spacing.three },
+  slotsList: { gap: Spacing.two, marginTop: Spacing.two },
+  slotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.three,
+  },
+  slotMissedTag: { color: Brand.danger, fontWeight: '700' },
+  slotErrorBox: { gap: Spacing.two, marginTop: Spacing.two },
+  backLinkWrap: { marginTop: Spacing.three },
+  backLink: { color: Brand.deepBlue, fontWeight: '600' },
+  stepperBlock: { marginTop: Spacing.one },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  stepperButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonText: { fontSize: 20, fontWeight: '600' },
+  stepperValue: {
+    width: 48,
+    height: 40,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
