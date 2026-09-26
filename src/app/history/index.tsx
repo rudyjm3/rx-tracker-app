@@ -24,9 +24,10 @@ import {
   getCalendarLogs,
   type CalendarLogRow,
 } from '@/lib/dose-logs';
-import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
+import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
-import type { DoseLogStatus, Medication } from '@/lib/types/medications';
+import { generateDaySlots } from '@/lib/schedule';
+import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
 import { formatLate, localDateString, minutesLate, to12h } from '@/lib/utils';
 
 const ALL_MEDICATIONS = 'all';
@@ -85,6 +86,10 @@ export default function HistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<CalendarLogRow | null>(null);
+  const [groups, setGroups] = useState<MedicationGroup[]>([]);
+  const [groupMembers, setGroupMembers] = useState<
+    { group_id: string; medication_id: string; quantity_per_dose: number | null }[]
+  >([]);
 
   // A medication selected under a different profile no longer belongs to
   // what's visible now — reset to "All medications" rather than keep
@@ -107,13 +112,17 @@ export default function HistoryScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [active, inactive] = await Promise.all([
+      const [active, inactive, groupList, groupMemberList] = await Promise.all([
         getActiveMedications(activeProfileId),
         getInactiveMedications(activeProfileId),
+        getGroups(activeProfileId),
+        getGroupMembers(),
       ]);
       if (requestIdRef.current !== requestId) return;
       const allMeds = [...active, ...inactive];
       setMedications(allMeds);
+      setGroups(groupList);
+      setGroupMembers(groupMemberList);
 
       const medicationIds =
         selectedMedicationId === ALL_MEDICATIONS ? allMeds.map((m) => m.id) : [selectedMedicationId];
@@ -266,6 +275,8 @@ export default function HistoryScreen() {
           key={editingLog.id}
           log={editingLog}
           medication={medications.find((m) => m.id === editingLog.medication_id) ?? null}
+          groups={groups}
+          groupMembers={groupMembers}
           onClose={() => setEditingLog(null)}
           onSaved={() => {
             setEditingLog(null);
@@ -299,15 +310,56 @@ function nowTime(): string {
   return timeFromIso(new Date().toISOString())!;
 }
 
+// Pads a single-digit hour ("9:05") to the two-digit form ("09:05") the
+// ECMAScript date-time string format requires — TIME_RE (shared with the
+// medication schedule-time form, which stores the string as-is rather
+// than parsing it) accepts a single-digit hour, but passing one straight
+// into `new Date(...)` yields an Invalid Date whose toISOString() throws.
+function normalizeTime(time: string): string {
+  const [hours, minutes] = time.split(':');
+  return `${hours.padStart(2, '0')}:${minutes}`;
+}
+
+type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_dose: number | null };
+
+// The medication's own quantity_per_dose is only the right fallback for a
+// slot with no group or per-schedule-time override — resolve the actual
+// configured amount for this log's own (medication, scheduled_time) via
+// the same generateDaySlots the dashboard's Take flow uses, so correcting
+// a skipped/missed entry to Taken deducts the same amount the normal Take
+// button would have.
+function resolveHistoricalQuantityPerDose(
+  log: CalendarLogRow,
+  medication: Medication,
+  groups: MedicationGroup[],
+  groupMembers: GroupMemberRow[],
+): number {
+  const slots = generateDaySlots(
+    log.scheduled_for_date,
+    [medication],
+    groups,
+    groupMembers,
+    [],
+    [],
+    { ignoreDashboardVisibility: true },
+  );
+  const slot = slots.find((s) => s.scheduledTime === log.scheduled_time.slice(0, 5));
+  return slot?.quantityPerDose ?? medication.quantity_per_dose;
+}
+
 function EditDoseLogSheet({
   log,
   medication,
+  groups,
+  groupMembers,
   onClose,
   onSaved,
   onDeleted,
 }: {
   log: CalendarLogRow;
   medication: Medication | null;
+  groups: MedicationGroup[];
+  groupMembers: GroupMemberRow[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -350,12 +402,17 @@ function EditDoseLogSheet({
       const quantityPerDose =
         status === 'taken' && log.status === 'taken' && log.deducted_quantity !== null
           ? log.deducted_quantity
-          : medication.quantity_per_dose;
+          : resolveHistoricalQuantityPerDose(log, medication, groups, groupMembers);
       await editDoseLog(log.id, {
         status,
-        takenAt: status === 'taken' ? new Date(`${baseDate}T${time}:00`).toISOString() : null,
-        painLevel: status === 'taken' && trackPain ? painLevel : undefined,
-        moodLevel: status === 'taken' && trackMood ? moodLevel : undefined,
+        takenAt: status === 'taken' ? new Date(`${baseDate}T${normalizeTime(time)}:00`).toISOString() : null,
+        // A metric the medication no longer tracks (feedback_type changed
+        // since this entry was logged) has no input shown to edit it —
+        // preserve the log's own historical value rather than let it fall
+        // through to editDoseLog's `undefined` -> null default and get
+        // silently erased by an edit that never touched it.
+        painLevel: status === 'taken' ? (trackPain ? painLevel : (log.pain_level ?? undefined)) : undefined,
+        moodLevel: status === 'taken' ? (trackMood ? moodLevel : (log.mood_level ?? undefined)) : undefined,
         note: status === 'taken' ? note.trim() : '',
         quantityPerDose,
         inventoryEnabled: medication.inventory_enabled,
