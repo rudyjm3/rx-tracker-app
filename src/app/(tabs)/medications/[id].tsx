@@ -830,6 +830,15 @@ function SideEffectsSheet({
       if (requestIdRef.current !== requestId) return;
       setTags(tagList);
       setEntries(sideEffects);
+      // A tag deleted (e.g. via Manage tags) while still checked in the
+      // picker would otherwise linger in selectedTagIds — resolving to no
+      // descriptions at submit time, so it'd silently "succeed" without
+      // writing anything.
+      const validTagIds = new Set(tagList.map((t) => t.id));
+      setSelectedTagIds((prev) => {
+        const next = new Set([...prev].filter((id) => validTagIds.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load side effects');
@@ -875,13 +884,25 @@ function SideEffectsSheet({
     if (!busy) onClose();
   }
 
+  // Mirrors web's SideEffectTagPicker visibleTags: always-show tags, plus
+  // any selected tag whose always_show is off — so picking one doesn't
+  // make it disappear from this same form before it's saved.
+  const visibleTags = [
+    ...tags.filter((t) => t.always_show),
+    ...tags.filter((t) => !t.always_show && selectedTagIds.has(t.id)),
+  ];
+
   async function handleSubmit() {
     setFormError(null);
-    if (selectedTagIds.size === 0) {
+    // Resolve against the current tag list rather than trusting
+    // selectedTagIds.size alone — a stale id (e.g. from a tag deleted
+    // elsewhere) would otherwise pass this guard and then submit as a
+    // silent no-op.
+    const descriptions = tags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name);
+    if (descriptions.length === 0) {
       setFormError('Select at least one side effect.');
       return;
     }
-    const descriptions = tags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name);
     setSaving(true);
     try {
       await Promise.all(
@@ -988,7 +1009,12 @@ function SideEffectsSheet({
                   <ActivityIndicator style={styles.loading} />
                 ) : (
                   <View style={styles.tagList}>
-                    {tags.map((tag) => {
+                    {visibleTags.length === 0 && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        No side effects yet.
+                      </ThemedText>
+                    )}
+                    {visibleTags.map((tag) => {
                       const selected = selectedTagIds.has(tag.id);
                       return (
                         <Pressable
