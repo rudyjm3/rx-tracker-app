@@ -26,6 +26,12 @@ export function timeToMinutes(time: string): number {
   return hour * 60 + minute;
 }
 
+export function minutesToTime(minutes: number): string {
+  const h = String(Math.floor(minutes / 60)).padStart(2, '0');
+  const m = String(Math.round(minutes % 60)).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 export function formatLate(minutes: number): string {
   if (minutes < 60) return `${minutes}mins late`;
   const hrs = Math.floor(minutes / 60);
