@@ -106,7 +106,16 @@ export async function postponeDose(
   scheduledTime: string,
   minutes: number,
 ): Promise<void> {
-  const postponedUntil = new Date(Date.now() + minutes * 60000).toISOString();
+  // Snoozing a slot that isn't due yet (every pending slot in "Today's
+  // schedule" offers Snooze, not just the next-due one) must count the
+  // delay from the slot's own due time, not from whenever the user
+  // happened to tap Snooze — otherwise snoozing an 8pm dose at 8am for 15
+  // minutes would move it to 8:15am instead of 8:15pm. Once the slot is
+  // actually due/overdue, Date.now() is the later of the two and this is
+  // equivalent to the simpler "now + minutes".
+  const scheduledDueMs = new Date(`${scheduledForDate}T${scheduledTime}`).getTime();
+  const baseMs = Math.max(Date.now(), scheduledDueMs);
+  const postponedUntil = new Date(baseMs + minutes * 60000).toISOString();
 
   const { error } = await supabase.from("dose_postpones").upsert(
     {
