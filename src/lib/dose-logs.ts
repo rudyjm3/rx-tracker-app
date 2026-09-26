@@ -100,6 +100,27 @@ export async function recordDoseAtTime(
   if (error) throw error;
 }
 
+export async function postponeDose(
+  medicationId: string,
+  scheduledForDate: string,
+  scheduledTime: string,
+  minutes: number,
+): Promise<void> {
+  const postponedUntil = new Date(Date.now() + minutes * 60000).toISOString();
+
+  const { error } = await supabase.from("dose_postpones").upsert(
+    {
+      medication_id: medicationId,
+      scheduled_for_date: scheduledForDate,
+      scheduled_time: scheduledTime,
+      postponed_until: postponedUntil,
+      resolved_at: null,
+    },
+    { onConflict: "medication_id,scheduled_for_date,scheduled_time" },
+  );
+  if (error) throw error;
+}
+
 export interface CalendarDayMarker {
   taken: number;
   skipped: number;
