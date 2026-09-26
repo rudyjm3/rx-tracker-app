@@ -30,6 +30,7 @@ import {
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { getSupplyAlerts, SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS } from '@/lib/medication-ui';
+import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
@@ -160,6 +161,7 @@ export default function DashboardScreen() {
         slot.quantityPerDose,
         feedback,
       );
+      resyncIfRemindersEnabled();
       await load(true);
     } finally {
       setActingKey(null);
@@ -183,6 +185,7 @@ export default function DashboardScreen() {
     setActingKey(key);
     try {
       await postponeDose(slot.medicationId, scheduleDate, slot.scheduledTime, minutes);
+      resyncIfRemindersEnabled();
       await load(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to snooze dose');
