@@ -45,6 +45,10 @@ export interface DaySlot {
   medication: Medication;
 }
 
+// `options.ignoreDashboardVisibility` skips the dashboard_enabled filter,
+// for callers building the "required adherence" slot set — a medication a
+// user hid from their daily view can still be opted into adherence
+// tracking, and shouldn't disappear from that calculation entirely.
 export function generateDaySlots(
   date: string,
   medications: Medication[],
@@ -52,6 +56,7 @@ export function generateDaySlots(
   groupMembers: Pick<MedicationGroupMember, "group_id" | "medication_id" | "quantity_per_dose">[],
   doseLogs: DoseLog[],
   postpones: DosePostpone[],
+  options?: { ignoreDashboardVisibility?: boolean },
 ): DaySlot[] {
   const groupsByMedication = new Map<
     string,
@@ -80,7 +85,7 @@ export function generateDaySlots(
   const slots: DaySlot[] = [];
 
   for (const med of medications) {
-    if (!med.dashboard_enabled) continue;
+    if (!med.dashboard_enabled && !options?.ignoreDashboardVisibility) continue;
     if (med.start_date && date < med.start_date) continue;
     if (med.end_date && date > med.end_date) continue;
 

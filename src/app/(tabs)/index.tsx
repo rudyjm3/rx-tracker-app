@@ -65,7 +65,18 @@ export default function DashboardScreen() {
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
 
-      const requiredSlots = slots
+      // Separate from `slots` above (which stays scoped to what's shown on
+      // screen): a medication hidden from the daily schedule but still
+      // opted into adherence tracking must still count toward it.
+      const requiredSlots = generateDaySlots(
+        date,
+        activeMedications,
+        groups,
+        groupMembers,
+        doseLogs,
+        postpones,
+        { ignoreDashboardVisibility: true },
+      )
         .filter((s) => !s.isPrn && s.medication.adherence_enabled)
         .map((s) => ({
           status: s.status,

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -158,14 +158,17 @@ export default function HistoryScreen() {
         {loading ? (
           <ActivityIndicator style={styles.loading} />
         ) : (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            {logs.length === 0 && (
+          <FlatList
+            data={logs}
+            keyExtractor={(row) => row.id}
+            ListEmptyComponent={
               <ThemedText themeColor="textSecondary">No dose history for this filter.</ThemedText>
-            )}
-            {logs.map((row) => {
+            }
+            contentContainerStyle={styles.scrollContent}
+            renderItem={({ item: row }) => {
               const badge = statusBadge(row, graceMinutes);
               return (
-                <ThemedView key={row.id} type="backgroundElement" style={styles.row}>
+                <ThemedView type="backgroundElement" style={styles.row}>
                   <View style={styles.rowMain}>
                     <ThemedText type="smallBold">
                       {row.medications.name}
@@ -182,8 +185,8 @@ export default function HistoryScreen() {
                   </View>
                 </ThemedView>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         )}
       </SafeAreaView>
 
