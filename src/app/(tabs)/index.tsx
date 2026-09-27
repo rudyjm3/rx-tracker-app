@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
@@ -35,6 +36,7 @@ import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pa
 import {
   buildDoseEvents,
   generateDaySlots,
+  slotDueTime,
   SNOOZE_OPTIONS,
   type DaySlot,
   type NextDoseEvent,
@@ -49,6 +51,8 @@ const DEFAULT_LEVEL = 5;
 export default function DashboardScreen() {
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [slots, setSlots] = useState<DaySlot[]>([]);
+  const [graceMinutes, setGraceMinutes] = useState(60);
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
   // The date these events were built for — kept alongside them rather than
   // recomputed from localDateString() at action time, so a Take/Skip tap
@@ -72,6 +76,10 @@ export default function DashboardScreen() {
   // A pending slot the user tapped Snooze on — opens the duration picker.
   const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
   const [defaultSnoozeMinutes, setDefaultSnoozeMinutes] = useState<number | null>(null);
+  // Re-evaluated on a timer (not just on reload) so the due-now overlay
+  // appears and clears itself as the grace window is entered/exited while
+  // the dashboard sits open in the foreground.
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   // Bumped on every load() call and captured per-call as requestId — if a
   // newer call starts (e.g. the active profile changes again) before an
@@ -81,6 +89,11 @@ export default function DashboardScreen() {
   // which could otherwise show one profile's doses under another's
   // selected chip and let a dose get recorded against the wrong person.
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 20_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
@@ -102,7 +115,9 @@ export default function DashboardScreen() {
       if (requestIdRef.current !== requestId) return;
       setMedications(activeMedications);
       setDefaultSnoozeMinutes(snoozeMinutes);
+      setGraceMinutes(graceMinutes);
       const slots = generateDaySlots(date, activeMedications, groups, groupMembers, doseLogs, postpones);
+      setSlots(slots);
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
 
@@ -194,6 +209,52 @@ export default function DashboardScreen() {
       setSnoozeSlot(null);
     }
   }
+
+  function eventSlots(event: NextDoseEvent): DaySlot[] {
+    return event.kind === 'group' ? event.members : [event.slot];
+  }
+
+  async function handleTakeAllForEvent(event: NextDoseEvent) {
+    for (const slot of eventSlots(event)) {
+      if (slot.status === 'pending') await handleAction(slot, 'taken');
+    }
+  }
+
+  async function handleSkipAllForEvent(event: NextDoseEvent) {
+    for (const slot of eventSlots(event)) {
+      if (slot.status === 'pending') await handleAction(slot, 'skipped');
+    }
+  }
+
+  async function handleSnoozeAllForEvent(event: NextDoseEvent, minutes: number) {
+    for (const slot of eventSlots(event)) {
+      if (slot.status === 'pending') await handleSnooze(slot, minutes);
+    }
+  }
+
+  // Separate from `events` (which drives "Today's schedule" and includes
+  // already-resolved slots so their status still shows there) — the
+  // due-now overlay only ever needs to consider doses that are still
+  // pending.
+  const doseEvents = useMemo(
+    () => buildDoseEvents(slots.filter((s) => s.status === 'pending'), scheduleDate),
+    [slots, scheduleDate],
+  );
+
+  // Suppressed while the feedback sheet is open, so the overlay never
+  // stacks on top of it and blocks the user from finishing the Take that
+  // opened it.
+  const dueNowEvent = feedbackSlot
+    ? null
+    : (doseEvents.find((e) => e.time <= nowTick && nowTick <= e.time + graceMinutes * 60_000) ?? null);
+
+  // Group membership/size shown on the overlay comes from the full slot
+  // set (not doseEvents' own members), so it stays accurate even once some
+  // groupmates have already been resolved and dropped out of doseEvents.
+  const dueNowGroupMembers =
+    dueNowEvent && dueNowEvent.kind === 'group'
+      ? slots.filter((s) => s.groupId === dueNowEvent.groupId && slotDueTime(s, scheduleDate) === dueNowEvent.time)
+      : null;
 
   if (loading) {
     return (
@@ -315,6 +376,19 @@ export default function DashboardScreen() {
       )}
 
       {alertsOpen && <AlertsSheet alerts={supplyAlerts} onClose={() => setAlertsOpen(false)} />}
+
+      <DueNowOverlay
+        event={dueNowEvent}
+        groupMembers={dueNowGroupMembers}
+        onTakeAll={() => dueNowEvent && handleTakeAllForEvent(dueNowEvent)}
+        onSkipAll={() => dueNowEvent && handleSkipAllForEvent(dueNowEvent)}
+        onSnoozeAll={(minutes) => dueNowEvent && handleSnoozeAllForEvent(dueNowEvent, minutes)}
+        onTakeOne={(slot) => handleAction(slot, 'taken')}
+        onSkipOne={(slot) => handleAction(slot, 'skipped')}
+        onSnoozeOne={(slot, minutes) => handleSnooze(slot, minutes)}
+        defaultSnoozeMinutes={defaultSnoozeMinutes}
+        disabled={actingKey !== null}
+      />
     </ThemedView>
   );
 }
