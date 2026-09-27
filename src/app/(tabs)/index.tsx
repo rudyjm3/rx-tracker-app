@@ -72,6 +72,11 @@ export default function DashboardScreen() {
   // sheet instead of calling recordDose immediately; Skip and a 'none'
   // medication's Take bypass this entirely.
   const [feedbackSlot, setFeedbackSlot] = useState<DaySlot | null>(null);
+  // Additional feedback-requiring slots queued up behind feedbackSlot by a
+  // group "Take Now" — each is shown one at a time only after the previous
+  // one's sheet submits, rather than firing setFeedbackSlot once per slot
+  // synchronously (which would just overwrite itself down to the last one).
+  const [feedbackQueue, setFeedbackQueue] = useState<DaySlot[]>([]);
   const [alertsOpen, setAlertsOpen] = useState(false);
   // A pending slot the user tapped Snooze on — opens the duration picker.
   const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
@@ -89,11 +94,6 @@ export default function DashboardScreen() {
   // which could otherwise show one profile's doses under another's
   // selected chip and let a dose get recorded against the wrong person.
   const requestIdRef = useRef(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => setNowTick(Date.now()), 20_000);
-    return () => clearInterval(interval);
-  }, []);
 
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
@@ -152,6 +152,21 @@ export default function DashboardScreen() {
       else setLoading(false);
     }
   }, [activeProfileId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setNowTick(now);
+      // A dashboard left open across local midnight would otherwise keep
+      // showing yesterday's slots/scheduleDate — and never surface an
+      // early-morning dose in doseEvents — until something else (a
+      // profile switch, a manual pull-to-refresh) triggers a reload.
+      if (localDateString(new Date(now)) !== scheduleDate) {
+        load();
+      }
+    }, 20_000);
+    return () => clearInterval(interval);
+  }, [scheduleDate, load]);
 
   // load() (and this callback) changes identity whenever activeProfileId
   // changes, and useFocusEffect re-invokes its callback on identity
@@ -215,8 +230,20 @@ export default function DashboardScreen() {
   }
 
   async function handleTakeAllForEvent(event: NextDoseEvent) {
-    for (const slot of eventSlots(event)) {
-      if (slot.status === 'pending') await handleAction(slot, 'taken');
+    const pending = eventSlots(event).filter((s) => s.status === 'pending');
+    // Slots needing feedback can't just loop through handleAction: each
+    // call would set feedbackSlot synchronously and the next iteration's
+    // call would overwrite it before the user ever sees the first sheet.
+    // Record the no-feedback ones directly, then queue the rest to be
+    // shown one at a time as each sheet is submitted (see feedbackQueue).
+    const noFeedback = pending.filter((s) => s.medication.feedback_type === 'none');
+    const needsFeedback = pending.filter((s) => s.medication.feedback_type !== 'none');
+    for (const slot of noFeedback) {
+      await handleAction(slot, 'taken');
+    }
+    if (needsFeedback.length > 0) {
+      setFeedbackSlot(needsFeedback[0]);
+      setFeedbackQueue(needsFeedback.slice(1));
     }
   }
 
@@ -235,9 +262,12 @@ export default function DashboardScreen() {
   // Separate from `events` (which drives "Today's schedule" and includes
   // already-resolved slots so their status still shows there) — the
   // due-now overlay only ever needs to consider doses that are still
-  // pending.
+  // pending. PRN (as-needed) slots are excluded the same way
+  // computeReminderTimes skips med.as_needed for push reminders: an
+  // optional dose should never trigger, or be bulk-recorded by, the
+  // blocking overlay.
   const doseEvents = useMemo(
-    () => buildDoseEvents(slots.filter((s) => s.status === 'pending'), scheduleDate),
+    () => buildDoseEvents(slots.filter((s) => s.status === 'pending' && !s.isPrn), scheduleDate),
     [slots, scheduleDate],
   );
 
@@ -253,7 +283,9 @@ export default function DashboardScreen() {
   // groupmates have already been resolved and dropped out of doseEvents.
   const dueNowGroupMembers =
     dueNowEvent && dueNowEvent.kind === 'group'
-      ? slots.filter((s) => s.groupId === dueNowEvent.groupId && slotDueTime(s, scheduleDate) === dueNowEvent.time)
+      ? slots.filter(
+          (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotDueTime(s, scheduleDate) === dueNowEvent.time,
+        )
       : null;
 
   if (loading) {
@@ -367,10 +399,15 @@ export default function DashboardScreen() {
       {feedbackSlot && (
         <FeedbackSheet
           slot={feedbackSlot}
-          onClose={() => setFeedbackSlot(null)}
+          onClose={() => {
+            setFeedbackSlot(null);
+            setFeedbackQueue([]);
+          }}
           onSubmit={async (feedback) => {
             await recordAndReload(feedbackSlot, 'taken', feedback);
-            setFeedbackSlot(null);
+            const [next, ...rest] = feedbackQueue;
+            setFeedbackSlot(next ?? null);
+            setFeedbackQueue(rest);
           }}
         />
       )}
@@ -388,6 +425,7 @@ export default function DashboardScreen() {
         onSnoozeOne={(slot, minutes) => handleSnooze(slot, minutes)}
         defaultSnoozeMinutes={defaultSnoozeMinutes}
         disabled={actingKey !== null}
+        error={dueNowEvent ? error : null}
       />
     </ThemedView>
   );

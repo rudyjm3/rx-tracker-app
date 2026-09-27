@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, BackHandler, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -26,6 +26,10 @@ export interface DueNowOverlayProps {
   onSnoozeOne: (slot: DaySlot, minutes: number) => void;
   defaultSnoozeMinutes: number | null;
   disabled: boolean;
+  // Surfaced from the dashboard's own error state — since this modal blocks
+  // all other UI while it's open, a failed Take/Skip/Snooze needs to show
+  // its message here rather than in the (hidden-behind-the-overlay) screen.
+  error?: string | null;
 }
 
 export function DueNowOverlay({
@@ -39,6 +43,7 @@ export function DueNowOverlay({
   onSnoozeOne,
   defaultSnoozeMinutes,
   disabled,
+  error,
 }: DueNowOverlayProps) {
   const [manageEach, setManageEach] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<SnoozeTarget | null>(null);
@@ -81,116 +86,120 @@ export function DueNowOverlay({
       <View style={styles.backdrop}>
         <SafeAreaView style={styles.safeArea}>
           <ThemedView type="backgroundElement" style={styles.card}>
-            <View style={styles.header}>
-              <View style={styles.badge}>
-                <Ionicons name="medkit-outline" size={28} color="#ffffff" />
-              </View>
-              <View style={styles.headerText}>
-                <View style={styles.headerTitleRow}>
-                  <Ionicons name="notifications-outline" size={16} color={Brand.deepBlue} />
-                  <ThemedText type="smallBold" style={{ color: Brand.deepBlue }}>
-                    Dose due now
-                  </ThemedText>
+            <ScrollView contentContainerStyle={styles.cardContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.header}>
+                <View style={styles.badge}>
+                  <Ionicons name="medkit-outline" size={28} color="#ffffff" />
                 </View>
-                {isGroup ? (
-                  <>
-                    <ThemedText type="subtitle" style={styles.titleText}>
-                      {event.groupName}
+                <View style={styles.headerText}>
+                  <View style={styles.headerTitleRow}>
+                    <Ionicons name="notifications-outline" size={16} color={Brand.deepBlue} />
+                    <ThemedText type="smallBold" style={{ color: Brand.deepBlue }}>
+                      Dose due now
                     </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {members.length} medications in group
-                    </ThemedText>
-                  </>
-                ) : (
-                  <>
-                    <ThemedText type="subtitle" style={styles.titleText}>
-                      {event.slot.medicationName}
-                    </ThemedText>
-                    {event.slot.dose ? (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {event.slot.dose}
-                      </ThemedText>
-                    ) : null}
-                  </>
-                )}
-              </View>
-            </View>
-
-            {manageEach && isGroup ? (
-              <View style={styles.memberList}>
-                {members.map((slot) => (
-                  <MemberRow
-                    key={`${slot.medicationId}|${slot.scheduledTime}`}
-                    slot={slot}
-                    disabled={disabled}
-                    snoozing={snoozeTarget !== 'all' && snoozeTarget?.medicationId === slot.medicationId && snoozeTarget?.scheduledTime === slot.scheduledTime}
-                    defaultSnoozeMinutes={defaultSnoozeMinutes}
-                    onTake={() => onTakeOne(slot)}
-                    onSkip={() => onSkipOne(slot)}
-                    onSnoozeStart={() => setSnoozeTarget(slot)}
-                    onSnoozeSelect={(minutes) => {
-                      onSnoozeOne(slot, minutes);
-                      setSnoozeTarget(null);
-                    }}
-                    onSnoozeCancel={() => setSnoozeTarget(null)}
-                  />
-                ))}
-              </View>
-            ) : (
-              <>
-                {snoozeTarget === 'all' ? (
-                  <SnoozeChipRow
-                    defaultMinutes={defaultSnoozeMinutes}
-                    disabled={disabled}
-                    onSelect={(minutes) => {
-                      onSnoozeAll(minutes);
-                      setSnoozeTarget(null);
-                    }}
-                    onCancel={() => setSnoozeTarget(null)}
-                  />
-                ) : (
-                  <View style={styles.mainActions}>
-                    <Pressable
-                      style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-                      onPress={onSkipAll}
-                      disabled={disabled}
-                    >
-                      {disabled ? (
-                        <ActivityIndicator size="small" color={Brand.textMuted} />
-                      ) : (
-                        <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
-                      )}
-                    </Pressable>
-                    <Pressable
-                      style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-                      onPress={() => setSnoozeTarget('all')}
-                      disabled={disabled}
-                    >
-                      <ThemedText style={styles.secondaryButtonText}>Snooze</ThemedText>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
-                      onPress={onTakeAll}
-                      disabled={disabled}
-                    >
-                      {disabled ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
-                      )}
-                    </Pressable>
                   </View>
-                )}
+                  {isGroup ? (
+                    <>
+                      <ThemedText type="subtitle" style={styles.titleText}>
+                        {event.groupName}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {members.length} medications in group
+                      </ThemedText>
+                    </>
+                  ) : (
+                    <>
+                      <ThemedText type="subtitle" style={styles.titleText}>
+                        {event.slot.medicationName}
+                      </ThemedText>
+                      {event.slot.dose ? (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {event.slot.dose}
+                        </ThemedText>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              </View>
 
-                {isGroup && pendingMembers.length > 0 && (
-                  <Pressable style={styles.manageEachButton} onPress={() => setManageEach(true)} disabled={disabled}>
-                    <ThemedText type="small" style={{ color: Brand.deepBlue, fontWeight: '600' }}>
-                      Manage Each
-                    </ThemedText>
-                  </Pressable>
-                )}
-              </>
-            )}
+              {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
+
+              {manageEach && isGroup ? (
+                <View style={styles.memberList}>
+                  {members.map((slot) => (
+                    <MemberRow
+                      key={`${slot.medicationId}|${slot.scheduledTime}`}
+                      slot={slot}
+                      disabled={disabled}
+                      snoozing={snoozeTarget !== 'all' && snoozeTarget?.medicationId === slot.medicationId && snoozeTarget?.scheduledTime === slot.scheduledTime}
+                      defaultSnoozeMinutes={defaultSnoozeMinutes}
+                      onTake={() => onTakeOne(slot)}
+                      onSkip={() => onSkipOne(slot)}
+                      onSnoozeStart={() => setSnoozeTarget(slot)}
+                      onSnoozeSelect={(minutes) => {
+                        onSnoozeOne(slot, minutes);
+                        setSnoozeTarget(null);
+                      }}
+                      onSnoozeCancel={() => setSnoozeTarget(null)}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <>
+                  {snoozeTarget === 'all' ? (
+                    <SnoozeChipRow
+                      defaultMinutes={defaultSnoozeMinutes}
+                      disabled={disabled}
+                      onSelect={(minutes) => {
+                        onSnoozeAll(minutes);
+                        setSnoozeTarget(null);
+                      }}
+                      onCancel={() => setSnoozeTarget(null)}
+                    />
+                  ) : (
+                    <View style={styles.mainActions}>
+                      <Pressable
+                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
+                        onPress={onSkipAll}
+                        disabled={disabled}
+                      >
+                        {disabled ? (
+                          <ActivityIndicator size="small" color={Brand.textMuted} />
+                        ) : (
+                          <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
+                        onPress={() => setSnoozeTarget('all')}
+                        disabled={disabled}
+                      >
+                        <ThemedText style={styles.secondaryButtonText}>Snooze</ThemedText>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
+                        onPress={onTakeAll}
+                        disabled={disabled}
+                      >
+                        {disabled ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
+                        )}
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {isGroup && pendingMembers.length > 0 && (
+                    <Pressable style={styles.manageEachButton} onPress={() => setManageEach(true)} disabled={disabled}>
+                      <ThemedText type="small" style={{ color: Brand.deepBlue, fontWeight: '600' }}>
+                        Manage Each
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </ScrollView>
           </ThemedView>
         </SafeAreaView>
       </View>
@@ -323,14 +332,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  safeArea: { width: '100%', alignItems: 'center', paddingHorizontal: Spacing.four },
+  safeArea: { width: '100%', maxHeight: '100%', alignItems: 'center', paddingHorizontal: Spacing.four },
   card: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '90%',
     borderRadius: BorderRadius.md,
+  },
+  cardContent: {
     padding: Spacing.four,
     gap: Spacing.three,
   },
+  errorText: { color: Brand.danger },
   header: { flexDirection: 'row', gap: Spacing.three, alignItems: 'flex-start' },
   badge: {
     width: 48,
