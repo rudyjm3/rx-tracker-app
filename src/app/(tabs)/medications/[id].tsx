@@ -27,6 +27,7 @@ import {
   getGroups,
   getMedication,
   updateMedication,
+  updatePrescribedDose,
   type MedicationInput,
   type ScheduleTimeInput,
 } from '@/lib/medications';
@@ -82,7 +83,7 @@ const RESUME_REASONS = ["Doctor's orders", "Symptoms returned", "Retrying", "Res
 
 export default function MedicationDetailScreen() {
   const styles = getStyles(useTheme());
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
   const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
   const [doseHistory, setDoseHistory] = useState<DoseHistoryEntry[]>([]);
@@ -93,6 +94,44 @@ export default function MedicationDetailScreen() {
   const [logDoseOpen, setLogDoseOpen] = useState(false);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
   const [statusSheetDirection, setStatusSheetDirection] = useState<'discontinue' | 'resume' | null>(null);
+  const [updateDoseOpen, setUpdateDoseOpen] = useState(false);
+
+  // Lets the medications list's quick-actions menu jump straight into a
+  // specific sheet (?action=logDose etc.) instead of just landing on this
+  // screen and making the user tap the right button themselves. Adjusted
+  // during render (React's documented pattern for "adjusting state when a
+  // prop changes", same as EditForm-adjacent screens' lastProfileId reset
+  // elsewhere in this app) rather than in an effect, so it can't cause the
+  // extra render pass a setState-in-effect would. consumedAction guards
+  // against reopening the same sheet every time this screen regains focus
+  // (e.g. after the opened sheet's own onClose navigates back here) — the
+  // URL still carries ?action=..., but only a *new* value re-triggers.
+  const [consumedAction, setConsumedAction] = useState<string | null>(null);
+  if (action && action !== consumedAction) {
+    setConsumedAction(action);
+    switch (action) {
+      case 'edit':
+        setEditing(true);
+        break;
+      case 'logDose':
+        setLogDoseOpen(true);
+        break;
+      case 'refill':
+      case 'adjust':
+        setRefillSheetMode(action);
+        break;
+      case 'sideEffects':
+        setSideEffectsOpen(true);
+        break;
+      case 'updateDose':
+        setUpdateDoseOpen(true);
+        break;
+      case 'discontinue':
+      case 'resume':
+        setStatusSheetDirection(action);
+        break;
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -215,6 +254,9 @@ export default function MedicationDetailScreen() {
           </View>
 
           <View style={styles.actions}>
+            <Pressable style={styles.secondaryButton} onPress={() => setUpdateDoseOpen(true)}>
+              <ThemedText style={styles.secondaryButtonText}>Update Prescribed Dose</ThemedText>
+            </Pressable>
             <Pressable style={styles.secondaryButton} onPress={() => setSideEffectsOpen(true)}>
               <ThemedText style={styles.secondaryButtonText}>Side Effects</ThemedText>
             </Pressable>
@@ -279,6 +321,17 @@ export default function MedicationDetailScreen() {
           onSaved={async () => {
             setStatusSheetDirection(null);
             resyncIfRemindersEnabled();
+            await load();
+          }}
+        />
+      )}
+
+      {updateDoseOpen && (
+        <UpdatePrescribedDoseSheet
+          medication={medication}
+          onClose={() => setUpdateDoseOpen(false)}
+          onSaved={async () => {
+            setUpdateDoseOpen(false);
             await load();
           }}
         />
@@ -472,6 +525,115 @@ function RefillSheet({
                       <ThemedText style={styles.primaryButtonText}>
                         {mode === 'refill' ? 'Log Refill' : 'Save'}
                       </ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// Records a dose_amount/dose_unit change as its own history event, distinct
+// from a full Edit — port of rx-tracker-web's UpdatePrescribedDoseModal.
+function UpdatePrescribedDoseSheet({
+  medication,
+  onClose,
+  onSaved,
+}: {
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [amount, setAmount] = useState(medication.dose_amount != null ? String(medication.dose_amount) : '');
+  const [unit, setUnit] = useState(medication.dose_unit ?? '');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    const amountValue = Number(amount);
+    if (!amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0) {
+      setFormError('New dose amount must be greater than zero.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updatePrescribedDose(medication.id, amountValue, unit, reason.trim());
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't update prescribed dose");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Update prescribed dose
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                  Current dose: {medication.dose_amount ?? ''} {medication.dose_unit}
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <View style={styles.row}>
+                  <View style={styles.rowItem}>
+                    <FieldLabel>New dose amount</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={amount}
+                      onChangeText={setAmount}
+                    />
+                  </View>
+                  <View style={styles.rowItem}>
+                    <FieldLabel>Unit</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={unit}
+                      onChangeText={setUnit}
+                      placeholder="mg"
+                      placeholderTextColor={theme.textSecondary}
+                    />
+                  </View>
+                </View>
+
+                <FieldLabel>Reason (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholder="e.g. Doctor increased dose at last visit"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                />
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primaryButton, saving && styles.disabled]}
+                    onPress={handleSubmit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>Save dose change</ThemedText>
                     )}
                   </Pressable>
                 </View>

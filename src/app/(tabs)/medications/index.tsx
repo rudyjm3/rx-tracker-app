@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
@@ -14,6 +15,19 @@ import { getActiveMedications, getInactiveMedications } from '@/lib/medications'
 import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
 import type { Medication } from '@/lib/types/medications';
 import { daysUntilRunout, scheduleSummary } from '@/lib/utils';
+
+// Date-only fields (start_date/created_at's date portion) must be parsed in
+// local time, not UTC — a UTC-midnight parse displays one day earlier for
+// anyone west of UTC. Same fix pattern as rx-tracker-web's MedicationCard
+// formatMedDate.
+function formatMedDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const datePart = value.slice(0, 10);
+  const date = new Date(`${datePart}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 type ListTab = 'active' | 'inactive';
 
@@ -134,7 +148,9 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
 }
 
 function MedicationCard({ medication }: { medication: Medication }) {
-  const styles = getStyles(useTheme());
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [menuOpen, setMenuOpen] = useState(false);
   const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
   const starting = medication.starting_quantity ?? 0;
@@ -142,8 +158,13 @@ function MedicationCard({ medication }: { medication: Medication }) {
   const isLowSupply = hasInventory && current <= medication.low_supply_threshold;
   const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
 
+  function goToDetail(action?: string) {
+    setMenuOpen(false);
+    router.push(action ? `/medications/${medication.id}?action=${action}` : `/medications/${medication.id}`);
+  }
+
   return (
-    <Pressable onPress={() => router.push(`/medications/${medication.id}`)}>
+    <Pressable onPress={() => goToDetail()}>
       <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.cardHeader}>
         <ThemedText type="smallBold" style={styles.medName}>
@@ -163,6 +184,14 @@ function MedicationCard({ medication }: { medication: Medication }) {
               {MEDICATION_TYPE_LABELS[medication.medication_type]}
             </ThemedText>
           </View>
+          <Pressable
+            style={styles.menuButton}
+            onPress={() => setMenuOpen(true)}
+            hitSlop={8}
+            accessibilityLabel={`${medication.name} actions`}
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color={theme.textSecondary} />
+          </Pressable>
         </View>
       </View>
 
@@ -193,8 +222,80 @@ function MedicationCard({ medication }: { medication: Medication }) {
           </ThemedText>
         </View>
       )}
+
+      <ThemedText type="small" themeColor="textSecondary" style={styles.datesText}>
+        Started: {formatMedDate(medication.start_date ?? medication.created_at)}
+        {medication.end_date ? ` · Ended: ${formatMedDate(medication.end_date)}` : ''}
+      </ThemedText>
       </ThemedView>
+
+      <MedicationActionsMenu
+        visible={menuOpen}
+        medication={medication}
+        hasInventory={hasInventory}
+        onClose={() => setMenuOpen(false)}
+        onAction={goToDetail}
+      />
     </Pressable>
+  );
+}
+
+function MedicationActionsMenu({
+  visible,
+  medication,
+  hasInventory,
+  onClose,
+  onAction,
+}: {
+  visible: boolean;
+  medication: Medication;
+  hasInventory: boolean;
+  onClose: () => void;
+  onAction: (action?: string) => void;
+}) {
+  const styles = getStyles(useTheme());
+  if (!visible) return null;
+
+  const items: { label: string; action?: string; destructive?: boolean }[] = medication.active
+    ? [
+        { label: 'Edit', action: 'edit' },
+        { label: 'Log Dose', action: 'logDose' },
+        ...(hasInventory
+          ? [
+              { label: 'Log Refill', action: 'refill' },
+              { label: 'Adjust Quantity', action: 'adjust' },
+            ]
+          : []),
+        { label: 'Update Prescribed Dose', action: 'updateDose' },
+        { label: 'Side Effects', action: 'sideEffects' },
+        { label: 'Discontinue Use', action: 'discontinue', destructive: true },
+      ]
+    : [{ label: 'Reactivate', action: 'resume' }];
+
+  return (
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
+      <Pressable style={styles.menuBackdrop} onPress={onClose}>
+        <Pressable style={styles.menuSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.menuSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ThemedText type="smallBold" style={styles.menuTitle}>
+                {medication.name}
+              </ThemedText>
+              {items.map((item) => (
+                <Pressable key={item.label} style={styles.menuRow} onPress={() => onAction(item.action)}>
+                  <ThemedText style={item.destructive ? styles.menuRowDestructive : undefined}>
+                    {item.label}
+                  </ThemedText>
+                </Pressable>
+              ))}
+              <Pressable style={styles.menuCancel} onPress={onClose}>
+                <ThemedText style={styles.menuCancelText}>Cancel</ThemedText>
+              </Pressable>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -235,15 +336,36 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
-  card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
+  card: {
+    borderRadius: BorderRadius.md,
+    padding: Spacing.three,
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderColor: theme.border,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
   medName: { flex: 1 },
-  badgeGroup: { flexDirection: 'row', gap: Spacing.one },
+  badgeGroup: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   typeBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
+  menuButton: { padding: 2 },
   instructions: { marginTop: Spacing.half },
   inventorySection: { marginTop: Spacing.two, gap: Spacing.one },
   inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: theme.border, overflow: 'hidden' },
   inventoryBarFill: { height: '100%', borderRadius: 3 },
   lowSupplyText: { color: Brand.danger, fontWeight: '600' },
+  datesText: { marginTop: Spacing.one },
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  menuSheetWrapper: { maxHeight: '70%' },
+  menuSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
+  menuTitle: { marginBottom: Spacing.two },
+  menuRow: { paddingVertical: Spacing.three, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+  menuRowDestructive: { color: Brand.danger },
+  menuCancel: { marginTop: Spacing.two, alignItems: 'center', paddingVertical: Spacing.two },
+  menuCancelText: { fontWeight: '600', color: Brand.deepBlue },
 });
 }

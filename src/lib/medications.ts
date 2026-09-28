@@ -227,6 +227,38 @@ export async function activateMedication(id: string, reason = "", comment = ""):
   if (error) throw error;
 }
 
+function normalizeDoseAmount(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function normalizeDoseUnit(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+// Records a dose_amount/dose_unit change as its own medication_dose_changes
+// event (surfaced in getDoseHistory below), distinct from a full Edit —
+// port of rx-tracker-web's updatePrescribedDose. Runs as the atomic
+// update_prescribed_dose RPC, which no-ops (returns false) when the new
+// amount/unit match the current ones, so a reason-only submission with no
+// actual change doesn't create a spurious history entry.
+export async function updatePrescribedDose(
+  id: string,
+  doseAmount: number | null,
+  doseUnit: string | null,
+  reason = "",
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("update_prescribed_dose", {
+    p_medication_id: id,
+    p_dose_amount: normalizeDoseAmount(doseAmount),
+    p_dose_unit: normalizeDoseUnit(doseUnit),
+    p_comment: reason,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
 // ── Dose history (dose changes + status events, merged) ────────────
 
 export async function getDoseHistory(medicationId: string): Promise<DoseHistoryEntry[]> {
