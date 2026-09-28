@@ -302,14 +302,30 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     </View>
   );
 
+  const totalPlannedSlots =
+    day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0);
+  // Distinct medications, not planned slot entries — a medication with
+  // more than one occurrence that day (e.g. twice-daily) must still count
+  // once, consistent with the non-future branch's medication summaries.
+  const totalPlannedMedications = new Set([
+    ...day.plannedMedications.map((m) => m.medicationId),
+    ...day.plannedGroups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+  ]).size;
+  const totalMedicationsForSummary = day.isFuture
+    ? totalPlannedMedications
+    : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+  const summaryLine = (
+    <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
+      Medications: {totalMedicationsForSummary} | Planned doses — Required: {day.plannedRequired} / Non-required:{' '}
+      {day.plannedNonRequired}
+    </ThemedText>
+  );
+
   if (day.isFuture) {
-    const totalPlanned =
-      day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0);
+    const totalPlanned = totalPlannedSlots;
     return (
       <View>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
-          Planned doses — Required: {day.plannedRequired} / Non-required: {day.plannedNonRequired}
-        </ThemedText>
+        {summaryLine}
         {endingCallout}
         {totalPlanned === 0 ? (
           <ThemedText themeColor="textSecondary">No doses planned for this day.</ThemedText>
@@ -338,11 +354,11 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     );
   }
 
-  const totalMedications =
-    day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+  const totalMedications = totalMedicationsForSummary;
 
   return (
     <View>
+      {summaryLine}
       {endingCallout}
       {totalMedications === 0 ? (
         <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
