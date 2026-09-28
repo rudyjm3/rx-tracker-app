@@ -7,10 +7,19 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useActiveProfile } from '@/lib/active-profile';
-import { calendarDayColor, currentMonth, monthBounds, type CalendarDayColor } from '@/lib/calendar';
-import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker, type CalendarLogRow } from '@/lib/dose-logs';
-import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
-import { localDateString, to12h } from '@/lib/utils';
+import {
+  buildDayDetails,
+  calendarDayColor,
+  currentMonth,
+  monthBounds,
+  type CalendarDayColor,
+  type CalendarDayDetail,
+} from '@/lib/calendar';
+import { getMissedGraceMinutes } from '@/lib/app-settings';
+import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker } from '@/lib/dose-logs';
+import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
+import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
+import { localDateString } from '@/lib/utils';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -22,11 +31,17 @@ const DAY_COLORS: Record<CalendarDayColor, { bg: string; text: string }> = {
   empty: { bg: 'transparent', text: Brand.text },
 };
 
+const COUNT_COLORS = {
+  taken: Brand.success,
+  skipped: Brand.warning,
+  missed: Brand.danger,
+};
+
 export default function CalendarScreen() {
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
-  const [logs, setLogs] = useState<CalendarLogRow[]>([]);
+  const [dayDetails, setDayDetails] = useState<Record<string, CalendarDayDetail>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -45,19 +60,33 @@ export default function CalendarScreen() {
     setError(null);
     try {
       const b = monthBounds(m);
-      const [activeMeds, inactiveMeds] = await Promise.all([
+      const [activeMeds, inactiveMeds, groups, groupMembers, graceMinutes] = await Promise.all([
         getActiveMedications(activeProfileId),
         getInactiveMedications(activeProfileId),
+        getGroups(activeProfileId),
+        getGroupMembers(),
+        getMissedGraceMinutes(),
       ]);
       if (requestIdRef.current !== requestId) return;
-      const medicationIds = [...activeMeds, ...inactiveMeds].map((med) => med.id);
+      const allMedications: Medication[] = [...activeMeds, ...inactiveMeds];
+      const medicationIds = allMedications.map((med) => med.id);
       const [markerData, logData] = await Promise.all([
         getCalendarMarkers(b.monthStart, b.monthEnd, medicationIds),
         getCalendarLogs(b.monthStart, b.monthEnd, medicationIds),
       ]);
       if (requestIdRef.current !== requestId) return;
+      const details = buildDayDetails(
+        b.monthStart,
+        b.monthEnd,
+        localDateString(),
+        logData,
+        graceMinutes,
+        allMedications,
+        groups,
+        groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[],
+      );
       setMarkers(markerData);
-      setLogs(logData);
+      setDayDetails(details);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load calendar');
@@ -92,9 +121,7 @@ export default function CalendarScreen() {
     cells.push({ date: `${bounds.monthStart.slice(0, 7)}-${String(day).padStart(2, '0')}`, day });
   }
 
-  const selectedLogs = selectedDate
-    ? logs.filter((l) => l.scheduled_for_date === selectedDate).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time))
-    : [];
+  const selectedDay = selectedDate ? (dayDetails[selectedDate] ?? null) : null;
 
   return (
     <ThemedView style={styles.container}>
@@ -139,27 +166,84 @@ export default function CalendarScreen() {
         {loading ? (
           <ActivityIndicator style={styles.loading} />
         ) : (
-          <View style={styles.grid}>
-            {cells.map((cell, i) => {
-              if (!cell.date) return <View key={`blank-${i}`} style={styles.cell} />;
-              const isFuture = cell.date > today;
-              const color = DAY_COLORS[calendarDayColor(isFuture, markers[cell.date])];
-              const isToday = cell.date === today;
-              return (
-                <Pressable
-                  key={cell.date}
-                  style={styles.cell}
-                  onPress={() => setSelectedDate(cell.date)}
-                >
-                  <View style={[styles.dayCircle, { backgroundColor: color.bg }, isToday && styles.todayRing]}>
-                    <ThemedText type="small" style={{ color: color.bg === 'transparent' ? undefined : color.text }}>
-                      {cell.day}
-                    </ThemedText>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ScrollView>
+            <View style={styles.grid}>
+              {cells.map((cell, i) => {
+                if (!cell.date) return <View key={`blank-${i}`} style={styles.cell} />;
+                const detail = dayDetails[cell.date];
+                const isFuture = detail ? detail.isFuture : cell.date > today;
+                const marker = markers[cell.date];
+                const color = DAY_COLORS[calendarDayColor(isFuture, marker)];
+                const onColoredBg = color.bg !== 'transparent';
+                const isToday = cell.date === today;
+                const hasMarkerCounts =
+                  !isFuture && marker && (marker.taken > 0 || marker.skipped > 0 || marker.missed > 0);
+                const endingMedications = detail?.endingMedications ?? [];
+
+                return (
+                  <Pressable
+                    key={cell.date}
+                    style={styles.cell}
+                    onPress={() => setSelectedDate(cell.date)}
+                  >
+                    <View style={[styles.dayBox, { backgroundColor: color.bg }, isToday && styles.todayRing]}>
+                      <ThemedText type="small" style={onColoredBg ? { color: color.text } : undefined}>
+                        {cell.day}
+                      </ThemedText>
+                      {detail && (
+                        <ThemedText
+                          type="small"
+                          themeColor={onColoredBg ? undefined : 'textSecondary'}
+                          style={[styles.totalDosesText, onColoredBg && { color: color.text }]}
+                        >
+                          Req {detail.plannedRequired}/Non-req {detail.plannedNonRequired}
+                        </ThemedText>
+                      )}
+                      {hasMarkerCounts && (
+                        <View style={styles.countsRow}>
+                          {marker!.taken > 0 && (
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.taken }]}
+                            >
+                              {marker!.taken}T
+                            </ThemedText>
+                          )}
+                          {marker!.skipped > 0 && (
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.skipped }]}
+                            >
+                              {marker!.skipped}S
+                            </ThemedText>
+                          )}
+                          {marker!.missed > 0 && (
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.missed }]}
+                            >
+                              {marker!.missed}M
+                            </ThemedText>
+                          )}
+                        </View>
+                      )}
+                      {endingMedications.length > 0 && (
+                        <ThemedText
+                          type="small"
+                          numberOfLines={1}
+                          style={[styles.endingText, onColoredBg && { color: color.text }]}
+                        >
+                          {endingMedications.length === 1
+                            ? `Ends today: ${endingMedications[0].name}`
+                            : `Ends today: ${endingMedications[0].name} +${endingMedications.length - 1} more`}
+                        </ThemedText>
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
         )}
 
         <View style={styles.legend}>
@@ -180,27 +264,10 @@ export default function CalendarScreen() {
             <ThemedView style={styles.modalSheet}>
               <SafeAreaView>
                 <ThemedText type="subtitle" style={styles.modalTitle}>
-                  {selectedDate}
+                  {selectedDay ? `${selectedDay.dayName}, ${selectedDay.displayDate}` : selectedDate}
                 </ThemedText>
                 <ScrollView style={styles.modalList}>
-                  {selectedLogs.length === 0 ? (
-                    <ThemedText themeColor="textSecondary">No doses logged this day.</ThemedText>
-                  ) : (
-                    selectedLogs.map((log) => (
-                      <View key={log.id} style={styles.logRow}>
-                        <ThemedText type="small" style={styles.logTime}>
-                          {to12h(log.scheduled_time.slice(0, 5))}
-                        </ThemedText>
-                        <ThemedText style={styles.logName}>{log.medications.name}</ThemedText>
-                        <ThemedText
-                          type="small"
-                          style={[styles.logStatus, { color: DAY_COLORS[log.status === 'taken' ? 'taken' : log.status === 'skipped' ? 'skipped' : 'missed'].bg }]}
-                        >
-                          {log.status}
-                        </ThemedText>
-                      </View>
-                    ))
-                  )}
+                  <DayDetailContent day={selectedDay} />
                 </ScrollView>
                 <Pressable style={styles.closeButton} onPress={() => setSelectedDate(null)}>
                   <ThemedText style={styles.closeButtonText}>Close</ThemedText>
@@ -211,6 +278,160 @@ export default function CalendarScreen() {
         </Pressable>
       </Modal>
     </ThemedView>
+  );
+}
+
+function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
+  if (!day) {
+    return <ThemedText themeColor="textSecondary">No data for this day.</ThemedText>;
+  }
+
+  const endingIds = new Set(day.endingMedications.map((m) => m.medicationId));
+
+  const endingCallout = day.endingMedications.length > 0 && (
+    <View style={styles.endingCallout}>
+      <ThemedText type="small" style={styles.endingCalloutTitle}>
+        {day.endingMedications.length === 1 ? 'Regimen ending today' : 'Regimens ending today'}
+      </ThemedText>
+      {day.endingMedications.map((med) => (
+        <ThemedText key={med.medicationId} type="small">
+          {med.name}
+          {med.dose ? ` ${med.dose}` : ''}
+        </ThemedText>
+      ))}
+    </View>
+  );
+
+  if (day.isFuture) {
+    const totalPlanned =
+      day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0);
+    return (
+      <View>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
+          Planned doses — Required: {day.plannedRequired} / Non-required: {day.plannedNonRequired}
+        </ThemedText>
+        {endingCallout}
+        {totalPlanned === 0 ? (
+          <ThemedText themeColor="textSecondary">No doses planned for this day.</ThemedText>
+        ) : (
+          <>
+            {day.plannedGroups.map((group) => (
+              <View key={group.groupId} style={styles.groupCard}>
+                <ThemedText style={styles.groupName}>{group.groupName}</ThemedText>
+                {group.medications.map((slot) => (
+                  <PlannedSlotRow
+                    key={`${slot.medicationId}-${slot.scheduledTime}`}
+                    slot={slot}
+                    endingToday={endingIds.has(slot.medicationId)}
+                  />
+                ))}
+              </View>
+            ))}
+            {day.plannedMedications.map((slot) => (
+              <View key={`${slot.medicationId}-${slot.scheduledTime}`} style={styles.medicationCard}>
+                <PlannedSlotRow slot={slot} endingToday={endingIds.has(slot.medicationId)} />
+              </View>
+            ))}
+          </>
+        )}
+      </View>
+    );
+  }
+
+  const totalMedications =
+    day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+
+  return (
+    <View>
+      {endingCallout}
+      {totalMedications === 0 ? (
+        <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
+      ) : (
+        <>
+          {day.groups.map((group) => (
+            <View key={group.groupId} style={styles.groupCard}>
+              <ThemedText style={styles.groupName}>{group.groupName}</ThemedText>
+              {group.medications.map((med) => (
+                <MedicationSummaryRow
+                  key={med.medicationId}
+                  med={med}
+                  endingToday={endingIds.has(med.medicationId)}
+                />
+              ))}
+            </View>
+          ))}
+          {day.medications.map((med) => (
+            <View
+              key={med.medicationId}
+              style={[styles.medicationCard, endingIds.has(med.medicationId) && styles.endingHighlight]}
+            >
+              <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} />
+            </View>
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
+function MedicationSummaryRow({
+  med,
+  endingToday,
+}: {
+  med: CalendarDayDetail['medications'][number];
+  endingToday: boolean;
+}) {
+  return (
+    <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
+      <ThemedText style={styles.medicationName}>
+        {med.name}
+        {med.dose ? ` ${med.dose}` : ''}
+      </ThemedText>
+      {endingToday && <ThemedText type="small" style={styles.endingNote}>Today is the last day for this regimen.</ThemedText>}
+      <ThemedText type="small" themeColor="textSecondary">
+        Total doses {med.total} — Taken: {med.taken} / Late: {med.late} — Skipped: {med.skipped} — Missed: {med.missed}
+      </ThemedText>
+      {med.slots.map((slot) => (
+        <View key={slot.logId} style={styles.slotRow}>
+          <ThemedText type="small">{slot.displayTime}</ThemedText>
+          <ThemedText
+            type="small"
+            style={[
+              styles.slotStatus,
+              { color: slot.status === 'taken' ? COUNT_COLORS.taken : slot.status === 'skipped' ? COUNT_COLORS.skipped : COUNT_COLORS.missed },
+            ]}
+          >
+            {slot.status === 'taken' && slot.isLate ? `Taken (${slot.lateLabel})` : slot.status}
+          </ThemedText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PlannedSlotRow({
+  slot,
+  endingToday,
+}: {
+  slot: CalendarDayDetail['plannedMedications'][number];
+  endingToday: boolean;
+}) {
+  return (
+    <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
+      <View style={styles.slotRow}>
+        <ThemedText style={styles.medicationName}>
+          {slot.name}
+          {slot.dose ? ` ${slot.dose}` : ''}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {slot.displayTime}
+        </ThemedText>
+      </View>
+      {endingToday && <ThemedText type="small" style={styles.endingNote}>Today is the last day for this regimen.</ThemedText>}
+      <ThemedText type="small" themeColor="textSecondary">
+        {slot.isPrn ? 'Planned (as needed)' : 'Scheduled'}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -248,21 +469,59 @@ const styles = StyleSheet.create({
   weekdayLabel: { width: CELL_SIZE, textAlign: 'center' },
   loading: { marginTop: Spacing.five },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: CELL_SIZE, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  cell: { width: CELL_SIZE, minHeight: 76, alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 2 },
+  dayBox: { width: '96%', minHeight: 72, borderRadius: BorderRadius.sm, alignItems: 'flex-start', justifyContent: 'flex-start', padding: 3, gap: 1 },
   todayRing: { borderWidth: 2, borderColor: Brand.deepBlue },
+  totalDosesText: { fontSize: 8, lineHeight: 10 },
+  countsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
+  countText: { fontSize: 9, lineHeight: 11, fontWeight: '600' },
+  endingText: { fontSize: 8, lineHeight: 10, fontWeight: '700', color: Brand.deepBlue },
   legend: { flexDirection: 'row', gap: Spacing.four, marginTop: Spacing.three, justifyContent: 'center' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheetWrapper: { maxHeight: '70%' },
+  modalSheetWrapper: { maxHeight: '80%' },
   modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  modalList: { maxHeight: 320 },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
-  logTime: { width: 76 },
-  logName: { flex: 1 },
-  logStatus: { textTransform: 'capitalize', fontWeight: '600' },
+  modalList: { maxHeight: 420 },
+  summaryLine: { marginBottom: Spacing.two },
+  endingCallout: {
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.two,
+    marginBottom: Spacing.three,
+    gap: 2,
+  },
+  endingCalloutTitle: { fontWeight: '700', color: '#b45309' },
+  endingHighlight: {
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderRadius: BorderRadius.sm,
+  },
+  endingNote: { color: '#b45309', fontWeight: '600', marginTop: 2 },
+  groupCard: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.two,
+    marginBottom: Spacing.three,
+    gap: Spacing.two,
+  },
+  groupName: { fontWeight: '700', marginBottom: 2 },
+  medicationCard: {
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  medicationRow: { padding: 2, gap: 2 },
+  medicationName: { fontWeight: '700' },
+  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 2 },
+  slotStatus: { textTransform: 'capitalize', fontWeight: '600' },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });

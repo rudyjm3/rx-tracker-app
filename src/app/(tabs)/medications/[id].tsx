@@ -1542,6 +1542,7 @@ interface EditFormState {
   inventoryUnit: string;
   startingQuantity: string;
   lowSupplyThreshold: string;
+  endDate: string;
 }
 
 // A per-time quantity_per_dose override isn't editable in this form yet,
@@ -1575,6 +1576,7 @@ function toFormState(med: Medication): EditFormState {
     inventoryUnit: med.inventory_unit ?? '',
     startingQuantity: med.starting_quantity != null ? String(med.starting_quantity) : '',
     lowSupplyThreshold: String(med.low_supply_threshold),
+    endDate: med.end_date ?? '',
   };
 }
 
@@ -1637,6 +1639,14 @@ function EditForm({
       setFormError('Dose quantity must be a positive number.');
       return;
     }
+    if (form.endDate && !DATE_RE.test(form.endDate)) {
+      setFormError('End date must be in YYYY-MM-DD format.');
+      return;
+    }
+    if (form.endDate && medication.start_date && form.endDate < medication.start_date) {
+      setFormError('End date can’t be before the start date.');
+      return;
+    }
 
     const input: MedicationInput = {
       name: form.name.trim(),
@@ -1660,6 +1670,8 @@ function EditForm({
       reminders_enabled: medication.reminders_enabled,
       adherence_enabled: medication.adherence_enabled,
       profile_id: medication.profile_id,
+      start_date: medication.start_date,
+      end_date: form.endDate || null,
     };
 
     const scheduleTimes: ScheduleTimeInput[] =
@@ -1812,6 +1824,17 @@ function EditForm({
             value={form.quantityPerDose}
             onChangeText={(v) => update('quantityPerDose', v)}
           />
+
+          <FieldLabel>End date (optional)</FieldLabel>
+          <TextInput
+            style={styles.input}
+            value={form.endDate}
+            onChangeText={(v) => update('endDate', v)}
+            placeholder="YYYY-MM-DD"
+          />
+          <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+            The regimen stops generating doses after this date. Leave blank for an ongoing medication.
+          </ThemedText>
 
           <View style={styles.switchRow}>
             <ThemedText>Track inventory</ThemedText>
