@@ -25,9 +25,9 @@ import {
   createMoodTag,
   createStandaloneLog,
   deleteMoodTag,
+  getHistory,
   getMoodTags,
-  getStandaloneHistory,
-  getStandaloneTrend,
+  getTrend,
   levelColor,
   RANGE_OPTIONS,
   rangeDatesForDays,
@@ -92,7 +92,7 @@ export default function PainMoodScreen() {
     try {
       const [tags, entries] = await Promise.all([
         getMoodTags(),
-        getStandaloneHistory(50, activeProfileId),
+        getHistory(50, activeProfileId),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
@@ -134,7 +134,7 @@ export default function PainMoodScreen() {
     setTrendError(null);
     try {
       const { start, end } = rangeDatesForDays(trendRangeDays, localDateString());
-      const points = await getStandaloneTrend(trendMetric, start, end, activeProfileId);
+      const points = await getTrend(trendMetric, start, end, activeProfileId);
       if (trendRequestIdRef.current !== requestId) return;
       setTrendPoints(points);
     } catch (e) {
