@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import {
   deleteGroup,
@@ -23,6 +24,7 @@ import { to12h } from '@/lib/utils';
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
 export default function EditGroupScreen() {
+  const styles = getStyles(useTheme());
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeProfileId } = useActiveProfile();
 
@@ -125,6 +127,8 @@ function EditForm({
   existingMembers: { medication_id: string; quantity_per_dose: number | null }[];
   onRemove: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [name, setName] = useState(group.name);
   const [scheduledTime, setScheduledTime] = useState(group.scheduled_time.slice(0, 5));
   const [selected, setSelected] = useState<Record<string, string>>(() => {
@@ -202,7 +206,13 @@ function EditForm({
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
           <FieldLabel>Group name</FieldLabel>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Morning pills" />
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Morning pills"
+            placeholderTextColor={theme.textSecondary}
+          />
 
           <FieldLabel>Scheduled time</FieldLabel>
           <View style={styles.timeRow}>
@@ -211,6 +221,7 @@ function EditForm({
               value={scheduledTime}
               onChangeText={setScheduledTime}
               placeholder="HH:MM"
+              placeholderTextColor={theme.textSecondary}
             />
             <ThemedText type="small" themeColor="textSecondary">
               {TIME_RE.test(scheduledTime) ? to12h(scheduledTime) : ''}
@@ -263,6 +274,8 @@ function MemberRow({
   onToggle: () => void;
   onChangeQuantity: (value: string) => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const isSelected = selectedValue !== undefined;
   return (
     <View style={styles.memberRow}>
@@ -282,6 +295,7 @@ function MemberRow({
           onChangeText={onChangeQuantity}
           keyboardType="numeric"
           placeholder="Qty override"
+          placeholderTextColor={theme.textSecondary}
         />
       )}
     </View>
@@ -289,6 +303,7 @@ function MemberRow({
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -296,7 +311,8 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -304,7 +320,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
   error: { color: Brand.danger, marginVertical: Spacing.two },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   timeInput: { width: 100 },
   // No maxHeight here — this list flows in the screen's outer ScrollView,
@@ -319,7 +335,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -330,9 +346,10 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
   removeButton: { borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', borderWidth: 1, borderColor: Brand.danger, marginTop: Spacing.three },
   removeButtonText: { color: Brand.danger, fontWeight: '600' },
 });
+}

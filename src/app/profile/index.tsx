@@ -15,6 +15,7 @@ import type { UserProfile } from '@/lib/types/profile';
 // Profile picture upload is skipped this round — no image picker is
 // installed, same deferral already made for family member photos.
 export default function MyProfileScreen() {
+  const styles = getStyles(useTheme());
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export default function MyProfileScreen() {
 
 function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: () => void }) {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const [firstName, setFirstName] = useState(profile?.first_name ?? '');
   const [lastName, setLastName] = useState(profile?.last_name ?? '');
@@ -254,6 +256,7 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -262,6 +265,7 @@ function FieldLabel({ children }: { children: string }) {
 }
 
 function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
       <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
@@ -271,26 +275,28 @@ function UnitButton({ label, active, onPress }: { label: string; active: boolean
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
   error: { color: Brand.danger, marginVertical: Spacing.two },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
   rowInput: { flex: 1 },
-  unitToggle: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  unitToggle: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
   unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
-  unitButtonActive: { backgroundColor: Brand.card },
-  unitText: { color: Brand.textMuted },
-  unitTextActive: { color: Brand.text, fontWeight: '700' },
+  unitButtonActive: { backgroundColor: theme.backgroundElement },
+  unitText: { color: theme.textSecondary },
+  unitTextActive: { color: theme.text, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  section: { marginTop: Spacing.five, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Brand.border },
+  section: { marginTop: Spacing.five, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
 });
+}

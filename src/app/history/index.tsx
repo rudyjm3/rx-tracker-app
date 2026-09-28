@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
 import {
@@ -76,6 +77,8 @@ function statusBadge(row: CalendarLogRow, graceMinutes: number): { label: string
 }
 
 export default function HistoryScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [selectedMedicationId, setSelectedMedicationId] = useState<string>(ALL_MEDICATIONS);
@@ -293,6 +296,7 @@ export default function HistoryScreen() {
 }
 
 function PickerRow({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <Pressable style={styles.pickerRow} onPress={onPress}>
       <ThemedText style={selected ? styles.pickerRowSelected : undefined}>{label}</ThemedText>
@@ -364,6 +368,8 @@ function EditDoseLogSheet({
   onSaved: () => void;
   onDeleted: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [status, setStatus] = useState<DoseLogStatus>(log.status);
   const [time, setTime] = useState(() => timeFromIso(log.taken_at) ?? nowTime());
   const [painLevel, setPainLevel] = useState<number>(log.pain_level ?? 5);
@@ -494,6 +500,7 @@ function EditDoseLogSheet({
                       value={time}
                       onChangeText={setTime}
                       placeholder="HH:MM"
+                      placeholderTextColor={theme.textSecondary}
                     />
 
                     {trackPain && (
@@ -568,6 +575,7 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.stepperBlock}>
       <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
@@ -603,13 +611,14 @@ function LevelStepper({
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   filterField: {
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     padding: Spacing.three,
     marginBottom: Spacing.three,
   },
@@ -618,11 +627,11 @@ const styles = StyleSheet.create({
   rangeChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   rangeChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
@@ -642,7 +651,7 @@ const styles = StyleSheet.create({
   modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
   modalList: { maxHeight: 320 },
-  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
+  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
   pickerRowSelected: { fontWeight: '700', color: Brand.deepBlue },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
@@ -655,18 +664,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.two,
   },
-  statusChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  statusChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   statusChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   input: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
+    color: theme.text,
+    backgroundColor: theme.backgroundElement,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   stepperBlock: { marginTop: Spacing.one },
@@ -676,7 +687,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -701,7 +712,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
     alignItems: 'center',
@@ -711,3 +722,4 @@ const styles = StyleSheet.create({
   deleteButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   deleteButtonText: { color: Brand.danger, fontWeight: '600' },
 });
+}

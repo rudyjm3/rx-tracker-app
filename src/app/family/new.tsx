@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import {
   AVATAR_COLOR_PALETTE,
@@ -20,6 +21,8 @@ import {
 // installed, and it's a separate scope (see AGENTS task notes for this
 // feature).
 export default function NewFamilyMemberScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { refreshFamilyProfiles, setActiveProfileId } = useActiveProfile();
 
   const [firstName, setFirstName] = useState('');
@@ -132,13 +135,13 @@ export default function NewFamilyMemberScreen() {
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
           <FieldLabel>First name</FieldLabel>
-          <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="e.g. Sarah" maxLength={50} />
+          <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="e.g. Sarah" placeholderTextColor={theme.textSecondary} maxLength={50} />
 
           <FieldLabel>Last name</FieldLabel>
-          <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="e.g. Johnson" maxLength={50} />
+          <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="e.g. Johnson" placeholderTextColor={theme.textSecondary} maxLength={50} />
 
           <FieldLabel>Display name (optional — defaults to first name)</FieldLabel>
-          <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} placeholder="e.g. Sarah" maxLength={100} />
+          <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} placeholder="e.g. Sarah" placeholderTextColor={theme.textSecondary} maxLength={100} />
 
           <FieldLabel>Relationship</FieldLabel>
           <View style={styles.chipRow}>
@@ -161,6 +164,7 @@ export default function NewFamilyMemberScreen() {
             value={birthDate}
             onChangeText={setBirthDate}
             placeholder="1990-01-15"
+            placeholderTextColor={theme.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -173,6 +177,7 @@ export default function NewFamilyMemberScreen() {
               onChangeText={setHeightValue}
               keyboardType="numeric"
               placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
+              placeholderTextColor={theme.textSecondary}
             />
             <View style={styles.unitToggle}>
               <UnitButton label="in" active={heightUnit === 'in'} onPress={() => handleHeightUnitChange('in')} />
@@ -188,6 +193,7 @@ export default function NewFamilyMemberScreen() {
               onChangeText={setWeightValue}
               keyboardType="numeric"
               placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
+              placeholderTextColor={theme.textSecondary}
             />
             <View style={styles.unitToggle}>
               <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => handleWeightUnitChange('lb')} />
@@ -226,6 +232,7 @@ export default function NewFamilyMemberScreen() {
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -234,6 +241,7 @@ function FieldLabel({ children }: { children: string }) {
 }
 
 function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
       <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
@@ -243,24 +251,25 @@ function UnitButton({ label, active, onPress }: { label: string; active: boolean
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
   title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
   error: { color: Brand.danger, marginVertical: Spacing.two },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
   rowInput: { flex: 1 },
-  unitToggle: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  unitToggle: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
   unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
-  unitButtonActive: { backgroundColor: Brand.card },
-  unitText: { color: Brand.textMuted },
-  unitTextActive: { color: Brand.text, fontWeight: '700' },
+  unitButtonActive: { backgroundColor: theme.backgroundElement },
+  unitText: { color: theme.textSecondary },
+  unitTextActive: { color: theme.text, fontWeight: '700' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
-  chip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chip: { borderWidth: 1, borderColor: theme.border, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   chipTextSelected: { color: Brand.deepBlue, fontWeight: '700' },
   colorRow: { flexDirection: 'row', gap: Spacing.two },
   colorSwatch: { width: 32, height: 32, borderRadius: 16 },
@@ -268,7 +277,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
 });
+}
