@@ -335,7 +335,11 @@ export function buildDayDetails(
     const isFuture = date > todayDate;
     day.isFuture = isFuture;
 
-    const medsForDate = medications.filter((m) => m.active);
+    // A medication with a null start_date has no explicit lower bound in
+    // generateDaySlots, so without this it would report planned doses for
+    // every date back to month zero — including dates before it even
+    // existed. Fall back to its creation date as the effective start.
+    const medsForDate = medications.filter((m) => m.active && date >= (m.start_date ?? m.created_at.slice(0, 10)));
     const slots = generateDaySlots(date, medsForDate, groups, groupMembers, [], [], {
       ignoreDashboardVisibility: true,
     });

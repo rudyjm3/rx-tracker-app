@@ -174,6 +174,7 @@ export default function CalendarScreen() {
                 const isFuture = detail ? detail.isFuture : cell.date > today;
                 const marker = markers[cell.date];
                 const color = DAY_COLORS[calendarDayColor(isFuture, marker)];
+                const onColoredBg = color.bg !== 'transparent';
                 const isToday = cell.date === today;
                 const hasMarkerCounts =
                   !isFuture && marker && (marker.taken > 0 || marker.skipped > 0 || marker.missed > 0);
@@ -186,35 +187,52 @@ export default function CalendarScreen() {
                     onPress={() => setSelectedDate(cell.date)}
                   >
                     <View style={[styles.dayBox, { backgroundColor: color.bg }, isToday && styles.todayRing]}>
-                      <ThemedText type="small" style={color.bg === 'transparent' ? undefined : { color: color.text }}>
+                      <ThemedText type="small" style={onColoredBg ? { color: color.text } : undefined}>
                         {cell.day}
                       </ThemedText>
                       {detail && (
-                        <ThemedText type="small" themeColor="textSecondary" style={styles.totalDosesText}>
+                        <ThemedText
+                          type="small"
+                          themeColor={onColoredBg ? undefined : 'textSecondary'}
+                          style={[styles.totalDosesText, onColoredBg && { color: color.text }]}
+                        >
                           Req {detail.plannedRequired}/Non-req {detail.plannedNonRequired}
                         </ThemedText>
                       )}
                       {hasMarkerCounts && (
                         <View style={styles.countsRow}>
                           {marker!.taken > 0 && (
-                            <ThemedText type="small" style={[styles.countText, { color: COUNT_COLORS.taken }]}>
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.taken }]}
+                            >
                               {marker!.taken}T
                             </ThemedText>
                           )}
                           {marker!.skipped > 0 && (
-                            <ThemedText type="small" style={[styles.countText, { color: COUNT_COLORS.skipped }]}>
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.skipped }]}
+                            >
                               {marker!.skipped}S
                             </ThemedText>
                           )}
                           {marker!.missed > 0 && (
-                            <ThemedText type="small" style={[styles.countText, { color: COUNT_COLORS.missed }]}>
+                            <ThemedText
+                              type="small"
+                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.missed }]}
+                            >
                               {marker!.missed}M
                             </ThemedText>
                           )}
                         </View>
                       )}
                       {endingMedications.length > 0 && (
-                        <ThemedText type="small" numberOfLines={1} style={styles.endingText}>
+                        <ThemedText
+                          type="small"
+                          numberOfLines={1}
+                          style={[styles.endingText, onColoredBg && { color: color.text }]}
+                        >
                           {endingMedications.length === 1
                             ? `Ends today: ${endingMedications[0].name}`
                             : `Ends today: ${endingMedications[0].name} +${endingMedications.length - 1} more`}
@@ -301,12 +319,16 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
               <View key={group.groupId} style={styles.groupCard}>
                 <ThemedText style={styles.groupName}>{group.groupName}</ThemedText>
                 {group.medications.map((slot) => (
-                  <PlannedSlotRow key={slot.medicationId} slot={slot} endingToday={endingIds.has(slot.medicationId)} />
+                  <PlannedSlotRow
+                    key={`${slot.medicationId}-${slot.scheduledTime}`}
+                    slot={slot}
+                    endingToday={endingIds.has(slot.medicationId)}
+                  />
                 ))}
               </View>
             ))}
             {day.plannedMedications.map((slot) => (
-              <View key={slot.medicationId} style={styles.medicationCard}>
+              <View key={`${slot.medicationId}-${slot.scheduledTime}`} style={styles.medicationCard}>
                 <PlannedSlotRow slot={slot} endingToday={endingIds.has(slot.medicationId)} />
               </View>
             ))}
