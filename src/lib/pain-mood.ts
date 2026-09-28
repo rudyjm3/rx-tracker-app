@@ -67,6 +67,38 @@ export async function createStandaloneLog(input: CreateStandaloneLogInput): Prom
   if (error) throw error;
 }
 
+export interface UpdateStandaloneLogInput {
+  logType: PainMoodLogType;
+  painLevel?: number | null;
+  moodLevel?: number | null;
+  note?: string;
+  tags?: string;
+}
+
+// Adapted from rx-tracker-web's updateStandaloneLog, scoped to this app's
+// standalone (medication_id null) entries only — this app has no
+// medication-attachment picker for a standalone log the way web's
+// MedicationSelector does, so medication_id is never touched here.
+export async function updateStandaloneLog(id: string, input: UpdateStandaloneLogInput): Promise<void> {
+  const { error } = await supabase
+    .from("standalone_pain_mood_logs")
+    .update({
+      log_type: input.logType,
+      pain_level: input.painLevel ?? null,
+      mood_level: input.moodLevel ?? null,
+      note: input.note ?? "",
+      tags: input.tags ?? "",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteStandaloneLog(id: string): Promise<void> {
+  const { error } = await supabase.from("standalone_pain_mood_logs").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // ── Mood tags ────────────────────────────────────────────────────────
 
 const MOOD_TAGS_SEEDED_KEY = "mood_tags_seeded";
@@ -168,6 +200,13 @@ export interface StandaloneHistoryEntry {
   moodLevel: number | null;
   note: string;
   tags: string[];
+  // "standalone" entries (logged directly on this tab) can be edited/
+  // deleted here via updateStandaloneLog/deleteStandaloneLog. "dose"
+  // entries were captured through the "mark dose taken with feedback"
+  // flow and are edited from a medication's own dose history instead
+  // (History tab / medications/[id]'s dose history) — this tab shows them
+  // read-only rather than duplicating that edit flow.
+  source: "dose" | "standalone";
 }
 
 function toHistoryEntry(log: StandalonePainMoodLog): StandaloneHistoryEntry {
@@ -179,6 +218,7 @@ function toHistoryEntry(log: StandalonePainMoodLog): StandaloneHistoryEntry {
     moodLevel: log.mood_level,
     note: log.note,
     tags: log.tags ? log.tags.split(",").filter(Boolean) : [],
+    source: "standalone",
   };
 }
 
@@ -214,6 +254,7 @@ function mapDoseLogToHistoryEntry(log: DoseLog): StandaloneHistoryEntry {
     moodLevel: log.mood_level,
     note: log.note,
     tags: [], // dose_logs carries no mood-tag column, unlike standalone entries.
+    source: "dose",
   };
 }
 

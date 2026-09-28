@@ -25,6 +25,7 @@ import {
   createMoodTag,
   createStandaloneLog,
   deleteMoodTag,
+  deleteStandaloneLog,
   getHistory,
   getMoodTags,
   getTrend,
@@ -33,6 +34,7 @@ import {
   rangeDatesForDays,
   renameMoodTag,
   setMoodTagAlwaysShow,
+  updateStandaloneLog,
   type RangeDays,
   type StandaloneHistoryEntry,
   type TrendPoint,
@@ -60,6 +62,7 @@ export default function PainMoodScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [manageTagsOpen, setManageTagsOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<StandaloneHistoryEntry | null>(null);
 
   const [history, setHistory] = useState<StandaloneHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -362,7 +365,9 @@ export default function PainMoodScreen() {
           ) : history.length === 0 ? (
             <ThemedText themeColor="textSecondary">No entries yet. Log a pain or mood level above.</ThemedText>
           ) : (
-            history.map((entry) => <HistoryCard key={entry.id} entry={entry} />)
+            history.map((entry) => (
+              <HistoryCard key={entry.id} entry={entry} onEdit={() => setEditingEntry(entry)} />
+            ))
           )}
         </ScrollView>
       </SafeAreaView>
@@ -372,6 +377,22 @@ export default function PainMoodScreen() {
           tags={moodTags}
           onClose={() => setManageTagsOpen(false)}
           onChanged={() => load()}
+        />
+      )}
+
+      {editingEntry && (
+        <EditEntrySheet
+          entry={editingEntry}
+          moodTags={moodTags}
+          onClose={() => setEditingEntry(null)}
+          onSaved={async () => {
+            setEditingEntry(null);
+            await Promise.all([load(true), loadTrend()]);
+          }}
+          onDeleted={async () => {
+            setEditingEntry(null);
+            await Promise.all([load(true), loadTrend()]);
+          }}
         />
       )}
     </ThemedView>
@@ -560,6 +581,192 @@ function ManageTagsSheet({
   );
 }
 
+// Edits or deletes a standalone entry in place — port of rx-tracker-web's
+// EditLevelLogDialog, scoped to this app's merged-feed history (no
+// medication-attachment picker, since this app has no equivalent of web's
+// MedicationSelector). Only ever opened for entry.source === 'standalone'
+// (see HistoryCard) — a dose-linked entry has no matching row in
+// standalone_pain_mood_logs for updateStandaloneLog/deleteStandaloneLog to
+// touch, and is edited from the medication's own dose history instead.
+function EditEntrySheet({
+  entry,
+  moodTags,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  entry: StandaloneHistoryEntry;
+  moodTags: MoodTag[];
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [trackPain, setTrackPain] = useState(entry.painLevel != null);
+  const [trackMood, setTrackMood] = useState(entry.moodLevel != null);
+  const [painLevel, setPainLevel] = useState(entry.painLevel ?? DEFAULT_LEVEL);
+  const [moodLevel, setMoodLevel] = useState(entry.moodLevel ?? DEFAULT_LEVEL);
+  const [note, setNote] = useState(entry.note);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(
+    () => new Set(moodTags.filter((t) => entry.tags.includes(t.name)).map((t) => t.id)),
+  );
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function toggleTag(id: string) {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setFormError(null);
+    if (!trackPain && !trackMood) {
+      setFormError('Log at least a pain level or a mood level.');
+      return;
+    }
+    const tagNames = moodTags
+      .filter((t) => selectedTagIds.has(t.id))
+      .map((t) => t.name)
+      .join(',');
+    setSaving(true);
+    try {
+      await updateStandaloneLog(entry.id, {
+        logType: trackPain && trackMood ? 'both' : trackPain ? 'pain' : 'mood',
+        painLevel: trackPain ? painLevel : null,
+        moodLevel: trackMood ? moodLevel : null,
+        note: note.trim(),
+        tags: trackMood ? tagNames : '',
+      });
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Failed to save changes');
+      setSaving(false);
+    }
+  }
+
+  function handleDelete() {
+    confirmDestructive('Delete this entry?', undefined, 'Delete', async () => {
+      setFormError(null);
+      setDeleting(true);
+      try {
+        await deleteStandaloneLog(entry.id);
+        onDeleted();
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : "Couldn't delete entry");
+        setDeleting(false);
+      }
+    });
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Edit entry
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <View style={styles.switchRow}>
+                  <ThemedText>Log pain</ThemedText>
+                  <Switch value={trackPain} onValueChange={setTrackPain} />
+                </View>
+                {trackPain && (
+                  <LevelStepper
+                    label="Pain level"
+                    value={painLevel}
+                    onChange={setPainLevel}
+                    color={levelColor('pain', painLevel)}
+                  />
+                )}
+
+                <View style={styles.switchRow}>
+                  <ThemedText>Log mood</ThemedText>
+                  <Switch value={trackMood} onValueChange={setTrackMood} />
+                </View>
+                {trackMood && (
+                  <>
+                    <LevelStepper
+                      label="Mood level"
+                      value={moodLevel}
+                      onChange={setMoodLevel}
+                      color={levelColor('mood', moodLevel)}
+                    />
+                    <FieldLabel>Tags</FieldLabel>
+                    <View style={styles.tagList}>
+                      {moodTags.map((tag) => {
+                        const selected = selectedTagIds.has(tag.id);
+                        return (
+                          <Pressable
+                            key={tag.id}
+                            style={[styles.tagChip, selected && styles.tagChipSelected]}
+                            onPress={() => toggleTag(tag.id)}
+                          >
+                            <ThemedText type="small" style={selected ? styles.tagTextSelected : styles.tagText}>
+                              {tag.name}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+
+                <FieldLabel>Note (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="How are you feeling?"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                />
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.primaryButton,
+                      { flex: 1, marginTop: 0 },
+                      (saving || (!trackPain && !trackMood)) && styles.disabled,
+                    ]}
+                    onPress={handleSave}
+                    disabled={saving || deleting || (!trackPain && !trackMood)}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+
+                <Pressable onPress={handleDelete} disabled={saving || deleting} style={styles.deleteButton}>
+                  <ThemedText style={styles.deleteButtonText}>
+                    {deleting ? 'Deleting…' : 'Delete entry'}
+                  </ThemedText>
+                </Pressable>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function LevelStepper({
   label,
   value,
@@ -605,7 +812,7 @@ function LevelStepper({
   );
 }
 
-function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
+function HistoryCard({ entry, onEdit }: { entry: StandaloneHistoryEntry; onEdit: () => void }) {
   const styles = getStyles(useTheme());
   return (
     <ThemedView type="backgroundElement" style={styles.historyCard}>
@@ -633,6 +840,17 @@ function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
             </View>
           ))}
         </View>
+      )}
+      {entry.source === 'standalone' ? (
+        <Pressable onPress={onEdit} hitSlop={8} style={styles.historyEditButton}>
+          <ThemedText type="small" style={styles.manageTagsLink}>
+            Edit
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.historyEditButton}>
+          Logged with a dose — edit from the medication&apos;s history
+        </ThemedText>
       )}
     </ThemedView>
   );
@@ -713,6 +931,19 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   primaryButton: { backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', marginTop: Spacing.four },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
   disabled: { opacity: 0.6 },
+  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  secondaryButtonText: { fontWeight: '600' },
+  deleteButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
+  deleteButtonText: { color: Brand.danger, fontWeight: '600' },
+  historyEditButton: { marginTop: Spacing.one, alignSelf: 'flex-start' },
   sectionTitle: { marginTop: Spacing.five },
   metricToggleRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
   metricChip: {
