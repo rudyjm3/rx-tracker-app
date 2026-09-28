@@ -347,17 +347,18 @@ export function buildDayDetails(
     const prnSlots = slots.filter((s) => s.isPrn);
 
     // Both counts are actual logged totals for the date, topped up with
-    // any planned occurrence whose medication has no log yet — never the
-    // current schedule's raw projection alone for a date with logs. A
-    // medication's medication_schedule_times get deleted and reinserted on
-    // every edit, so projecting *today's* schedule onto a past date after
-    // the regimen changed would silently zero out doses that were
-    // genuinely logged under the schedule that applied back then; the
-    // actual per-medication totals already on `day` don't have that
-    // problem. A date can also have one required dose already logged
-    // (making groupIdsByDateAndMedication true) while its group's PRN
-    // member is still unlogged, so the "topped up with unlogged planned
-    // slots" half still matters even on a mostly-logged date.
+    // any planned occurrence with no log yet — never the current
+    // schedule's raw projection alone for a date with logs.
+    // medication_schedule_times get deleted and reinserted on every edit,
+    // so projecting *today's* schedule onto a past date after the regimen
+    // changed would silently zero out doses that were genuinely logged
+    // under the schedule that applied back then; the actual per-medication
+    // totals already on `day` don't have that problem. The top-up is keyed
+    // by medication+time, not just medication: a medication with more than
+    // one required slot a day (e.g. twice-daily) must keep its still-
+    // unlogged evening slot planned after only its morning dose is logged,
+    // rather than having any one logged dose mark the whole medication
+    // "done" for the date.
     const sumTotals = (meds: CalendarDayMedicationSummary[], asNeeded: boolean) =>
       meds.reduce(
         (n, m) => n + ((medsById.get(m.medicationId)?.as_needed ?? false) === asNeeded ? m.total : 0),
@@ -367,12 +368,16 @@ export function buildDayDetails(
       sumTotals(day.medications, false) + day.groups.reduce((n, g) => n + sumTotals(g.medications, false), 0);
     const loggedNonRequired =
       sumTotals(day.medications, true) + day.groups.reduce((n, g) => n + sumTotals(g.medications, true), 0);
-    const loggedMedicationIdsForDate = new Set([
-      ...day.medications.map((m) => m.medicationId),
-      ...day.groups.flatMap((g) => g.medications.map((m) => m.medicationId)),
-    ]);
-    const unloggedRequiredSlots = requiredSlots.filter((s) => !loggedMedicationIdsForDate.has(s.medicationId));
-    const unloggedPrnSlots = prnSlots.filter((s) => !loggedMedicationIdsForDate.has(s.medicationId));
+    const loggedSlotKeys = new Set<string>();
+    for (const m of [...day.medications, ...day.groups.flatMap((g) => g.medications)]) {
+      for (const s of m.slots) loggedSlotKeys.add(`${m.medicationId}|${s.time}`);
+    }
+    const unloggedRequiredSlots = requiredSlots.filter(
+      (s) => !loggedSlotKeys.has(`${s.medicationId}|${s.scheduledTime}`),
+    );
+    const unloggedPrnSlots = prnSlots.filter(
+      (s) => !loggedSlotKeys.has(`${s.medicationId}|${s.scheduledTime}`),
+    );
     day.plannedRequired = loggedRequired + unloggedRequiredSlots.length;
     day.plannedNonRequired = loggedNonRequired + unloggedPrnSlots.length;
 

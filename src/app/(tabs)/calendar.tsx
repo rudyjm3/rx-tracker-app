@@ -302,8 +302,17 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     </View>
   );
 
+  const totalPlannedSlots =
+    day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0);
+  // Distinct medications, not planned slot entries — a medication with
+  // more than one occurrence that day (e.g. twice-daily) must still count
+  // once, consistent with the non-future branch's medication summaries.
+  const totalPlannedMedications = new Set([
+    ...day.plannedMedications.map((m) => m.medicationId),
+    ...day.plannedGroups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+  ]).size;
   const totalMedicationsForSummary = day.isFuture
-    ? day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0)
+    ? totalPlannedMedications
     : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
   const summaryLine = (
     <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
@@ -313,7 +322,7 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
   );
 
   if (day.isFuture) {
-    const totalPlanned = totalMedicationsForSummary;
+    const totalPlanned = totalPlannedSlots;
     return (
       <View>
         {summaryLine}
