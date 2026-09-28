@@ -302,14 +302,21 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     </View>
   );
 
+  const totalMedicationsForSummary = day.isFuture
+    ? day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0)
+    : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+  const summaryLine = (
+    <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
+      Medications: {totalMedicationsForSummary} | Planned doses — Required: {day.plannedRequired} / Non-required:{' '}
+      {day.plannedNonRequired}
+    </ThemedText>
+  );
+
   if (day.isFuture) {
-    const totalPlanned =
-      day.plannedMedications.length + day.plannedGroups.reduce((n, g) => n + g.medications.length, 0);
+    const totalPlanned = totalMedicationsForSummary;
     return (
       <View>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
-          Planned doses — Required: {day.plannedRequired} / Non-required: {day.plannedNonRequired}
-        </ThemedText>
+        {summaryLine}
         {endingCallout}
         {totalPlanned === 0 ? (
           <ThemedText themeColor="textSecondary">No doses planned for this day.</ThemedText>
@@ -338,11 +345,11 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     );
   }
 
-  const totalMedications =
-    day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+  const totalMedications = totalMedicationsForSummary;
 
   return (
     <View>
+      {summaryLine}
       {endingCallout}
       {totalMedications === 0 ? (
         <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
