@@ -14,6 +14,7 @@ import type { MedicationType, ScheduleMode } from '@/lib/types/medications';
 import { to12h } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface NewMedicationFormState {
   name: string;
@@ -32,6 +33,7 @@ interface NewMedicationFormState {
   inventoryUnit: string;
   startingQuantity: string;
   lowSupplyThreshold: string;
+  endDate: string;
 }
 
 // Matches rx-tracker-web's components/medications/wizard/schema.ts
@@ -53,6 +55,7 @@ const initialState: NewMedicationFormState = {
   inventoryUnit: 'tablets',
   startingQuantity: '',
   lowSupplyThreshold: '5',
+  endDate: '',
 };
 
 export default function NewMedicationScreen() {
@@ -124,6 +127,10 @@ export default function NewMedicationScreen() {
         return;
       }
     }
+    if (form.endDate && !DATE_RE.test(form.endDate)) {
+      setFormError('End date must be in YYYY-MM-DD format.');
+      return;
+    }
 
     const input: MedicationInput = {
       name: form.name.trim(),
@@ -147,6 +154,7 @@ export default function NewMedicationScreen() {
       reminders_enabled: true,
       adherence_enabled: true,
       profile_id: activeProfileId,
+      end_date: form.endDate || null,
     };
 
     const scheduleTimes: ScheduleTimeInput[] =
@@ -302,6 +310,17 @@ export default function NewMedicationScreen() {
             value={form.quantityPerDose}
             onChangeText={(v) => update('quantityPerDose', v)}
           />
+
+          <FieldLabel>End date (optional)</FieldLabel>
+          <TextInput
+            style={styles.input}
+            value={form.endDate}
+            onChangeText={(v) => update('endDate', v)}
+            placeholder="YYYY-MM-DD"
+          />
+          <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
+            The regimen stops generating doses after this date. Leave blank for an ongoing medication.
+          </ThemedText>
 
           <View style={styles.switchRow}>
             <ThemedText>Track inventory</ThemedText>
