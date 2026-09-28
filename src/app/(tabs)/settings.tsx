@@ -19,13 +19,16 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   browserTimezone,
   getMissedGraceMinutes,
+  getMoodChartScheme,
   getSnoozeMinutes,
   getUseDeviceTimezone,
   MISSED_GRACE_MAX_MINUTES,
   MISSED_GRACE_MIN_MINUTES,
   setMissedGraceMinutes,
+  setMoodChartScheme,
   setSnoozeMinutes,
   setUseDeviceTimezone,
+  type MoodChartScheme,
 } from '@/lib/app-settings';
 import {
   cancelAllReminderNotifications,
@@ -53,6 +56,8 @@ export default function SettingsScreen() {
   const [graceError, setGraceError] = useState<string | null>(null);
   const [snoozeMinutes, setSnoozeMinutesState] = useState<number | null>(null);
   const [useDeviceTimezone, setUseDeviceTimezoneState] = useState(true);
+  const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
+  const [moodSchemeError, setMoodSchemeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,15 +73,17 @@ export default function SettingsScreen() {
     })();
     (async () => {
       try {
-        const [grace, snooze, useDevice] = await Promise.all([
+        const [grace, snooze, useDevice, moodScheme] = await Promise.all([
           getMissedGraceMinutes(),
           getSnoozeMinutes(),
           getUseDeviceTimezone(),
+          getMoodChartScheme(),
         ]);
         if (cancelled) return;
         setGraceMinutesInput(String(grace));
         setSnoozeMinutesState(snooze);
         setUseDeviceTimezoneState(useDevice);
+        setMoodChartSchemeState(moodScheme);
       } catch {
         // No session yet — leave defaults in place.
       }
@@ -125,6 +132,17 @@ export default function SettingsScreen() {
       await setUseDeviceTimezone(value);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save time zone setting');
+    }
+  }
+
+  async function handleMoodChartSchemeToggle(useTeal: boolean) {
+    const scheme: MoodChartScheme = useTeal ? 'teal' : 'classic';
+    setMoodSchemeError(null);
+    setMoodChartSchemeState(scheme);
+    try {
+      await setMoodChartScheme(scheme);
+    } catch (e) {
+      setMoodSchemeError(e instanceof Error ? e.message : "Couldn't save mood chart color");
     }
   }
 
@@ -278,6 +296,27 @@ export default function SettingsScreen() {
                 trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
               />
             </View>
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="smallBold">Teal mood chart</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Use a teal gradient for the mood trend chart instead of the red-to-green scale.
+                </ThemedText>
+              </View>
+              <Switch
+                value={moodChartScheme === 'teal'}
+                onValueChange={handleMoodChartSchemeToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+            {moodSchemeError && (
+              <ThemedText type="small" style={styles.error}>
+                {moodSchemeError}
+              </ThemedText>
+            )}
           </ThemedView>
 
           <Pressable style={styles.card} onPress={() => router.push('/profile')}>

@@ -8,7 +8,7 @@
 // getDoseHistoryEntries/getDoseTrendPoints.
 import { supabase } from "@/lib/supabase/client";
 import { getActiveMedications, getCurrentUserId, getInactiveMedications } from "@/lib/medications";
-import { getSetting, setSetting } from "@/lib/app-settings";
+import { getSetting, setSetting, type MoodChartScheme } from "@/lib/app-settings";
 import { Brand } from "@/constants/theme";
 import { localDateString } from "@/lib/utils";
 import type { DoseLog, Medication, MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
@@ -23,16 +23,23 @@ export function medicationTracksMood(medication: Pick<Medication, "feedback_type
   return medication.feedback_type === "mood" || medication.feedback_type === "both";
 }
 
-// 3 severity bands, matching rx-tracker-web's levelColor() classic scheme
-// (its "teal mood chart" alternate scheme is out of scope here — see
-// AGENTS.md/task notes). Mood is inverted from pain: a low mood score is
-// the bad end, a low pain score is the good end.
-export function levelColor(metric: WellbeingMetric, level: number): string {
+// 3 severity bands, matching rx-tracker-web's levelColor(). Mood is
+// inverted from pain: a low mood score is the bad end, a low pain score
+// is the good end. `scheme` is the reference app's "Teal mood chart"
+// setting — mood-only (pain always uses the classic bands, matching web,
+// which never offers the toggle for pain charts either).
+export function levelColor(metric: WellbeingMetric, level: number, scheme: MoodChartScheme = "classic"): string {
   const rounded = Math.round(level);
   if (metric === "pain") {
     if (rounded <= 3) return Brand.success;
     if (rounded <= 6) return Brand.warning;
     return Brand.danger;
+  }
+  if (scheme === "teal") {
+    // Lighter teal = lower mood, darker teal = higher mood.
+    if (rounded <= 3) return "#a8dce4";
+    if (rounded <= 6) return "#4bb8c9";
+    return "#028aa9";
   }
   if (rounded <= 3) return Brand.danger;
   if (rounded <= 6) return Brand.warning;

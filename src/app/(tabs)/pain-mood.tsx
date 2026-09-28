@@ -20,6 +20,7 @@ import { TrendChart } from '@/components/TrendChart';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
+import { getMoodChartScheme, type MoodChartScheme } from '@/lib/app-settings';
 import { confirmDestructive } from '@/lib/confirm';
 import {
   createMoodTag,
@@ -71,6 +72,7 @@ export default function PainMoodScreen() {
 
   const [trendMetric, setTrendMetric] = useState<WellbeingMetric>('pain');
   const [trendRangeDays, setTrendRangeDays] = useState<RangeDays>(DEFAULT_RANGE_DAYS);
+  const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
@@ -94,13 +96,15 @@ export default function PainMoodScreen() {
     else setLoading(true);
     setLoadError(null);
     try {
-      const [tags, entries] = await Promise.all([
+      const [tags, entries, scheme] = await Promise.all([
         getMoodTags(),
         getHistory(50, activeProfileId),
+        getMoodChartScheme(),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
       setHistory(entries);
+      setMoodChartSchemeState(scheme);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
@@ -351,7 +355,12 @@ export default function PainMoodScreen() {
           {trendLoading ? (
             <ActivityIndicator style={styles.historyLoading} />
           ) : (
-            <TrendChart metric={trendMetric} points={trendPoints} rangeDays={trendRangeDays} />
+            <TrendChart
+              metric={trendMetric}
+              points={trendPoints}
+              rangeDays={trendRangeDays}
+              moodChartScheme={moodChartScheme}
+            />
           )}
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
