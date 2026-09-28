@@ -19,6 +19,7 @@ import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { computeAdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
@@ -49,6 +50,8 @@ const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 
 export default function DashboardScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [slots, setSlots] = useState<DaySlot[]>([]);
@@ -331,7 +334,7 @@ export default function DashboardScreen() {
                   hitSlop={8}
                   accessibilityLabel={`Supply alerts (${supplyAlerts.length})`}
                 >
-                  <Ionicons name="notifications-outline" size={22} color={Brand.text} />
+                  <Ionicons name="notifications-outline" size={22} color={theme.text} />
                   <View style={styles.bellBadge}>
                     <ThemedText type="small" style={styles.bellBadgeText}>
                       {supplyAlerts.length}
@@ -438,6 +441,7 @@ function AlertsSheet({
   alerts: ReturnType<typeof getSupplyAlerts>;
   onClose: () => void;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
@@ -496,6 +500,8 @@ function FeedbackSheet({
   onClose: () => void;
   onSubmit: (feedback?: DoseFeedback) => Promise<void>;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const medication = slot.medication;
   const trackPain = medicationTracksPain(medication);
   const trackMood = medicationTracksMood(medication);
@@ -576,6 +582,7 @@ function FeedbackSheet({
                   value={note}
                   onChangeText={setNote}
                   placeholder="How are you feeling?"
+                  placeholderTextColor={theme.textSecondary}
                   multiline
                 />
 
@@ -615,6 +622,7 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.stepperBlock}>
       <FieldLabel>{label}</FieldLabel>
@@ -649,6 +657,7 @@ function LevelStepper({
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -676,6 +685,7 @@ function EventRow({
   onSnooze: (slot: DaySlot) => void;
   emphasized?: boolean;
 }) {
+  const styles = getStyles(useTheme());
   const slots = event.kind === 'group' ? event.members : [event.slot];
   const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
   // event.time is the slot's effective due time (postponedUntil when
@@ -743,6 +753,7 @@ function SnoozeSheet({
   onClose: () => void;
   onSelect: (minutes: number) => void;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <Modal visible animationType="slide" transparent onRequestClose={busy ? undefined : onClose}>
       <Pressable style={styles.modalBackdrop} onPress={busy ? undefined : onClose}>
@@ -794,6 +805,8 @@ function ActionButton({
   busy: boolean;
   variant?: 'primary' | 'secondary';
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   return (
     <Pressable
       onPress={onPress}
@@ -805,7 +818,7 @@ function ActionButton({
       ]}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={variant === 'secondary' ? Brand.textMuted : '#ffffff'} />
+        <ActivityIndicator size="small" color={variant === 'secondary' ? theme.textSecondary : '#ffffff'} />
       ) : (
         <ThemedText
           type="small"
@@ -818,7 +831,8 @@ function ActionButton({
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -842,9 +856,9 @@ const styles = StyleSheet.create({
   bellBadgeText: { color: '#ffffff', fontSize: 10, lineHeight: 12, fontWeight: '700' },
   adherenceChip: {
     borderRadius: 999,
-    backgroundColor: Brand.bg,
+    backgroundColor: theme.backgroundSelected,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.half,
     paddingHorizontal: Spacing.two,
   },
@@ -865,11 +879,11 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   actionButton: {
     backgroundColor: Brand.deepBlue,
@@ -879,7 +893,7 @@ const styles = StyleSheet.create({
     minWidth: 64,
     alignItems: 'center',
   },
-  actionButtonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Brand.border },
+  actionButtonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.border },
   actionButtonDisabled: { opacity: 0.6 },
   actionText: { color: '#ffffff', fontWeight: '600' },
   actionTextSecondary: { fontWeight: '600' },
@@ -895,17 +909,19 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: 1,
-    borderBottomColor: Brand.border,
+    borderBottomColor: theme.border,
   },
   alertRowText: { flex: 1, gap: 2 },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
+    color: theme.text,
+    backgroundColor: theme.backgroundElement,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   stepperBlock: { marginTop: Spacing.one },
@@ -915,7 +931,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -933,10 +949,11 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
     alignItems: 'center',
   },
   secondaryButtonText: { fontWeight: '600' },
 });
+}

@@ -13,10 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SignupScreen() {
   const { signUp } = useAuth();
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export default function SignupScreen() {
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor={theme.textSecondary}
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
@@ -82,6 +86,7 @@ export default function SignupScreen() {
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor={theme.textSecondary}
             secureTextEntry
             autoComplete="password-new"
             value={password}
@@ -111,31 +116,35 @@ export default function SignupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, justifyContent: 'center', paddingHorizontal: Spacing.four, gap: Spacing.two },
-  form: { gap: Spacing.two },
-  title: { fontSize: 32, lineHeight: 38, marginBottom: Spacing.one },
-  subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  confirmTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.two },
-  confirmBody: { marginBottom: Spacing.three },
-  input: {
-    borderWidth: 1,
-    borderColor: Brand.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-  },
-  error: { color: Brand.danger },
-  button: {
-    backgroundColor: Brand.deepBlue,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    marginTop: Spacing.two,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#ffffff', fontWeight: '600' },
-  link: { marginTop: Spacing.three, alignSelf: 'center' },
-});
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
+    container: { flex: 1 },
+    safeArea: { flex: 1, justifyContent: 'center', paddingHorizontal: Spacing.four, gap: Spacing.two },
+    form: { gap: Spacing.two },
+    title: { fontSize: 32, lineHeight: 38, marginBottom: Spacing.one },
+    subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
+    confirmTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.two },
+    confirmBody: { marginBottom: Spacing.three },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: BorderRadius.sm,
+      paddingHorizontal: Spacing.three,
+      paddingVertical: Spacing.two,
+      fontSize: 16,
+      color: theme.text,
+      backgroundColor: theme.backgroundElement,
+    },
+    error: { color: Brand.danger },
+    button: {
+      backgroundColor: Brand.deepBlue,
+      borderRadius: BorderRadius.sm,
+      paddingVertical: Spacing.three,
+      alignItems: 'center',
+      marginTop: Spacing.two,
+    },
+    buttonDisabled: { opacity: 0.6 },
+    buttonText: { color: '#ffffff', fontWeight: '600' },
+    link: { marginTop: Spacing.three, alignSelf: 'center' },
+  });
+}

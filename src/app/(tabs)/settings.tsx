@@ -40,6 +40,7 @@ import { useAuth } from '@/lib/supabase/AuthProvider';
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
   const theme = useTheme();
+  const styles = getStyles(theme);
 
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [loadingSetting, setLoadingSetting] = useState(true);
@@ -302,7 +303,8 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
@@ -321,23 +323,25 @@ const styles = StyleSheet.create({
   graceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
   graceInput: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
     minWidth: 64,
     textAlign: 'center',
+    color: theme.text,
+    backgroundColor: theme.backgroundElement,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   button: {
     borderRadius: BorderRadius.sm,
@@ -349,3 +353,4 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: Brand.danger, fontWeight: '600' },
 });
+}

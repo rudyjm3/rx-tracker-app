@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { SNOOZE_OPTIONS, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import { formatClockTime } from '@/lib/utils';
 
@@ -45,6 +46,8 @@ export function DueNowOverlay({
   disabled,
   error,
 }: DueNowOverlayProps) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [manageEach, setManageEach] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<SnoozeTarget | null>(null);
 
@@ -164,7 +167,7 @@ export function DueNowOverlay({
                         disabled={disabled}
                       >
                         {disabled ? (
-                          <ActivityIndicator size="small" color={Brand.textMuted} />
+                          <ActivityIndicator size="small" color={theme.textSecondary} />
                         ) : (
                           <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
                         )}
@@ -228,6 +231,7 @@ function MemberRow({
   onSnoozeSelect: (minutes: number) => void;
   onSnoozeCancel: () => void;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.memberRow}>
       <View style={styles.memberRowTop}>
@@ -300,6 +304,7 @@ function SnoozeChipRow({
   onSelect: (minutes: number) => void;
   onCancel: () => void;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.snoozePicker}>
       <View style={styles.chipRow}>
@@ -325,7 +330,8 @@ function SnoozeChipRow({
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(7,29,61,0.55)',
@@ -372,12 +378,12 @@ const styles = StyleSheet.create({
   },
   primaryButton: { backgroundColor: Brand.deepBlue },
   primaryButtonText: { color: '#ffffff', fontWeight: '700' },
-  secondaryButton: { borderWidth: 1, borderColor: Brand.border },
+  secondaryButton: { borderWidth: 1, borderColor: theme.border },
   secondaryButtonText: { fontWeight: '600' },
   actionButtonDisabled: { opacity: 0.6 },
   manageEachButton: { alignSelf: 'center', marginTop: Spacing.one, padding: Spacing.one },
   memberList: { gap: Spacing.three },
-  memberRow: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: Brand.border, paddingTop: Spacing.two },
+  memberRow: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.two },
   memberRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   slotNameColumn: { flex: 1, gap: Spacing.half },
   slotName: { flex: 1 },
@@ -388,10 +394,11 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
 });
+}

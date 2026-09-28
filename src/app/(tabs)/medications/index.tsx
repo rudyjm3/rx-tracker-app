@@ -8,6 +8,7 @@ import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
@@ -17,6 +18,8 @@ import { daysUntilRunout, scheduleSummary } from '@/lib/utils';
 type ListTab = 'active' | 'inactive';
 
 export default function MedicationsScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -120,6 +123,7 @@ export default function MedicationsScreen() {
 }
 
 function SegmentButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <Pressable style={[styles.segmentButton, active && styles.segmentButtonActive]} onPress={onPress}>
       <ThemedText type="smallBold" style={active ? styles.segmentTextActive : styles.segmentText}>
@@ -130,6 +134,7 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
 }
 
 function MedicationCard({ medication }: { medication: Medication }) {
+  const styles = getStyles(useTheme());
   const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
   const starting = medication.starting_quantity ?? 0;
@@ -193,7 +198,8 @@ function MedicationCard({ medication }: { medication: Medication }) {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   // flexWrap lets the "Manage groups" + add-medication controls drop to
@@ -207,7 +213,7 @@ const styles = StyleSheet.create({
   groupsButton: {
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
@@ -221,11 +227,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: { color: '#ffffff', fontSize: 22, lineHeight: 24, fontWeight: '600' },
-  segmented: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2, marginBottom: Spacing.three },
+  segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2, marginBottom: Spacing.three },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: Brand.card },
-  segmentText: { color: Brand.textMuted },
-  segmentTextActive: { color: Brand.text },
+  segmentButtonActive: { backgroundColor: theme.backgroundElement },
+  segmentText: { color: theme.textSecondary },
+  segmentTextActive: { color: theme.text },
   error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
@@ -236,7 +242,8 @@ const styles = StyleSheet.create({
   typeBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   instructions: { marginTop: Spacing.half },
   inventorySection: { marginTop: Spacing.two, gap: Spacing.one },
-  inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: Brand.border, overflow: 'hidden' },
+  inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: theme.border, overflow: 'hidden' },
   inventoryBarFill: { height: '100%', borderRadius: 3 },
   lowSupplyText: { color: Brand.danger, fontWeight: '600' },
 });
+}

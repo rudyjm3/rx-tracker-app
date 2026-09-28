@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import {
   buildDayDetails,
@@ -23,12 +24,19 @@ import { localDateString } from '@/lib/utils';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-const DAY_COLORS: Record<CalendarDayColor, { bg: string; text: string }> = {
-  future: { bg: 'transparent', text: Brand.textMuted },
+// `text` is omitted for future/empty: both keep a 'transparent' bg, and the
+// only place this is consumed (below) reads `.text` exclusively behind an
+// `onColoredBg` check that's false whenever bg is 'transparent' — so a
+// text value here would never actually render. Leaving it out (rather than
+// wiring it to Brand.text/textMuted, which don't adapt to dark mode) means
+// those two rows fall through to ThemedText's own theme-aware default
+// instead of a color that would go invisible against a black background.
+const DAY_COLORS: Record<CalendarDayColor, { bg: string; text?: string }> = {
+  future: { bg: 'transparent' },
   missed: { bg: Brand.danger, text: '#ffffff' },
   skipped: { bg: Brand.warning, text: '#ffffff' },
   taken: { bg: Brand.success, text: '#ffffff' },
-  empty: { bg: 'transparent', text: Brand.text },
+  empty: { bg: 'transparent' },
 };
 
 const COUNT_COLORS = {
@@ -38,6 +46,8 @@ const COUNT_COLORS = {
 };
 
 export default function CalendarScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
@@ -282,6 +292,7 @@ export default function CalendarScreen() {
 }
 
 function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
+  const styles = getStyles(useTheme());
   if (!day) {
     return <ThemedText themeColor="textSecondary">No data for this day.</ThemedText>;
   }
@@ -397,6 +408,7 @@ function MedicationSummaryRow({
   med: CalendarDayDetail['medications'][number];
   endingToday: boolean;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
       <ThemedText style={styles.medicationName}>
@@ -432,6 +444,7 @@ function PlannedSlotRow({
   slot: CalendarDayDetail['plannedMedications'][number];
   endingToday: boolean;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
       <View style={styles.slotRow}>
@@ -452,6 +465,7 @@ function PlannedSlotRow({
 }
 
 function LegendItem({ color, label }: { color: string; label: string }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.legendItem}>
       <View style={[styles.legendDot, { backgroundColor: color }]} />
@@ -464,7 +478,8 @@ function LegendItem({ color, label }: { color: string; label: string }) {
 
 const CELL_SIZE = '14.28%' as const;
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
@@ -472,7 +487,7 @@ const styles = StyleSheet.create({
   historyButton: {
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
@@ -520,7 +535,7 @@ const styles = StyleSheet.create({
   endingNote: { color: '#b45309', fontWeight: '600', marginTop: 2 },
   groupCard: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     padding: Spacing.two,
     marginBottom: Spacing.three,
@@ -529,7 +544,7 @@ const styles = StyleSheet.create({
   groupName: { fontWeight: '700', marginBottom: 2 },
   medicationCard: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     padding: Spacing.two,
     marginBottom: Spacing.three,
@@ -541,3 +556,4 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });
+}

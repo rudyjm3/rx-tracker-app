@@ -50,6 +50,8 @@ interface AllergyPanelProps {
 }
 
 export function AllergyPanel({ profileId }: AllergyPanelProps) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [catalog, setCatalog] = useState<AllergyCatalogEntry[]>([]);
   const [allergies, setAllergies] = useState<ProfileAllergyWithName[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,6 +164,7 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
       {editing !== null && (
         <AllergyFormSheet
           key={editing === 'new' ? 'new' : editing.id}
+          styles={styles}
           profileId={profileId}
           existing={editing === 'new' ? null : editing}
           catalog={catalog}
@@ -177,12 +180,14 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
 }
 
 function AllergyFormSheet({
+  styles,
   profileId,
   existing,
   catalog,
   onClose,
   onSaved,
 }: {
+  styles: ReturnType<typeof getStyles>;
   profileId: string | null;
   existing: ProfileAllergyWithName | null;
   catalog: AllergyCatalogEntry[];
@@ -423,6 +428,7 @@ function AllergyFormSheet({
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -431,6 +437,7 @@ function FieldLabel({ children }: { children: string }) {
 }
 
 function PickerRow({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <Pressable style={styles.pickerRow} onPress={onPress}>
       <ThemedText style={selected ? styles.pickerRowSelected : undefined}>{label}</ThemedText>
@@ -438,7 +445,8 @@ function PickerRow({ label, selected, onPress }: { label: string; selected: bool
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { gap: Spacing.two },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   addButton: {
@@ -470,14 +478,14 @@ const styles = StyleSheet.create({
   modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
   pickerList: { maxHeight: 320 },
-  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
+  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
   pickerRowSelected: { fontWeight: '700', color: Brand.deepBlue },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
@@ -488,12 +496,12 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   chipTextSelected: { color: Brand.deepBlue, fontWeight: '700' },
   switchRow: {
     flexDirection: 'row',
@@ -513,7 +521,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
     alignItems: 'center',
@@ -521,3 +529,4 @@ const styles = StyleSheet.create({
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
 });
+}

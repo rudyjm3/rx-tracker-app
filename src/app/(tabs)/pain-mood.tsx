@@ -48,6 +48,7 @@ const DEFAULT_RANGE_DAYS: RangeDays = 7;
 
 export default function PainMoodScreen() {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
@@ -386,6 +387,8 @@ function ManageTagsSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [localTags, setLocalTags] = useState(tags);
   const [newTagName, setNewTagName] = useState('');
   const [adding, setAdding] = useState(false);
@@ -534,6 +537,7 @@ function ManageTagsSheet({
                   value={newTagName}
                   onChangeText={setNewTagName}
                   placeholder="New tag name"
+                  placeholderTextColor={theme.textSecondary}
                   onSubmitEditing={handleAdd}
                 />
                 <Pressable
@@ -567,6 +571,7 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.stepperBlock}>
       <FieldLabel>{label}</FieldLabel>
@@ -601,6 +606,7 @@ function LevelStepper({
 }
 
 function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedView type="backgroundElement" style={styles.historyCard}>
       <View style={styles.historyHeaderRow}>
@@ -633,6 +639,7 @@ function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
 }
 
 function LevelBadge({ label, value, color }: { label: string; value: number; color: string }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={[styles.levelBadge, { backgroundColor: color }]}>
       <ThemedText type="small" style={styles.levelBadgeText}>
@@ -643,6 +650,7 @@ function LevelBadge({ label, value, color }: { label: string; value: number; col
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -660,7 +668,8 @@ function formatLoggedAt(iso: string): string {
   });
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
@@ -675,7 +684,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -691,15 +700,15 @@ const styles = StyleSheet.create({
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   tagChip: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
   tagChipSelected: { backgroundColor: Brand.deepBlue, borderColor: Brand.deepBlue },
-  tagText: { color: Brand.textMuted },
+  tagText: { color: theme.textSecondary },
   tagTextSelected: { color: '#ffffff', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   primaryButton: { backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', marginTop: Spacing.four },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
@@ -711,20 +720,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.two,
   },
-  metricChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  metricChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   metricChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.two },
   rangeChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
+  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   rangeChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   historyLoading: { marginTop: Spacing.three },
   historyCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one, marginTop: Spacing.two },
@@ -733,7 +742,7 @@ const styles = StyleSheet.create({
   levelBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   levelBadgeText: { color: '#ffffff', fontWeight: '600' },
   historyNote: { marginTop: Spacing.half },
-  historyTagChip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
+  historyTagChip: { borderWidth: 1, borderColor: theme.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -748,7 +757,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Brand.border,
+    borderBottomColor: theme.border,
   },
   manageTagNameButton: { flex: 1 },
   manageTagInput: { flex: 1, paddingVertical: Spacing.one },
@@ -762,3 +771,4 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });
+}
