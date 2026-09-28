@@ -343,15 +343,21 @@ export function buildDayDetails(
     const prnSlots = slots.filter((s) => s.isPrn);
     day.plannedRequired = requiredSlots.length;
 
-    const hasLogs = groupIdsByDateAndMedication.has(date);
-    if (hasLogs) {
-      const sumAsNeeded = (meds: CalendarDayMedicationSummary[]) =>
-        meds.reduce((n, m) => n + (medsById.get(m.medicationId)?.as_needed ? m.total : 0), 0);
-      day.plannedNonRequired =
-        sumAsNeeded(day.medications) + day.groups.reduce((n, g) => n + sumAsNeeded(g.medications), 0);
-    } else {
-      day.plannedNonRequired = prnSlots.length;
-    }
+    // Actual logged PRN doses for the date, plus any planned PRN-in-group
+    // occurrence whose medication has no log yet — a date can have a
+    // required dose already logged (making groupIdsByDateAndMedication
+    // true) while its group's PRN member is still unlogged, and that
+    // planned occurrence must still count rather than silently drop to 0.
+    const sumAsNeeded = (meds: CalendarDayMedicationSummary[]) =>
+      meds.reduce((n, m) => n + (medsById.get(m.medicationId)?.as_needed ? m.total : 0), 0);
+    const loggedNonRequired =
+      sumAsNeeded(day.medications) + day.groups.reduce((n, g) => n + sumAsNeeded(g.medications), 0);
+    const loggedMedicationIdsForDate = new Set([
+      ...day.medications.map((m) => m.medicationId),
+      ...day.groups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+    ]);
+    const unloggedPrnSlots = prnSlots.filter((s) => !loggedMedicationIdsForDate.has(s.medicationId));
+    day.plannedNonRequired = loggedNonRequired + unloggedPrnSlots.length;
 
     day.endingMedications = medications
       .filter((m) => m.end_date === date)
