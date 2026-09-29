@@ -116,7 +116,9 @@ export default function NewFamilyMemberScreen() {
         // Ignored — see above.
       }
       setActiveProfileId(created.id);
-      router.back();
+      // Send a brand-new family member straight into onboarding for that
+      // profile, mirroring rx-tracker-web's FamilyClient.
+      router.replace('/onboarding');
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to add family member');
     } finally {

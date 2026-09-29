@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
+import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -52,7 +53,7 @@ const DEFAULT_LEVEL = 5;
 export default function DashboardScreen() {
   const theme = useTheme();
   const styles = getStyles(theme);
-  const { activeProfileId, familyProfiles } = useActiveProfile();
+  const { activeProfileId, activeProfile, familyProfiles } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [slots, setSlots] = useState<DaySlot[]>([]);
   const [graceMinutes, setGraceMinutes] = useState(60);
@@ -376,6 +377,12 @@ export default function DashboardScreen() {
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
+          <ResumeSetupBanner
+            profileId={activeProfileId}
+            profileName={activeProfile?.display_name ?? 'your'}
+            medications={medications}
+          />
 
           <LowSupplyBanner medications={medications} />
 

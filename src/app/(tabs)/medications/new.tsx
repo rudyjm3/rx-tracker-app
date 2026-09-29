@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -63,6 +63,7 @@ export default function NewMedicationScreen() {
   const theme = useTheme();
   const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
+  const { fromOnboarding } = useLocalSearchParams<{ fromOnboarding?: string }>();
   const [form, setForm] = useState<NewMedicationFormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -169,7 +170,7 @@ export default function NewMedicationScreen() {
     try {
       const created = await createMedication(input, scheduleTimes);
       resyncIfRemindersEnabled();
-      router.replace(`/medications/${created.id}`);
+      router.replace(fromOnboarding ? '/onboarding' : `/medications/${created.id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to create medication');
     } finally {
