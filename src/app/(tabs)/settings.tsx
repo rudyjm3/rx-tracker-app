@@ -398,6 +398,13 @@ export default function SettingsScreen() {
             </ThemedText>
           </Pressable>
 
+          <Pressable style={styles.card} onPress={() => router.push('/export')}>
+            <ThemedText type="smallBold">Doctor Visit Report</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Generate a PDF summary of your medications, adherence, and history to share or print.
+            </ThemedText>
+          </Pressable>
+
           <Pressable style={styles.card} onPress={() => router.push('/help')}>
             <ThemedText type="smallBold">Help &amp; FAQ</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.note}>

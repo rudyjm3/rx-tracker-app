@@ -38,7 +38,8 @@
           "color": "#0754A8"
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
