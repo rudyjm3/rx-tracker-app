@@ -398,6 +398,13 @@ export default function SettingsScreen() {
             </ThemedText>
           </Pressable>
 
+          <Pressable style={styles.card} onPress={() => router.push('/help')}>
+            <ThemedText type="smallBold">Help &amp; FAQ</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Answers to common questions about how RxTracker works.
+            </ThemedText>
+          </Pressable>
+
           <Pressable style={styles.button} onPress={signOut}>
             <ThemedText style={styles.buttonText}>Sign out</ThemedText>
           </Pressable>
