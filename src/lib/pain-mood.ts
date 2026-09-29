@@ -288,24 +288,46 @@ async function getDoseHistoryEntries(medicationIds: string[], limit: number): Pr
 // matches rx-tracker-web's getHistory, generalized to not split by
 // metric column since this tab shows one merged pain+mood history rather
 // than web's separate pain-tracking/mood-wellbeing pages.
-export async function getHistory(limit = 50, profileId?: string | null): Promise<StandaloneHistoryEntry[]> {
-  const medicationIds = await resolveProfileMedicationIds(profileId);
-  let standaloneQuery = supabase
-    .from("standalone_pain_mood_logs")
-    .select("*")
-    .is("medication_id", null)
-    .order("logged_at", { ascending: false })
-    .limit(limit);
-  if (profileId !== undefined) {
-    standaloneQuery =
-      profileId === null ? standaloneQuery.is("profile_id", null) : standaloneQuery.eq("profile_id", profileId);
+// `medicationFilter` mirrors rx-tracker-web's MedicationSelector scoping,
+// added on top of this tab's merged-by-default feed: undefined (default)
+// keeps the merged "All" view above; null scopes to standalone-only
+// entries (web's "Independent"); a medication id scopes to that one
+// medication's dose-linked entries only (no standalone entries, since
+// those are never attached to a medication).
+export async function getHistory(
+  limit = 50,
+  profileId?: string | null,
+  medicationFilter?: string | null,
+): Promise<StandaloneHistoryEntry[]> {
+  const wantsDose = medicationFilter !== null;
+  const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
+
+  const doseMedicationIds = !wantsDose
+    ? []
+    : medicationFilter
+      ? [medicationFilter]
+      : await resolveProfileMedicationIds(profileId);
+
+  let standaloneEntries: StandaloneHistoryEntry[] = [];
+  if (wantsStandalone) {
+    let standaloneQuery = supabase
+      .from("standalone_pain_mood_logs")
+      .select("*")
+      .is("medication_id", null)
+      .order("logged_at", { ascending: false })
+      .limit(limit);
+    if (profileId !== undefined) {
+      standaloneQuery =
+        profileId === null ? standaloneQuery.is("profile_id", null) : standaloneQuery.eq("profile_id", profileId);
+    }
+    const { data, error } = await standaloneQuery;
+    if (error) throw error;
+    standaloneEntries = (data as StandalonePainMoodLog[]).map(toHistoryEntry);
   }
-  const [doseEntries, standaloneResult] = await Promise.all([
-    getDoseHistoryEntries(medicationIds, limit),
-    standaloneQuery,
-  ]);
-  if (standaloneResult.error) throw standaloneResult.error;
-  const standaloneEntries = (standaloneResult.data as StandalonePainMoodLog[]).map(toHistoryEntry);
+
+  const doseEntries =
+    wantsDose && doseMedicationIds.length > 0 ? await getDoseHistoryEntries(doseMedicationIds, limit) : [];
+
   return [...doseEntries, ...standaloneEntries]
     .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt))
     .slice(0, limit);
@@ -431,17 +453,31 @@ async function getStandaloneTrendPoints(
 
 // Merges dose-linked (via the profile's medications) and standalone trend
 // points for one metric within a date range, chronologically sorted —
-// matches rx-tracker-web's getTrend.
+// matches rx-tracker-web's getTrend. `medicationFilter` has the same
+// meaning as getHistory's: undefined = merged "All" (default), null =
+// standalone-only ("Independent"), a medication id = that medication's
+// dose-linked points only.
 export async function getTrend(
   metric: WellbeingMetric,
   startDate: string,
   endDate: string,
   profileId?: string | null,
+  medicationFilter?: string | null,
 ): Promise<TrendPoint[]> {
-  const medicationIds = await resolveProfileMedicationIds(profileId);
+  const wantsDose = medicationFilter !== null;
+  const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
+
+  const doseMedicationIds = !wantsDose
+    ? []
+    : medicationFilter
+      ? [medicationFilter]
+      : await resolveProfileMedicationIds(profileId);
+
   const [dosePoints, standalonePoints] = await Promise.all([
-    getDoseTrendPoints(metric, medicationIds, startDate, endDate),
-    getStandaloneTrendPoints(metric, startDate, endDate, profileId),
+    wantsDose && doseMedicationIds.length > 0
+      ? getDoseTrendPoints(metric, doseMedicationIds, startDate, endDate)
+      : Promise.resolve([]),
+    wantsStandalone ? getStandaloneTrendPoints(metric, startDate, endDate, profileId) : Promise.resolve([]),
   ]);
   return [...dosePoints, ...standalonePoints].sort((a, b) =>
     `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`),

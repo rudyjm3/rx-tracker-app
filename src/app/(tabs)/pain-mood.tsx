@@ -22,6 +22,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMoodChartScheme, type MoodChartScheme } from '@/lib/app-settings';
 import { confirmDestructive } from '@/lib/confirm';
+import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import {
   createMoodTag,
   createStandaloneLog,
@@ -31,6 +32,8 @@ import {
   getMoodTags,
   getTrend,
   levelColor,
+  medicationTracksMood,
+  medicationTracksPain,
   RANGE_OPTIONS,
   rangeDatesForDays,
   renameMoodTag,
@@ -41,8 +44,14 @@ import {
   type TrendPoint,
   type WellbeingMetric,
 } from '@/lib/pain-mood';
-import type { MoodTag } from '@/lib/types/medications';
+import type { Medication, MoodTag } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
+
+// `undefined` = merged "All" feed (this tab's default, unlike web's
+// MedicationSelector which defaults to "Independent"); `null` = web's
+// "Independent" (standalone-only); a string = one medication's dose-linked
+// entries only. See lib/pain-mood.ts's getHistory/getTrend doc comments.
+type MedicationFilter = string | null | undefined;
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -77,6 +86,27 @@ export default function PainMoodScreen() {
   const [trendLoading, setTrendLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
 
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [medicationFilter, setMedicationFilter] = useState<MedicationFilter>(undefined);
+
+  // Medications that can produce dose-linked entries for the metric
+  // currently shown — mirrors web's MedicationSelector, which only lists
+  // medications tracking the page's own metric.
+  const filterableMedications = medications.filter((m) =>
+    trendMetric === 'pain' ? medicationTracksPain(m) : medicationTracksMood(m),
+  );
+
+  // If the metric toggle changes and the selected medication no longer
+  // tracks that metric, fall back to "All" rather than silently querying a
+  // filter that can never match — adjusted during render (not an effect)
+  // per this codebase's established pattern for props/state-driven resets.
+  if (
+    typeof medicationFilter === 'string' &&
+    !filterableMedications.some((m) => m.id === medicationFilter)
+  ) {
+    setMedicationFilter(undefined);
+  }
+
   // See the Dashboard's identical guard: bumped on every load() call so a
   // slower, stale response (e.g. from a profile that's no longer selected)
   // can't overwrite state a newer call already set.
@@ -96,15 +126,18 @@ export default function PainMoodScreen() {
     else setLoading(true);
     setLoadError(null);
     try {
-      const [tags, entries, scheme] = await Promise.all([
+      const [tags, entries, scheme, activeMeds, inactiveMeds] = await Promise.all([
         getMoodTags(),
-        getHistory(50, activeProfileId),
+        getHistory(50, activeProfileId, medicationFilter),
         getMoodChartScheme(),
+        getActiveMedications(activeProfileId),
+        getInactiveMedications(activeProfileId),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
       setHistory(entries);
       setMoodChartSchemeState(scheme);
+      setMedications([...activeMeds, ...inactiveMeds]);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
@@ -118,7 +151,7 @@ export default function PainMoodScreen() {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, [activeProfileId]);
+  }, [activeProfileId, medicationFilter]);
 
   // load() (and this callback) changes identity whenever activeProfileId
   // changes, and useFocusEffect re-invokes its callback on identity
@@ -142,7 +175,7 @@ export default function PainMoodScreen() {
     setTrendError(null);
     try {
       const { start, end } = rangeDatesForDays(trendRangeDays, localDateString());
-      const points = await getTrend(trendMetric, start, end, activeProfileId);
+      const points = await getTrend(trendMetric, start, end, activeProfileId, medicationFilter);
       if (trendRequestIdRef.current !== requestId) return;
       setTrendPoints(points);
     } catch (e) {
@@ -153,7 +186,7 @@ export default function PainMoodScreen() {
       if (trendRequestIdRef.current !== requestId) return;
       setTrendLoading(false);
     }
-  }, [activeProfileId, trendMetric, trendRangeDays]);
+  }, [activeProfileId, trendMetric, trendRangeDays, medicationFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -328,6 +361,45 @@ export default function PainMoodScreen() {
                   style={trendMetric === m ? styles.metricChipTextSelected : undefined}
                 >
                   {m === 'pain' ? 'Pain' : 'Mood'}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.medFilterRow}>
+            <Pressable
+              style={[styles.medFilterChip, medicationFilter === undefined && styles.medFilterChipSelected]}
+              onPress={() => setMedicationFilter(undefined)}
+            >
+              <ThemedText
+                type="small"
+                style={medicationFilter === undefined ? styles.medFilterChipTextSelected : undefined}
+              >
+                All
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.medFilterChip, medicationFilter === null && styles.medFilterChipSelected]}
+              onPress={() => setMedicationFilter(null)}
+            >
+              <ThemedText
+                type="small"
+                style={medicationFilter === null ? styles.medFilterChipTextSelected : undefined}
+              >
+                Independent
+              </ThemedText>
+            </Pressable>
+            {filterableMedications.map((med) => (
+              <Pressable
+                key={med.id}
+                style={[styles.medFilterChip, medicationFilter === med.id && styles.medFilterChipSelected]}
+                onPress={() => setMedicationFilter(med.id)}
+              >
+                <ThemedText
+                  type="small"
+                  style={medicationFilter === med.id ? styles.medFilterChipTextSelected : undefined}
+                >
+                  {med.name}
                 </ThemedText>
               </Pressable>
             ))}
@@ -965,6 +1037,16 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   },
   metricChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
   metricChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  medFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two },
+  medFilterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  medFilterChipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
+  medFilterChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
   rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.two },
   rangeChip: {
     borderRadius: 999,
