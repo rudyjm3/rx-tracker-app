@@ -10,7 +10,8 @@
 // walk forward by the interval through the 24h day) so the two features
 // never disagree about what a medication's daily times are.
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
+import { Platform, Vibration } from "react-native";
+import { createAudioPlayer } from "expo-audio";
 
 import { getTodayLogs, getTodayPostpones } from "@/lib/dose-logs";
 import { getAllActiveMedicationsAcrossProfiles } from "@/lib/medications";
@@ -38,6 +39,93 @@ export async function getRemindersEnabledSetting(): Promise<boolean> {
 
 export async function setRemindersEnabledSetting(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(LOCAL_REMINDERS_ENABLED_KEY, enabled ? "1" : "0");
+}
+
+// ── In-app "dose due" alarm: sound + vibration ──────────────────────
+//
+// Port of rx-tracker-web's lib/notifications.ts alarm sound/vibration
+// toggles — like the reminders-enabled setting above, these are per-device
+// local storage rather than the Supabase-backed app_settings helpers,
+// matching web's own per-device (localStorage) scope for the same
+// preference. Unlike web, which synthesizes its two-tone beep with the Web
+// Audio API (no bundled asset, chosen there to avoid a binary file in that
+// repo), this app has no oscillator API available and instead bundles a
+// short generated WAV of the same two 880Hz tone bursts — still an
+// originally-generated sound, not a licensed asset.
+const ALARM_SOUND_KEY = "alarm_sound_enabled";
+const VIBRATION_KEY = "vibration_enabled";
+
+async function readToggle(key: string): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    // Both toggles default ON (matching web) — a broken/missing read
+    // shouldn't silently mute a dose-due alarm.
+    return raw === null ? true : raw === "1";
+  } catch {
+    return true;
+  }
+}
+
+async function writeToggle(key: string, enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(key, enabled ? "1" : "0");
+}
+
+export async function isAlarmSoundEnabled(): Promise<boolean> {
+  return readToggle(ALARM_SOUND_KEY);
+}
+
+export async function setAlarmSoundEnabled(enabled: boolean): Promise<void> {
+  await writeToggle(ALARM_SOUND_KEY, enabled);
+}
+
+export async function isVibrationEnabled(): Promise<boolean> {
+  return readToggle(VIBRATION_KEY);
+}
+
+export async function setVibrationEnabled(enabled: boolean): Promise<void> {
+  await writeToggle(VIBRATION_KEY, enabled);
+}
+
+// Fire-and-forget: creates a short-lived imperative player (createAudioPlayer,
+// not the useAudioPlayer hook — this is called from plain event-driven code,
+// not component render) and releases it once playback finishes, so repeated
+// alarms across a session don't leak players. Best-effort — a device that
+// can't play audio right now (e.g. mid-call) just means no sound this time,
+// same failure posture as web's tone() catch.
+function tone(): void {
+  try {
+    const player = createAudioPlayer(require("../../assets/sounds/alarm.wav"));
+    const subscription = player.addListener("playbackStatusUpdate", (status) => {
+      if (!status.didJustFinish) return;
+      subscription.remove();
+      player.remove();
+    });
+    player.play();
+  } catch {
+    // Best-effort — see above.
+  }
+}
+
+// [200, 100, 200]ms matches web's navigator.vibrate([200, 100, 200]) pattern
+// (buzz, pause, buzz) exactly — RN's Vibration.vibrate takes the same
+// vibrate-pause-vibrate-... array shape navigator.vibrate does.
+function vibrateOnce(): void {
+  Vibration.vibrate([200, 100, 200]);
+}
+
+export async function playAlarmSound(): Promise<void> {
+  if (await isAlarmSoundEnabled()) tone();
+}
+
+export async function triggerVibration(): Promise<void> {
+  if (await isVibrationEnabled()) vibrateOnce();
+}
+
+// Bypasses both toggles — lets the Settings screen's "Test alarm" button
+// preview sound/vibration even while deciding whether to turn them on.
+export function previewAlarm(): void {
+  tone();
+  vibrateOnce();
 }
 
 export interface ReminderTime {

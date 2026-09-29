@@ -32,7 +32,7 @@ import {
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { getSupplyAlerts, SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS } from '@/lib/medication-ui';
-import { resyncIfRemindersEnabled } from '@/lib/notifications';
+import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
@@ -290,6 +290,34 @@ export default function DashboardScreen() {
           (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotDueTime(s, scheduleDate) === dueNowEvent.time,
         )
       : null;
+
+  // In-app "dose due" alarm (sound + vibration) — port of rx-tracker-web's
+  // identical effect in DashboardClient.tsx. Fires once per slot, keyed by
+  // its exact due time (slotDueTime, which is postponedUntil when snoozed)
+  // rather than its scheduled time, so a later snooze can alarm again
+  // instead of being permanently suppressed by the first alarm's key. Only
+  // alarms while the due time has passed but the missed-dose grace cutoff
+  // hasn't, so a backlog of already-overdue-past-grace slots doesn't all
+  // alarm at once on load — those are about to be finalized as missed by
+  // recordAndReload's own load() cycle instead. Driven by nowTick (already
+  // ticking every 20s above for the midnight-rollover check) rather than
+  // just `slots` changing reference, since a slot's due time can newly
+  // pass without `slots` itself changing.
+  const alarmedKeysRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const now = nowTick;
+    for (const slot of slots) {
+      if (slot.status !== 'pending' || slot.isPrn) continue;
+      const due = slotDueTime(slot, scheduleDate);
+      if (due > now) continue;
+      if (now > due + graceMinutes * 60_000) continue;
+      const key = `${slot.medicationId}|${due}`;
+      if (alarmedKeysRef.current.has(key)) continue;
+      alarmedKeysRef.current.add(key);
+      playAlarmSound();
+      triggerVibration();
+    }
+  }, [slots, scheduleDate, graceMinutes, nowTick]);
 
   if (loading) {
     return (

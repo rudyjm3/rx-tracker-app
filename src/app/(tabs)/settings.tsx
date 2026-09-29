@@ -33,9 +33,14 @@ import {
 import {
   cancelAllReminderNotifications,
   getRemindersEnabledSetting,
+  isAlarmSoundEnabled,
+  isVibrationEnabled,
+  previewAlarm,
   requestReminderPermissions,
   resyncReminderNotifications,
+  setAlarmSoundEnabled,
   setRemindersEnabledSetting,
+  setVibrationEnabled,
 } from '@/lib/notifications';
 import { SNOOZE_OPTIONS } from '@/lib/schedule';
 import { useAuth } from '@/lib/supabase/AuthProvider';
@@ -58,6 +63,8 @@ export default function SettingsScreen() {
   const [useDeviceTimezone, setUseDeviceTimezoneState] = useState(true);
   const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
   const [moodSchemeError, setMoodSchemeError] = useState<string | null>(null);
+  const [alarmSoundEnabled, setAlarmSoundEnabledState] = useState(true);
+  const [vibrationEnabled, setVibrationEnabledState] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +77,15 @@ export default function SettingsScreen() {
       } finally {
         if (!cancelled) setLoadingSetting(false);
       }
+    })();
+    // Device-local (AsyncStorage), same as remindersEnabled above — not
+    // gated on a session, so loaded in their own block rather than the
+    // Supabase-backed settings' Promise.all below.
+    (async () => {
+      const [sound, vibration] = await Promise.all([isAlarmSoundEnabled(), isVibrationEnabled()]);
+      if (cancelled) return;
+      setAlarmSoundEnabledState(sound);
+      setVibrationEnabledState(vibration);
     })();
     (async () => {
       try {
@@ -144,6 +160,16 @@ export default function SettingsScreen() {
     } catch (e) {
       setMoodSchemeError(e instanceof Error ? e.message : "Couldn't save mood chart color");
     }
+  }
+
+  function handleAlarmSoundToggle(value: boolean) {
+    setAlarmSoundEnabledState(value);
+    setAlarmSoundEnabled(value);
+  }
+
+  function handleVibrationToggle(value: boolean) {
+    setVibrationEnabledState(value);
+    setVibrationEnabled(value);
   }
 
   async function handleToggle(value: boolean) {
@@ -230,6 +256,45 @@ export default function SettingsScreen() {
                 {error}
               </ThemedText>
             )}
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Alarm &amp; notification settings</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Alerts you while the dashboard is open when a dose becomes due.
+            </ThemedText>
+
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="small">Alarm sound</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Audible alarm when a dose is due. On by default.
+                </ThemedText>
+              </View>
+              <Switch
+                value={alarmSoundEnabled}
+                onValueChange={handleAlarmSoundToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="small">Vibration</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Device vibration for in-app alarms. On by default.
+                </ThemedText>
+              </View>
+              <Switch
+                value={vibrationEnabled}
+                onValueChange={handleVibrationToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+
+            <Pressable style={styles.testAlarmButton} onPress={() => previewAlarm()}>
+              <ThemedText style={styles.testAlarmButtonText}>Test alarm</ThemedText>
+            </Pressable>
           </ThemedView>
 
           <ThemedView type="backgroundElement" style={styles.card}>
@@ -358,6 +423,15 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
     gap: Spacing.two,
   },
   settingsButton: { alignSelf: 'flex-start' },
+  testAlarmButton: {
+    alignSelf: 'flex-start',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  testAlarmButtonText: { fontWeight: '600' },
   error: { color: Brand.danger, marginTop: Spacing.one },
   graceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
   graceInput: {
