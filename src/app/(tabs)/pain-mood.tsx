@@ -20,26 +20,38 @@ import { TrendChart } from '@/components/TrendChart';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
+import { getMoodChartScheme, type MoodChartScheme } from '@/lib/app-settings';
 import { confirmDestructive } from '@/lib/confirm';
+import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
 import {
   createMoodTag,
   createStandaloneLog,
   deleteMoodTag,
+  deleteStandaloneLog,
+  getHistory,
   getMoodTags,
-  getStandaloneHistory,
-  getStandaloneTrend,
+  getTrend,
   levelColor,
+  medicationTracksMood,
+  medicationTracksPain,
   RANGE_OPTIONS,
   rangeDatesForDays,
   renameMoodTag,
   setMoodTagAlwaysShow,
+  updateStandaloneLog,
   type RangeDays,
   type StandaloneHistoryEntry,
   type TrendPoint,
   type WellbeingMetric,
 } from '@/lib/pain-mood';
-import type { MoodTag } from '@/lib/types/medications';
+import type { Medication, MoodTag } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
+
+// `undefined` = merged "All" feed (this tab's default, unlike web's
+// MedicationSelector which defaults to "Independent"); `null` = web's
+// "Independent" (standalone-only); a string = one medication's dose-linked
+// entries only. See lib/pain-mood.ts's getHistory/getTrend doc comments.
+type MedicationFilter = string | null | undefined;
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -48,6 +60,7 @@ const DEFAULT_RANGE_DAYS: RangeDays = 7;
 
 export default function PainMoodScreen() {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
@@ -59,6 +72,7 @@ export default function PainMoodScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [manageTagsOpen, setManageTagsOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<StandaloneHistoryEntry | null>(null);
 
   const [history, setHistory] = useState<StandaloneHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,9 +81,31 @@ export default function PainMoodScreen() {
 
   const [trendMetric, setTrendMetric] = useState<WellbeingMetric>('pain');
   const [trendRangeDays, setTrendRangeDays] = useState<RangeDays>(DEFAULT_RANGE_DAYS);
+  const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
+
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [medicationFilter, setMedicationFilter] = useState<MedicationFilter>(undefined);
+
+  // Medications that can produce dose-linked entries for the metric
+  // currently shown — mirrors web's MedicationSelector, which only lists
+  // medications tracking the page's own metric.
+  const filterableMedications = medications.filter((m) =>
+    trendMetric === 'pain' ? medicationTracksPain(m) : medicationTracksMood(m),
+  );
+
+  // If the metric toggle changes and the selected medication no longer
+  // tracks that metric, fall back to "All" rather than silently querying a
+  // filter that can never match — adjusted during render (not an effect)
+  // per this codebase's established pattern for props/state-driven resets.
+  if (
+    typeof medicationFilter === 'string' &&
+    !filterableMedications.some((m) => m.id === medicationFilter)
+  ) {
+    setMedicationFilter(undefined);
+  }
 
   // See the Dashboard's identical guard: bumped on every load() call so a
   // slower, stale response (e.g. from a profile that's no longer selected)
@@ -84,19 +120,46 @@ export default function PainMoodScreen() {
     activeProfileIdRef.current = activeProfileId;
   }, [activeProfileId]);
 
+  // Populated by load() below, keyed by the profile it was resolved for —
+  // read by loadTrend so it can skip re-resolving the same profile's
+  // medication ids a third time. Deliberately a ref (not state): its only
+  // consumer reads it inside an async callback, not during render, so it
+  // doesn't need to trigger a re-render or be a hook dependency.
+  const medicationIdsRef = useRef<{ profileId?: string | null; ids: string[] }>({
+    profileId: undefined,
+    ids: [],
+  });
+
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setLoadError(null);
     try {
-      const [tags, entries] = await Promise.all([
+      // Resolved first (rather than alongside getHistory below) so its ids
+      // can be handed to getHistory directly instead of getHistory
+      // re-resolving the same profile's medications itself — and cached in
+      // medicationIdsRef for loadTrend to reuse too, since active+inactive
+      // medications don't otherwise change within one profile's session.
+      const [activeMeds, inactiveMeds] = await Promise.all([
+        getActiveMedications(activeProfileId),
+        getInactiveMedications(activeProfileId),
+      ]);
+      if (requestIdRef.current !== requestId) return;
+      const allMeds = [...activeMeds, ...inactiveMeds];
+      const medicationIds = allMeds.map((m) => m.id);
+      medicationIdsRef.current = { profileId: activeProfileId, ids: medicationIds };
+
+      const [tags, entries, scheme] = await Promise.all([
         getMoodTags(),
-        getStandaloneHistory(50, activeProfileId),
+        getHistory(50, activeProfileId, medicationFilter, medicationIds),
+        getMoodChartScheme(),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
       setHistory(entries);
+      setMoodChartSchemeState(scheme);
+      setMedications(allMeds);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
@@ -110,7 +173,7 @@ export default function PainMoodScreen() {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, [activeProfileId]);
+  }, [activeProfileId, medicationFilter]);
 
   // load() (and this callback) changes identity whenever activeProfileId
   // changes, and useFocusEffect re-invokes its callback on identity
@@ -134,7 +197,9 @@ export default function PainMoodScreen() {
     setTrendError(null);
     try {
       const { start, end } = rangeDatesForDays(trendRangeDays, localDateString());
-      const points = await getStandaloneTrend(trendMetric, start, end, activeProfileId);
+      const cachedIds =
+        medicationIdsRef.current.profileId === activeProfileId ? medicationIdsRef.current.ids : undefined;
+      const points = await getTrend(trendMetric, start, end, activeProfileId, medicationFilter, cachedIds);
       if (trendRequestIdRef.current !== requestId) return;
       setTrendPoints(points);
     } catch (e) {
@@ -145,7 +210,7 @@ export default function PainMoodScreen() {
       if (trendRequestIdRef.current !== requestId) return;
       setTrendLoading(false);
     }
-  }, [activeProfileId, trendMetric, trendRangeDays]);
+  }, [activeProfileId, trendMetric, trendRangeDays, medicationFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -325,6 +390,45 @@ export default function PainMoodScreen() {
             ))}
           </View>
 
+          <View style={styles.medFilterRow}>
+            <Pressable
+              style={[styles.medFilterChip, medicationFilter === undefined && styles.medFilterChipSelected]}
+              onPress={() => setMedicationFilter(undefined)}
+            >
+              <ThemedText
+                type="small"
+                style={medicationFilter === undefined ? styles.medFilterChipTextSelected : undefined}
+              >
+                All
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.medFilterChip, medicationFilter === null && styles.medFilterChipSelected]}
+              onPress={() => setMedicationFilter(null)}
+            >
+              <ThemedText
+                type="small"
+                style={medicationFilter === null ? styles.medFilterChipTextSelected : undefined}
+              >
+                Independent
+              </ThemedText>
+            </Pressable>
+            {filterableMedications.map((med) => (
+              <Pressable
+                key={med.id}
+                style={[styles.medFilterChip, medicationFilter === med.id && styles.medFilterChipSelected]}
+                onPress={() => setMedicationFilter(med.id)}
+              >
+                <ThemedText
+                  type="small"
+                  style={medicationFilter === med.id ? styles.medFilterChipTextSelected : undefined}
+                >
+                  {med.name}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
           <View style={styles.rangeRow}>
             {RANGE_OPTIONS.map((opt) => (
               <Pressable
@@ -347,7 +451,12 @@ export default function PainMoodScreen() {
           {trendLoading ? (
             <ActivityIndicator style={styles.historyLoading} />
           ) : (
-            <TrendChart metric={trendMetric} points={trendPoints} rangeDays={trendRangeDays} />
+            <TrendChart
+              metric={trendMetric}
+              points={trendPoints}
+              rangeDays={trendRangeDays}
+              moodChartScheme={moodChartScheme}
+            />
           )}
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
@@ -361,7 +470,9 @@ export default function PainMoodScreen() {
           ) : history.length === 0 ? (
             <ThemedText themeColor="textSecondary">No entries yet. Log a pain or mood level above.</ThemedText>
           ) : (
-            history.map((entry) => <HistoryCard key={entry.id} entry={entry} />)
+            history.map((entry) => (
+              <HistoryCard key={entry.id} entry={entry} onEdit={() => setEditingEntry(entry)} />
+            ))
           )}
         </ScrollView>
       </SafeAreaView>
@@ -371,6 +482,22 @@ export default function PainMoodScreen() {
           tags={moodTags}
           onClose={() => setManageTagsOpen(false)}
           onChanged={() => load()}
+        />
+      )}
+
+      {editingEntry && (
+        <EditEntrySheet
+          entry={editingEntry}
+          moodTags={moodTags}
+          onClose={() => setEditingEntry(null)}
+          onSaved={async () => {
+            setEditingEntry(null);
+            await Promise.all([load(true), loadTrend()]);
+          }}
+          onDeleted={async () => {
+            setEditingEntry(null);
+            await Promise.all([load(true), loadTrend()]);
+          }}
         />
       )}
     </ThemedView>
@@ -386,6 +513,8 @@ function ManageTagsSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [localTags, setLocalTags] = useState(tags);
   const [newTagName, setNewTagName] = useState('');
   const [adding, setAdding] = useState(false);
@@ -534,6 +663,7 @@ function ManageTagsSheet({
                   value={newTagName}
                   onChangeText={setNewTagName}
                   placeholder="New tag name"
+                  placeholderTextColor={theme.textSecondary}
                   onSubmitEditing={handleAdd}
                 />
                 <Pressable
@@ -556,6 +686,192 @@ function ManageTagsSheet({
   );
 }
 
+// Edits or deletes a standalone entry in place — port of rx-tracker-web's
+// EditLevelLogDialog, scoped to this app's merged-feed history (no
+// medication-attachment picker, since this app has no equivalent of web's
+// MedicationSelector). Only ever opened for entry.source === 'standalone'
+// (see HistoryCard) — a dose-linked entry has no matching row in
+// standalone_pain_mood_logs for updateStandaloneLog/deleteStandaloneLog to
+// touch, and is edited from the medication's own dose history instead.
+function EditEntrySheet({
+  entry,
+  moodTags,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  entry: StandaloneHistoryEntry;
+  moodTags: MoodTag[];
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [trackPain, setTrackPain] = useState(entry.painLevel != null);
+  const [trackMood, setTrackMood] = useState(entry.moodLevel != null);
+  const [painLevel, setPainLevel] = useState(entry.painLevel ?? DEFAULT_LEVEL);
+  const [moodLevel, setMoodLevel] = useState(entry.moodLevel ?? DEFAULT_LEVEL);
+  const [note, setNote] = useState(entry.note);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(
+    () => new Set(moodTags.filter((t) => entry.tags.includes(t.name)).map((t) => t.id)),
+  );
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function toggleTag(id: string) {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setFormError(null);
+    if (!trackPain && !trackMood) {
+      setFormError('Log at least a pain level or a mood level.');
+      return;
+    }
+    const tagNames = moodTags
+      .filter((t) => selectedTagIds.has(t.id))
+      .map((t) => t.name)
+      .join(',');
+    setSaving(true);
+    try {
+      await updateStandaloneLog(entry.id, {
+        logType: trackPain && trackMood ? 'both' : trackPain ? 'pain' : 'mood',
+        painLevel: trackPain ? painLevel : null,
+        moodLevel: trackMood ? moodLevel : null,
+        note: note.trim(),
+        tags: trackMood ? tagNames : '',
+      });
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Failed to save changes');
+      setSaving(false);
+    }
+  }
+
+  function handleDelete() {
+    confirmDestructive('Delete this entry?', undefined, 'Delete', async () => {
+      setFormError(null);
+      setDeleting(true);
+      try {
+        await deleteStandaloneLog(entry.id);
+        onDeleted();
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : "Couldn't delete entry");
+        setDeleting(false);
+      }
+    });
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Edit entry
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <View style={styles.switchRow}>
+                  <ThemedText>Log pain</ThemedText>
+                  <Switch value={trackPain} onValueChange={setTrackPain} />
+                </View>
+                {trackPain && (
+                  <LevelStepper
+                    label="Pain level"
+                    value={painLevel}
+                    onChange={setPainLevel}
+                    color={levelColor('pain', painLevel)}
+                  />
+                )}
+
+                <View style={styles.switchRow}>
+                  <ThemedText>Log mood</ThemedText>
+                  <Switch value={trackMood} onValueChange={setTrackMood} />
+                </View>
+                {trackMood && (
+                  <>
+                    <LevelStepper
+                      label="Mood level"
+                      value={moodLevel}
+                      onChange={setMoodLevel}
+                      color={levelColor('mood', moodLevel)}
+                    />
+                    <FieldLabel>Tags</FieldLabel>
+                    <View style={styles.tagList}>
+                      {moodTags.map((tag) => {
+                        const selected = selectedTagIds.has(tag.id);
+                        return (
+                          <Pressable
+                            key={tag.id}
+                            style={[styles.tagChip, selected && styles.tagChipSelected]}
+                            onPress={() => toggleTag(tag.id)}
+                          >
+                            <ThemedText type="small" style={selected ? styles.tagTextSelected : styles.tagText}>
+                              {tag.name}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+
+                <FieldLabel>Note (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="How are you feeling?"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                />
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.primaryButton,
+                      { flex: 1, marginTop: 0 },
+                      (saving || (!trackPain && !trackMood)) && styles.disabled,
+                    ]}
+                    onPress={handleSave}
+                    disabled={saving || deleting || (!trackPain && !trackMood)}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+
+                <Pressable onPress={handleDelete} disabled={saving || deleting} style={styles.deleteButton}>
+                  <ThemedText style={styles.deleteButtonText}>
+                    {deleting ? 'Deleting…' : 'Delete entry'}
+                  </ThemedText>
+                </Pressable>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function LevelStepper({
   label,
   value,
@@ -567,6 +883,7 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.stepperBlock}>
       <FieldLabel>{label}</FieldLabel>
@@ -600,7 +917,8 @@ function LevelStepper({
   );
 }
 
-function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
+function HistoryCard({ entry, onEdit }: { entry: StandaloneHistoryEntry; onEdit: () => void }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedView type="backgroundElement" style={styles.historyCard}>
       <View style={styles.historyHeaderRow}>
@@ -628,11 +946,23 @@ function HistoryCard({ entry }: { entry: StandaloneHistoryEntry }) {
           ))}
         </View>
       )}
+      {entry.source === 'standalone' ? (
+        <Pressable onPress={onEdit} hitSlop={8} style={styles.historyEditButton}>
+          <ThemedText type="small" style={styles.manageTagsLink}>
+            Edit
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.historyEditButton}>
+          Logged with a dose — edit from the medication&apos;s history
+        </ThemedText>
+      )}
     </ThemedView>
   );
 }
 
 function LevelBadge({ label, value, color }: { label: string; value: number; color: string }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={[styles.levelBadge, { backgroundColor: color }]}>
       <ThemedText type="small" style={styles.levelBadgeText}>
@@ -643,6 +973,7 @@ function LevelBadge({ label, value, color }: { label: string; value: number; col
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -660,7 +991,8 @@ function formatLoggedAt(iso: string): string {
   });
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
@@ -675,7 +1007,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -691,19 +1023,32 @@ const styles = StyleSheet.create({
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
   tagChip: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
-  tagChipSelected: { backgroundColor: Brand.deepBlue, borderColor: Brand.deepBlue },
-  tagText: { color: Brand.textMuted },
+  tagChipSelected: { backgroundColor: theme.accent, borderColor: theme.accent },
+  tagText: { color: theme.textSecondary },
   tagTextSelected: { color: '#ffffff', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   primaryButton: { backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', marginTop: Spacing.four },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
   disabled: { opacity: 0.6 },
+  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  secondaryButtonText: { fontWeight: '600' },
+  deleteButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
+  deleteButtonText: { color: Brand.danger, fontWeight: '600' },
+  historyEditButton: { marginTop: Spacing.one, alignSelf: 'flex-start' },
   sectionTitle: { marginTop: Spacing.five },
   metricToggleRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
   metricChip: {
@@ -711,21 +1056,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.two,
   },
-  metricChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
-  metricChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  metricChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  metricChipTextSelected: { fontWeight: '700', color: theme.accent },
+  medFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two },
+  medFilterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  medFilterChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  medFilterChipTextSelected: { fontWeight: '700', color: theme.accent },
   rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.two },
   rangeChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  rangeChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
-  rangeChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  rangeChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  rangeChipTextSelected: { fontWeight: '700', color: theme.accent },
   historyLoading: { marginTop: Spacing.three },
   historyCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one, marginTop: Spacing.two },
   historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
@@ -733,7 +1088,7 @@ const styles = StyleSheet.create({
   levelBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   levelBadgeText: { color: '#ffffff', fontWeight: '600' },
   historyNote: { marginTop: Spacing.half },
-  historyTagChip: { borderWidth: 1, borderColor: Brand.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
+  historyTagChip: { borderWidth: 1, borderColor: theme.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -748,7 +1103,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Brand.border,
+    borderBottomColor: theme.border,
   },
   manageTagNameButton: { flex: 1 },
   manageTagInput: { flex: 1, paddingVertical: Spacing.one },
@@ -762,3 +1117,4 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });
+}

@@ -1,14 +1,17 @@
-// Ported subset of rx-tracker-web's lib/pain-mood.ts, scoped to this app's
-// first pass: standalone (medication_id null) pain/mood logging only. Dose-
-// linked logs, medication attachment, and trend charts (groupDailyAverages)
-// aren't reachable from this app yet — see that file for the full feature
-// set this is ported from.
+// Ported subset of rx-tracker-web's lib/pain-mood.ts. Unlike web, which
+// scopes dose-linked trend/history to one selected medication at a time,
+// this app's Pain & Mood tab shows one merged pain+mood feed for the
+// active profile, so getHistory/getTrend below resolve that profile's
+// medication ids (active + inactive, so a discontinued medication's past
+// feedback still shows) and pull dose-linked pain_level/mood_level
+// entries across all of them, merged with standalone entries — see
+// getDoseHistoryEntries/getDoseTrendPoints.
 import { supabase } from "@/lib/supabase/client";
-import { getCurrentUserId } from "@/lib/medications";
-import { getSetting, setSetting } from "@/lib/app-settings";
+import { getActiveMedications, getCurrentUserId, getInactiveMedications } from "@/lib/medications";
+import { getSetting, setSetting, type MoodChartScheme } from "@/lib/app-settings";
 import { Brand } from "@/constants/theme";
 import { localDateString } from "@/lib/utils";
-import type { Medication, MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
+import type { DoseLog, Medication, MoodTag, PainMoodLogType, StandalonePainMoodLog } from "@/lib/types/medications";
 
 export type WellbeingMetric = "pain" | "mood";
 
@@ -20,16 +23,23 @@ export function medicationTracksMood(medication: Pick<Medication, "feedback_type
   return medication.feedback_type === "mood" || medication.feedback_type === "both";
 }
 
-// 3 severity bands, matching rx-tracker-web's levelColor() classic scheme
-// (its "teal mood chart" alternate scheme is out of scope here — see
-// AGENTS.md/task notes). Mood is inverted from pain: a low mood score is
-// the bad end, a low pain score is the good end.
-export function levelColor(metric: WellbeingMetric, level: number): string {
+// 3 severity bands, matching rx-tracker-web's levelColor(). Mood is
+// inverted from pain: a low mood score is the bad end, a low pain score
+// is the good end. `scheme` is the reference app's "Teal mood chart"
+// setting — mood-only (pain always uses the classic bands, matching web,
+// which never offers the toggle for pain charts either).
+export function levelColor(metric: WellbeingMetric, level: number, scheme: MoodChartScheme = "classic"): string {
   const rounded = Math.round(level);
   if (metric === "pain") {
     if (rounded <= 3) return Brand.success;
     if (rounded <= 6) return Brand.warning;
     return Brand.danger;
+  }
+  if (scheme === "teal") {
+    // Lighter teal = lower mood, darker teal = higher mood.
+    if (rounded <= 3) return "#a8dce4";
+    if (rounded <= 6) return "#4bb8c9";
+    return "#028aa9";
   }
   if (rounded <= 3) return Brand.danger;
   if (rounded <= 6) return Brand.warning;
@@ -61,6 +71,38 @@ export async function createStandaloneLog(input: CreateStandaloneLogInput): Prom
     tags: input.tags ?? "",
     logged_at: input.loggedAt ?? new Date().toISOString(),
   });
+  if (error) throw error;
+}
+
+export interface UpdateStandaloneLogInput {
+  logType: PainMoodLogType;
+  painLevel?: number | null;
+  moodLevel?: number | null;
+  note?: string;
+  tags?: string;
+}
+
+// Adapted from rx-tracker-web's updateStandaloneLog, scoped to this app's
+// standalone (medication_id null) entries only — this app has no
+// medication-attachment picker for a standalone log the way web's
+// MedicationSelector does, so medication_id is never touched here.
+export async function updateStandaloneLog(id: string, input: UpdateStandaloneLogInput): Promise<void> {
+  const { error } = await supabase
+    .from("standalone_pain_mood_logs")
+    .update({
+      log_type: input.logType,
+      pain_level: input.painLevel ?? null,
+      mood_level: input.moodLevel ?? null,
+      note: input.note ?? "",
+      tags: input.tags ?? "",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteStandaloneLog(id: string): Promise<void> {
+  const { error } = await supabase.from("standalone_pain_mood_logs").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -165,6 +207,13 @@ export interface StandaloneHistoryEntry {
   moodLevel: number | null;
   note: string;
   tags: string[];
+  // "standalone" entries (logged directly on this tab) can be edited/
+  // deleted here via updateStandaloneLog/deleteStandaloneLog. "dose"
+  // entries were captured through the "mark dose taken with feedback"
+  // flow and are edited from a medication's own dose history instead
+  // (History tab / medications/[id]'s dose history) — this tab shows them
+  // read-only rather than duplicating that edit flow.
+  source: "dose" | "standalone";
 }
 
 function toHistoryEntry(log: StandalonePainMoodLog): StandaloneHistoryEntry {
@@ -176,31 +225,117 @@ function toHistoryEntry(log: StandalonePainMoodLog): StandaloneHistoryEntry {
     moodLevel: log.mood_level,
     note: log.note,
     tags: log.tags ? log.tags.split(",").filter(Boolean) : [],
+    source: "standalone",
   };
 }
 
-// Adapted from rx-tracker-web's getStandaloneHistoryPoints, scoped to
-// medicationId: null (dose-linked entries aren't reachable from this
-// app's UI yet) and generalized to not split by metric column — this
-// tab shows one merged pain+mood history rather than web's separate
-// pain-tracking/mood-wellbeing pages, so an entry logged as "both" (or
-// just "pain"/"mood") is returned whole rather than filtered per-metric.
-export async function getStandaloneHistory(
+// dose_logs has no profile_id of its own (see lib/dose-logs.ts's
+// getCalendarMarkers doc comment) — resolve the profile's medication ids
+// first, the same way the calendar tab scopes dose_logs to a profile, so
+// a dose-linked pain/mood entry logged against one of this profile's
+// medications is reachable. Includes inactive (discontinued) medications
+// too, since their past feedback is still real history for this profile.
+async function resolveProfileMedicationIds(profileId?: string | null): Promise<string[]> {
+  const [active, inactive] = await Promise.all([
+    getActiveMedications(profileId),
+    getInactiveMedications(profileId),
+  ]);
+  return [...active, ...inactive].map((m) => m.id);
+}
+
+function mapDoseLogToHistoryEntry(log: DoseLog): StandaloneHistoryEntry {
+  return {
+    id: log.id,
+    // scheduled_for_date/scheduled_time are local calendar values, unlike
+    // standalone logs' logged_at (a UTC instant that toHistoryEntry passes
+    // through as-is) — the `new Date("...T...")` constructor below reads
+    // a timezone-less datetime as local time, so this converts the pair to
+    // the same real UTC instant standalone entries already store. Merging
+    // the two lists by raw string comparison (below) or formatting them
+    // (formatLoggedAt's own `new Date(iso)`) only sorts/displays correctly
+    // if both loggedAt values are actual instants, not a naive local string
+    // compared byte-for-byte against a real one.
+    loggedAt: new Date(`${log.scheduled_for_date}T${log.scheduled_time.slice(0, 5)}:00`).toISOString(),
+    logType: log.pain_level != null && log.mood_level != null ? "both" : log.mood_level != null ? "mood" : "pain",
+    painLevel: log.pain_level,
+    moodLevel: log.mood_level,
+    note: log.note,
+    tags: [], // dose_logs carries no mood-tag column, unlike standalone entries.
+    source: "dose",
+  };
+}
+
+// Most recent `limit` dose-linked pain/mood entries across a profile's
+// medications (active + inactive) — analogous to rx-tracker-web's
+// getDoseHistoryPoints, but not scoped to one medication since this tab
+// merges every medication's feedback into a single feed.
+async function getDoseHistoryEntries(medicationIds: string[], limit: number): Promise<StandaloneHistoryEntry[]> {
+  if (medicationIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("dose_logs")
+    .select("*")
+    .in("medication_id", medicationIds)
+    .or("pain_level.not.is.null,mood_level.not.is.null")
+    .order("scheduled_for_date", { ascending: false })
+    .order("scheduled_time", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as DoseLog[]).map(mapDoseLogToHistoryEntry);
+}
+
+// Merges dose-linked (via the profile's medications) and standalone
+// entries into one recent-first feed, capped at `limit` overall —
+// matches rx-tracker-web's getHistory, generalized to not split by
+// metric column since this tab shows one merged pain+mood history rather
+// than web's separate pain-tracking/mood-wellbeing pages.
+// `medicationFilter` mirrors rx-tracker-web's MedicationSelector scoping,
+// added on top of this tab's merged-by-default feed: undefined (default)
+// keeps the merged "All" view above; null scopes to standalone-only
+// entries (web's "Independent"); a medication id scopes to that one
+// medication's dose-linked entries only (no standalone entries, since
+// those are never attached to a medication). `profileMedicationIds`, when
+// the caller already has the profile's medication ids on hand (e.g.
+// pain-mood.tsx already fetched them for its filter chips), skips this
+// function's own resolveProfileMedicationIds query — otherwise it's
+// resolved here as before.
+export async function getHistory(
   limit = 50,
   profileId?: string | null,
+  medicationFilter?: string | null,
+  profileMedicationIds?: string[],
 ): Promise<StandaloneHistoryEntry[]> {
-  let query = supabase
-    .from("standalone_pain_mood_logs")
-    .select("*")
-    .is("medication_id", null)
-    .order("logged_at", { ascending: false })
-    .limit(limit);
-  if (profileId !== undefined) {
-    query = profileId === null ? query.is("profile_id", null) : query.eq("profile_id", profileId);
+  const wantsDose = medicationFilter !== null;
+  const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
+
+  const doseMedicationIds = !wantsDose
+    ? []
+    : medicationFilter
+      ? [medicationFilter]
+      : (profileMedicationIds ?? (await resolveProfileMedicationIds(profileId)));
+
+  let standaloneEntries: StandaloneHistoryEntry[] = [];
+  if (wantsStandalone) {
+    let standaloneQuery = supabase
+      .from("standalone_pain_mood_logs")
+      .select("*")
+      .is("medication_id", null)
+      .order("logged_at", { ascending: false })
+      .limit(limit);
+    if (profileId !== undefined) {
+      standaloneQuery =
+        profileId === null ? standaloneQuery.is("profile_id", null) : standaloneQuery.eq("profile_id", profileId);
+    }
+    const { data, error } = await standaloneQuery;
+    if (error) throw error;
+    standaloneEntries = (data as StandalonePainMoodLog[]).map(toHistoryEntry);
   }
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data as StandalonePainMoodLog[]).map(toHistoryEntry);
+
+  const doseEntries =
+    wantsDose && doseMedicationIds.length > 0 ? await getDoseHistoryEntries(doseMedicationIds, limit) : [];
+
+  return [...doseEntries, ...standaloneEntries]
+    .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt))
+    .slice(0, limit);
 }
 
 // ── Trend chart (date-range, ported from rx-tracker-web's TrendChart.tsx
@@ -256,11 +391,43 @@ function mapStandaloneLogToTrendPoint(
   };
 }
 
-// Adapted from rx-tracker-web's getStandaloneTrendPoints, scoped to
-// medicationId: null (dose-linked trend points aren't reachable from this
-// app — see AGENTS.md/task notes) and profile-scoped the same way
-// getStandaloneHistory already is.
-export async function getStandaloneTrend(
+// scheduled_for_date is already a local calendar date column (unlike
+// standalone logs' logged_at, a UTC instant), so it's filtered directly
+// against startDate/endDate with no timezone conversion — the same way
+// lib/dose-logs.ts's getCalendarMarkers bounds dose_logs by month.
+function mapDoseLogToTrendPoint(log: DoseLog, col: "pain_level" | "mood_level"): TrendPoint {
+  return {
+    id: log.id,
+    date: log.scheduled_for_date,
+    time: log.scheduled_time.slice(0, 5),
+    level: log[col] as number,
+  };
+}
+
+// Dose-linked trend points across a profile's medications (active +
+// inactive) for one metric within a date range — analogous to
+// rx-tracker-web's getDoseTrendPoints, but not scoped to one medication
+// since this tab merges every medication's feedback into a single chart.
+async function getDoseTrendPoints(
+  metric: WellbeingMetric,
+  medicationIds: string[],
+  startDate: string,
+  endDate: string,
+): Promise<TrendPoint[]> {
+  if (medicationIds.length === 0) return [];
+  const col = levelColumn(metric);
+  const { data, error } = await supabase
+    .from("dose_logs")
+    .select("*")
+    .in("medication_id", medicationIds)
+    .not(col, "is", null)
+    .gte("scheduled_for_date", startDate)
+    .lte("scheduled_for_date", endDate);
+  if (error) throw error;
+  return (data as DoseLog[]).map((log) => mapDoseLogToTrendPoint(log, col));
+}
+
+async function getStandaloneTrendPoints(
   metric: WellbeingMetric,
   startDate: string,
   endDate: string,
@@ -286,8 +453,42 @@ export async function getStandaloneTrend(
   if (error) throw error;
   return (data as StandalonePainMoodLog[])
     .filter((log) => log[col] !== null)
-    .map((log) => mapStandaloneLogToTrendPoint(log, col))
-    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+    .map((log) => mapStandaloneLogToTrendPoint(log, col));
+}
+
+// Merges dose-linked (via the profile's medications) and standalone trend
+// points for one metric within a date range, chronologically sorted —
+// matches rx-tracker-web's getTrend. `medicationFilter` has the same
+// meaning as getHistory's: undefined = merged "All" (default), null =
+// standalone-only ("Independent"), a medication id = that medication's
+// dose-linked points only. `profileMedicationIds` has the same
+// already-resolved-ids meaning as getHistory's.
+export async function getTrend(
+  metric: WellbeingMetric,
+  startDate: string,
+  endDate: string,
+  profileId?: string | null,
+  medicationFilter?: string | null,
+  profileMedicationIds?: string[],
+): Promise<TrendPoint[]> {
+  const wantsDose = medicationFilter !== null;
+  const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
+
+  const doseMedicationIds = !wantsDose
+    ? []
+    : medicationFilter
+      ? [medicationFilter]
+      : (profileMedicationIds ?? (await resolveProfileMedicationIds(profileId)));
+
+  const [dosePoints, standalonePoints] = await Promise.all([
+    wantsDose && doseMedicationIds.length > 0
+      ? getDoseTrendPoints(metric, doseMedicationIds, startDate, endDate)
+      : Promise.resolve([]),
+    wantsStandalone ? getStandaloneTrendPoints(metric, startDate, endDate, profileId) : Promise.resolve([]),
+  ]);
+  return [...dosePoints, ...standalonePoints].sort((a, b) =>
+    `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`),
+  );
 }
 
 export interface DailyAverage {

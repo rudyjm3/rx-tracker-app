@@ -41,6 +41,7 @@ export const Colors = {
     backgroundElement: Brand.card,
     backgroundSelected: Brand.border,
     textSecondary: Brand.textMuted,
+    border: Brand.border,
     // rx-deep-blue reads at ~5.4:1 against the light background/card
     // surfaces below; against dark mode's near-black background it drops
     // to ~2.8:1, so dark mode gets rx-cyan instead (same brand family,
@@ -53,6 +54,11 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    // Distinct from backgroundSelected — a hairline/input border needs to
+    // read against both the pure-black screen background and the
+    // backgroundElement card surface, not just double as a selected-state
+    // fill.
+    border: '#3A3E44',
     accent: Brand.cyan,
   },
 } as const;

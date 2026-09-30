@@ -2,8 +2,8 @@
 // get/set (used to gate one-time seeding, see seedMoodTagsIfNeeded in
 // lib/pain-mood.ts), the missed-dose grace period used to classify
 // History rows as late, the default snooze duration used by the
-// Dashboard's Snooze picker, and the timezone toggle/display. Mood chart
-// scheme isn't needed (excluded project-wide).
+// Dashboard's Snooze picker, the timezone toggle/display, and the mood
+// chart color scheme toggle.
 import { supabase } from "@/lib/supabase/client";
 import { SNOOZE_OPTIONS } from "@/lib/schedule";
 
@@ -12,6 +12,21 @@ export const MISSED_GRACE_MAX_MINUTES = 240;
 const DEFAULT_MISSED_GRACE_MINUTES = 60;
 
 const DEFAULT_SNOOZE_MINUTES = 15;
+
+export type MoodChartScheme = "classic" | "teal";
+const MOOD_CHART_SCHEMES: MoodChartScheme[] = ["classic", "teal"];
+const DEFAULT_MOOD_CHART_SCHEME: MoodChartScheme = "classic";
+
+export async function getMoodChartScheme(): Promise<MoodChartScheme> {
+  const raw = await getSetting("mood_chart_scheme");
+  return MOOD_CHART_SCHEMES.includes(raw as MoodChartScheme)
+    ? (raw as MoodChartScheme)
+    : DEFAULT_MOOD_CHART_SCHEME;
+}
+
+export async function setMoodChartScheme(scheme: MoodChartScheme): Promise<void> {
+  await setSetting("mood_chart_scheme", scheme);
+}
 
 export async function getSetting(key: string): Promise<string | null> {
   const {

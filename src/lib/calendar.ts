@@ -347,18 +347,31 @@ export function buildDayDetails(
     const prnSlots = slots.filter((s) => s.isPrn);
 
     // Both counts are actual logged totals for the date, topped up with
-    // any planned occurrence with no log yet — never the current
-    // schedule's raw projection alone for a date with logs.
-    // medication_schedule_times get deleted and reinserted on every edit,
-    // so projecting *today's* schedule onto a past date after the regimen
-    // changed would silently zero out doses that were genuinely logged
-    // under the schedule that applied back then; the actual per-medication
-    // totals already on `day` don't have that problem. The top-up is keyed
-    // by medication+time, not just medication: a medication with more than
-    // one required slot a day (e.g. twice-daily) must keep its still-
-    // unlogged evening slot planned after only its morning dose is logged,
-    // rather than having any one logged dose mark the whole medication
-    // "done" for the date.
+    // any still-unlogged occurrence per medication — never the current
+    // schedule's raw projection alone for a date with logs, and never
+    // matched by exact scheduled-time string (medication_schedule_times
+    // get deleted and reinserted on every edit, so a dose logged under a
+    // medication's *old* time would no longer match a slot generated from
+    // its *new* time and get double-counted as "still unlogged" on top of
+    // the dose that's already counted). Instead, per medication, the
+    // top-up is `max(0, currently-scheduled slot count − already-logged
+    // count)` — count-based, not keyed by time — so a same-day schedule
+    // edit can't inflate the total, while a medication with more than one
+    // required slot a day (e.g. twice-daily) still keeps its still-
+    // unlogged evening slot planned after only its morning dose is
+    // logged.
+    //
+    // Known limitation: because the top-up is a per-medication count, not
+    // matched to which slot is actually still open, a dose logged off-
+    // schedule ("Log at a custom time instead", which doesn't require
+    // picking one of the remaining unlogged slots) can make this display
+    // total read as fully accounted for while a real slot for that
+    // medication is still unlogged. This is purely a cosmetic total — the
+    // dashboard/calendar's actual per-slot status and reminders don't use
+    // it — and disambiguating would require matching logs to slots by
+    // scheduled time again, reintroducing the stale-time-string bug this
+    // count-based approach was written to avoid. Matches rx-tracker-web's
+    // lib/calendar.ts.
     const sumTotals = (meds: CalendarDayMedicationSummary[], asNeeded: boolean) =>
       meds.reduce(
         (n, m) => n + ((medsById.get(m.medicationId)?.as_needed ?? false) === asNeeded ? m.total : 0),
@@ -368,18 +381,24 @@ export function buildDayDetails(
       sumTotals(day.medications, false) + day.groups.reduce((n, g) => n + sumTotals(g.medications, false), 0);
     const loggedNonRequired =
       sumTotals(day.medications, true) + day.groups.reduce((n, g) => n + sumTotals(g.medications, true), 0);
-    const loggedSlotKeys = new Set<string>();
+    const loggedCountsByMed = new Map<string, number>();
     for (const m of [...day.medications, ...day.groups.flatMap((g) => g.medications)]) {
-      for (const s of m.slots) loggedSlotKeys.add(`${m.medicationId}|${s.time}`);
+      loggedCountsByMed.set(m.medicationId, m.total);
     }
-    const unloggedRequiredSlots = requiredSlots.filter(
-      (s) => !loggedSlotKeys.has(`${s.medicationId}|${s.scheduledTime}`),
-    );
-    const unloggedPrnSlots = prnSlots.filter(
-      (s) => !loggedSlotKeys.has(`${s.medicationId}|${s.scheduledTime}`),
-    );
-    day.plannedRequired = loggedRequired + unloggedRequiredSlots.length;
-    day.plannedNonRequired = loggedNonRequired + unloggedPrnSlots.length;
+    const unloggedCountFor = (slotsForMetric: typeof requiredSlots) => {
+      const scheduledCountsByMed = new Map<string, number>();
+      for (const s of slotsForMetric) {
+        scheduledCountsByMed.set(s.medicationId, (scheduledCountsByMed.get(s.medicationId) ?? 0) + 1);
+      }
+      let total = 0;
+      for (const [medicationId, scheduledCount] of scheduledCountsByMed) {
+        const loggedCount = loggedCountsByMed.get(medicationId) ?? 0;
+        total += Math.max(0, scheduledCount - loggedCount);
+      }
+      return total;
+    };
+    day.plannedRequired = loggedRequired + unloggedCountFor(requiredSlots);
+    day.plannedNonRequired = loggedNonRequired + unloggedCountFor(prnSlots);
 
     day.endingMedications = medications
       .filter((m) => m.end_date === date)

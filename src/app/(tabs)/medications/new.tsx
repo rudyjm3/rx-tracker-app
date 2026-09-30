@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
@@ -59,7 +60,10 @@ const initialState: NewMedicationFormState = {
 };
 
 export default function NewMedicationScreen() {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
+  const { fromOnboarding } = useLocalSearchParams<{ fromOnboarding?: string }>();
   const [form, setForm] = useState<NewMedicationFormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -166,7 +170,7 @@ export default function NewMedicationScreen() {
     try {
       const created = await createMedication(input, scheduleTimes);
       resyncIfRemindersEnabled();
-      router.replace(`/medications/${created.id}`);
+      router.replace(fromOnboarding ? '/onboarding' : `/medications/${created.id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to create medication');
     } finally {
@@ -185,7 +189,7 @@ export default function NewMedicationScreen() {
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
           <FieldLabel>Name</FieldLabel>
-          <TextInput style={styles.input} value={form.name} onChangeText={(v) => update('name', v)} placeholder="e.g. Lisinopril" />
+          <TextInput style={styles.input} value={form.name} onChangeText={(v) => update('name', v)} placeholder="e.g. Lisinopril" placeholderTextColor={theme.textSecondary} />
 
           <View style={styles.row}>
             <View style={styles.rowItem}>
@@ -199,12 +203,12 @@ export default function NewMedicationScreen() {
             </View>
             <View style={styles.rowItem}>
               <FieldLabel>Dose unit</FieldLabel>
-              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" />
+              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" placeholderTextColor={theme.textSecondary} />
             </View>
           </View>
 
           <FieldLabel>Dose form</FieldLabel>
-          <TextInput style={styles.input} value={form.doseForm} onChangeText={(v) => update('doseForm', v)} placeholder="tablet" />
+          <TextInput style={styles.input} value={form.doseForm} onChangeText={(v) => update('doseForm', v)} placeholder="tablet" placeholderTextColor={theme.textSecondary} />
 
           <FieldLabel>Type</FieldLabel>
           <View style={styles.segmented}>
@@ -265,6 +269,7 @@ export default function NewMedicationScreen() {
                         value={t.time}
                         onChangeText={(v) => updateTime(i, v)}
                         placeholder="HH:MM"
+                        placeholderTextColor={theme.textSecondary}
                       />
                       <ThemedText type="small" themeColor="textSecondary">
                         {TIME_RE.test(t.time) ? to12h(t.time) : ''}
@@ -296,6 +301,7 @@ export default function NewMedicationScreen() {
                       value={form.firstDoseTime}
                       onChangeText={(v) => update('firstDoseTime', v)}
                       placeholder="08:00"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </View>
                 </View>
@@ -317,6 +323,7 @@ export default function NewMedicationScreen() {
             value={form.endDate}
             onChangeText={(v) => update('endDate', v)}
             placeholder="YYYY-MM-DD"
+            placeholderTextColor={theme.textSecondary}
           />
           <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
             The regimen stops generating doses after this date. Leave blank for an ongoing medication.
@@ -341,7 +348,7 @@ export default function NewMedicationScreen() {
                 </View>
                 <View style={styles.rowItem}>
                   <FieldLabel>Unit</FieldLabel>
-                  <TextInput style={styles.input} value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" />
+                  <TextInput style={styles.input} value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" placeholderTextColor={theme.textSecondary} />
                 </View>
               </View>
               <FieldLabel>Low supply threshold</FieldLabel>
@@ -369,6 +376,7 @@ export default function NewMedicationScreen() {
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -376,7 +384,8 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
@@ -385,19 +394,19 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: Spacing.two },
   rowItem: { flex: 1 },
-  segmented: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: Brand.card },
-  segmentText: { color: Brand.textMuted },
-  segmentTextActive: { color: Brand.text },
+  segmentButtonActive: { backgroundColor: theme.backgroundElement },
+  segmentText: { color: theme.textSecondary },
+  segmentTextActive: { color: theme.text },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
   timesList: { gap: Spacing.two, marginTop: Spacing.one },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
@@ -405,3 +414,4 @@ const styles = StyleSheet.create({
   removeTime: { color: Brand.danger, marginLeft: 'auto' },
   addTime: { color: Brand.deepBlue, fontWeight: '600', marginTop: Spacing.one },
 });
+}

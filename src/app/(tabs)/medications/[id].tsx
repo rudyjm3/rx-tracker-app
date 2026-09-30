@@ -27,6 +27,7 @@ import {
   getGroups,
   getMedication,
   updateMedication,
+  updatePrescribedDose,
   type MedicationInput,
   type ScheduleTimeInput,
 } from '@/lib/medications';
@@ -81,7 +82,8 @@ const DISCONTINUE_REASONS = ["End of regimen", "Side effects", "Doctor's orders"
 const RESUME_REASONS = ["Doctor's orders", "Symptoms returned", "Retrying", "Restarting regimen", "Other"] as const;
 
 export default function MedicationDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const styles = getStyles(useTheme());
+  const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
   const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
   const [doseHistory, setDoseHistory] = useState<DoseHistoryEntry[]>([]);
@@ -92,6 +94,44 @@ export default function MedicationDetailScreen() {
   const [logDoseOpen, setLogDoseOpen] = useState(false);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
   const [statusSheetDirection, setStatusSheetDirection] = useState<'discontinue' | 'resume' | null>(null);
+  const [updateDoseOpen, setUpdateDoseOpen] = useState(false);
+
+  // Lets the medications list's quick-actions menu jump straight into a
+  // specific sheet (?action=logDose etc.) instead of just landing on this
+  // screen and making the user tap the right button themselves. Adjusted
+  // during render (React's documented pattern for "adjusting state when a
+  // prop changes", same as EditForm-adjacent screens' lastProfileId reset
+  // elsewhere in this app) rather than in an effect, so it can't cause the
+  // extra render pass a setState-in-effect would. consumedAction guards
+  // against reopening the same sheet every time this screen regains focus
+  // (e.g. after the opened sheet's own onClose navigates back here) — the
+  // URL still carries ?action=..., but only a *new* value re-triggers.
+  const [consumedAction, setConsumedAction] = useState<string | null>(null);
+  if (action && action !== consumedAction) {
+    setConsumedAction(action);
+    switch (action) {
+      case 'edit':
+        setEditing(true);
+        break;
+      case 'logDose':
+        setLogDoseOpen(true);
+        break;
+      case 'refill':
+      case 'adjust':
+        setRefillSheetMode(action);
+        break;
+      case 'sideEffects':
+        setSideEffectsOpen(true);
+        break;
+      case 'updateDose':
+        setUpdateDoseOpen(true);
+        break;
+      case 'discontinue':
+      case 'resume':
+        setStatusSheetDirection(action);
+        break;
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,6 +254,9 @@ export default function MedicationDetailScreen() {
           </View>
 
           <View style={styles.actions}>
+            <Pressable style={styles.secondaryButton} onPress={() => setUpdateDoseOpen(true)}>
+              <ThemedText style={styles.secondaryButtonText}>Update Prescribed Dose</ThemedText>
+            </Pressable>
             <Pressable style={styles.secondaryButton} onPress={() => setSideEffectsOpen(true)}>
               <ThemedText style={styles.secondaryButtonText}>Side Effects</ThemedText>
             </Pressable>
@@ -282,11 +325,23 @@ export default function MedicationDetailScreen() {
           }}
         />
       )}
+
+      {updateDoseOpen && (
+        <UpdatePrescribedDoseSheet
+          medication={medication}
+          onClose={() => setUpdateDoseOpen(false)}
+          onSaved={async () => {
+            setUpdateDoseOpen(false);
+            await load();
+          }}
+        />
+      )}
     </ThemedView>
   );
 }
 
 function RefillHistoryRow({ entry, unit }: { entry: MedicationRefill; unit: string }) {
+  const styles = getStyles(useTheme());
   const isAdjustment = entry.entry_type === 'adjustment';
   const sign = entry.amount >= 0 ? '+' : '';
   return (
@@ -308,6 +363,7 @@ function RefillHistoryRow({ entry, unit }: { entry: MedicationRefill; unit: stri
 }
 
 function DoseHistoryRow({ entry }: { entry: DoseHistoryEntry }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.historyRow}>
       <View style={styles.historyMain}>
@@ -344,6 +400,8 @@ function RefillSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [refillDate, setRefillDate] = useState(localDateString());
   const [amount, setAmount] = useState('');
   const [newQuantity, setNewQuantity] = useState(
@@ -409,6 +467,7 @@ function RefillSheet({
                       value={refillDate}
                       onChangeText={setRefillDate}
                       placeholder="YYYY-MM-DD"
+                      placeholderTextColor={theme.textSecondary}
                     />
                     <FieldLabel>{`Amount added (${medication.inventory_unit})`}</FieldLabel>
                     <TextInput
@@ -417,6 +476,7 @@ function RefillSheet({
                       value={amount}
                       onChangeText={setAmount}
                       placeholder="e.g. 30"
+                      placeholderTextColor={theme.textSecondary}
                     />
                     <FieldLabel>Note (optional)</FieldLabel>
                     <TextInput
@@ -424,6 +484,7 @@ function RefillSheet({
                       value={note}
                       onChangeText={setNote}
                       placeholder="e.g. 30-day supply"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </>
                 ) : (
@@ -444,6 +505,7 @@ function RefillSheet({
                       value={note}
                       onChangeText={setNote}
                       placeholder="e.g. recount, dropped a pill"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </>
                 )}
@@ -475,6 +537,115 @@ function RefillSheet({
   );
 }
 
+// Records a dose_amount/dose_unit change as its own history event, distinct
+// from a full Edit — port of rx-tracker-web's UpdatePrescribedDoseModal.
+function UpdatePrescribedDoseSheet({
+  medication,
+  onClose,
+  onSaved,
+}: {
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [amount, setAmount] = useState(medication.dose_amount != null ? String(medication.dose_amount) : '');
+  const [unit, setUnit] = useState(medication.dose_unit ?? '');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    const amountValue = Number(amount);
+    if (!amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0) {
+      setFormError('New dose amount must be greater than zero.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updatePrescribedDose(medication.id, amountValue, unit, reason.trim());
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't update prescribed dose");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ScrollView>
+                <ThemedText type="subtitle" style={styles.modalTitle}>
+                  Update prescribed dose
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                  Current dose: {medication.dose_amount ?? ''} {medication.dose_unit}
+                </ThemedText>
+
+                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+
+                <View style={styles.row}>
+                  <View style={styles.rowItem}>
+                    <FieldLabel>New dose amount</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={amount}
+                      onChangeText={setAmount}
+                    />
+                  </View>
+                  <View style={styles.rowItem}>
+                    <FieldLabel>Unit</FieldLabel>
+                    <TextInput
+                      style={styles.input}
+                      value={unit}
+                      onChangeText={setUnit}
+                      placeholder="mg"
+                      placeholderTextColor={theme.textSecondary}
+                    />
+                  </View>
+                </View>
+
+                <FieldLabel>Reason (optional)</FieldLabel>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholder="e.g. Doctor increased dose at last visit"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline
+                />
+
+                <View style={styles.actions}>
+                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primaryButton, saving && styles.disabled]}
+                    onPress={handleSubmit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <ThemedText style={styles.primaryButtonText}>Save dose change</ThemedText>
+                    )}
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function StatusChangeSheet({
   direction,
   medication,
@@ -487,6 +658,7 @@ function StatusChangeSheet({
   onSaved: () => void;
 }) {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const reasons = direction === 'discontinue' ? DISCONTINUE_REASONS : RESUME_REASONS;
   const [reason, setReason] = useState<string>(reasons[0]);
@@ -613,6 +785,8 @@ function LogDoseSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const today = localDateString();
   const [date, setDate] = useState(today);
   const [slot, setSlot] = useState<DaySlot | null>(null);
@@ -791,6 +965,7 @@ function LogDoseSheet({
                         setSlot(null);
                       }}
                       placeholder="YYYY-MM-DD"
+                      placeholderTextColor={theme.textSecondary}
                     />
                     {dateError && <ThemedText style={styles.error}>{dateError}</ThemedText>}
 
@@ -853,7 +1028,13 @@ function LogDoseSheet({
                     {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
                     <FieldLabel>Actual time taken</FieldLabel>
-                    <TextInput style={styles.input} value={time} onChangeText={setTime} placeholder="HH:MM" />
+                    <TextInput
+                      style={styles.input}
+                      value={time}
+                      onChangeText={setTime}
+                      placeholder="HH:MM"
+                      placeholderTextColor={theme.textSecondary}
+                    />
 
                     {trackPain && (
                       <LevelStepper
@@ -932,6 +1113,7 @@ function SideEffectsSheet({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const [occurredDate, setOccurredDate] = useState(localDateString());
   const [severity, setSeverity] = useState<SideEffectSeverity>('mild');
@@ -1289,6 +1471,7 @@ function ManageSideEffectTagsSheet({
   onChanged: () => void;
 }) {
   const theme = useTheme();
+  const styles = getStyles(theme);
   const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const [localTags, setLocalTags] = useState(tags);
   const [newTagName, setNewTagName] = useState('');
@@ -1479,6 +1662,7 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.stepperBlock}>
       <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
@@ -1515,6 +1699,7 @@ function LevelStepper({
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  const styles = getStyles(useTheme());
   return (
     <View style={styles.detailRow}>
       <ThemedText type="small" themeColor="textSecondary">
@@ -1589,6 +1774,8 @@ function EditForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
   const [form, setForm] = useState<EditFormState>(() => toFormState(medication));
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -1716,7 +1903,7 @@ function EditForm({
             </View>
             <View style={styles.rowItem}>
               <FieldLabel>Dose unit</FieldLabel>
-              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" />
+              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" placeholderTextColor={theme.textSecondary} />
             </View>
           </View>
 
@@ -1779,6 +1966,7 @@ function EditForm({
                         value={t.time}
                         onChangeText={(v) => updateTime(i, v)}
                         placeholder="HH:MM"
+                        placeholderTextColor={theme.textSecondary}
                       />
                       <ThemedText type="small" themeColor="textSecondary">
                         {TIME_RE.test(t.time) ? to12h(t.time) : ''}
@@ -1810,6 +1998,7 @@ function EditForm({
                       value={form.firstDoseTime}
                       onChangeText={(v) => update('firstDoseTime', v)}
                       placeholder="08:00"
+                      placeholderTextColor={theme.textSecondary}
                     />
                   </View>
                 </View>
@@ -1831,6 +2020,7 @@ function EditForm({
             value={form.endDate}
             onChangeText={(v) => update('endDate', v)}
             placeholder="YYYY-MM-DD"
+            placeholderTextColor={theme.textSecondary}
           />
           <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
             The regimen stops generating doses after this date. Leave blank for an ongoing medication.
@@ -1856,7 +2046,7 @@ function EditForm({
                 </View>
                 <View style={styles.rowItem}>
                   <FieldLabel>Unit</FieldLabel>
-                  <TextInput style={styles.input} value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" />
+                  <TextInput style={styles.input} value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" placeholderTextColor={theme.textSecondary} />
                 </View>
               </View>
               {medication.inventory_enabled && (
@@ -1889,6 +2079,7 @@ function EditForm({
 }
 
 function FieldLabel({ children }: { children: string }) {
+  const styles = getStyles(useTheme());
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
       {children}
@@ -1896,7 +2087,8 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1908,7 +2100,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
   historySection: { marginTop: Spacing.four, gap: Spacing.two },
   sectionTitle: { marginBottom: Spacing.one },
-  historyRow: { flexDirection: 'row', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Brand.border },
+  historyRow: { flexDirection: 'row', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
   historyMain: { flex: 1, gap: 2 },
   historyNote: { fontStyle: 'italic' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -1917,19 +2109,19 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.two },
   primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
   secondaryButtonText: { fontWeight: '600' },
   disabled: { opacity: 0.6 },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: Brand.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16 },
+  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: Spacing.two },
   rowItem: { flex: 1 },
-  segmented: { flexDirection: 'row', backgroundColor: Brand.bg, borderRadius: BorderRadius.sm, padding: 2 },
+  segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: Brand.card },
-  segmentText: { color: Brand.textMuted },
-  segmentTextActive: { color: Brand.text },
+  segmentButtonActive: { backgroundColor: theme.backgroundElement },
+  segmentText: { color: theme.textSecondary },
+  segmentTextActive: { color: theme.text },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
   timesList: { gap: Spacing.two, marginTop: Spacing.one },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
@@ -1945,7 +2137,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     padding: Spacing.three,
   },
@@ -1960,7 +2152,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1978,26 +2170,26 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   statusChip: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
-  statusChipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
-  statusChipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  statusChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  statusChipTextSelected: { fontWeight: '700', color: theme.accent },
   tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
   tagsHeaderLinks: { flexDirection: 'row', gap: Spacing.three },
   manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one, marginTop: Spacing.one },
   tagChip: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: 999,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
-  tagChipSelected: { backgroundColor: Brand.deepBlue, borderColor: Brand.deepBlue },
-  tagText: { color: Brand.textMuted },
+  tagChipSelected: { backgroundColor: theme.accent, borderColor: theme.accent },
+  tagText: { color: theme.textSecondary },
   tagTextSelected: { color: '#ffffff', fontWeight: '600' },
   deleteText: { color: Brand.danger, fontWeight: '600' },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
@@ -2010,7 +2202,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Brand.border,
+    borderBottomColor: theme.border,
   },
   manageTagNameButton: { flex: 1 },
   manageTagInput: { flex: 1, paddingVertical: Spacing.one },
@@ -2034,3 +2226,4 @@ const styles = StyleSheet.create({
   severityBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   severityBadgeText: { color: '#ffffff', fontWeight: '600' },
 });
+}

@@ -1,7 +1,7 @@
 // Ported from rx-tracker-web's lib/types/profile.ts, scoped to just the
 // fields the mobile family-management screens, ProfileSwitcher, the
-// account owner's own profile screen, and allergy tracking use this round
-// (no onboarding — not in scope).
+// account owner's own profile screen, allergy tracking, and (as of the
+// onboarding screen) profile_onboarding use.
 
 export interface UserProfile {
   user_id: string;
@@ -65,3 +65,27 @@ export interface ProfileAllergy {
 // every allergy list/UI actually consumes, matching rx-tracker-web's
 // AllergyPanel.
 export type ProfileAllergyWithName = ProfileAllergy & { name: string };
+
+// Matches rx-tracker-web's lib/types/profile.ts — the profile_onboarding
+// row is shared with web (same table), though this app's single-screen
+// onboarding (src/app/onboarding) only ever writes "medications" while in
+// progress and "activate" right before completing, rather than web's full
+// 6-step current_step granularity.
+export type OnboardingStatus = "not_started" | "in_progress" | "completed" | "skipped";
+export type OnboardingStep =
+  | "medications"
+  | "tracking"
+  | "schedule"
+  | "inventory"
+  | "reconcile"
+  | "activate";
+
+export interface ProfileOnboarding {
+  id: string;
+  user_id: string;
+  profile_id: string | null;
+  status: OnboardingStatus;
+  current_step: string;
+  started_at: string | null;
+  completed_at: string | null;
+}

@@ -9,6 +9,8 @@ import Svg, { Circle, Line as SvgLine, Polyline, Text as SvgText } from 'react-n
 
 import { ThemedText } from '@/components/themed-text';
 import { Brand, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import type { MoodChartScheme } from '@/lib/app-settings';
 import {
   groupDailyAverages,
   levelColor,
@@ -37,9 +39,11 @@ interface TrendChartProps {
   metric: WellbeingMetric;
   points: TrendPoint[];
   rangeDays: RangeDays;
+  moodChartScheme?: MoodChartScheme;
 }
 
-export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
+export function TrendChart({ metric, points, rangeDays, moodChartScheme }: TrendChartProps) {
+  const theme = useTheme();
   const [width, setWidth] = useState(0);
   const [drillDate, setDrillDate] = useState<string | null>(null);
 
@@ -113,7 +117,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                   y1={y}
                   x2={width - PADDING_RIGHT}
                   y2={y}
-                  stroke={Brand.border}
+                  stroke={theme.border}
                   strokeWidth={1}
                 />
               );
@@ -124,7 +128,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                 x={PADDING_LEFT - 6}
                 y={yToPixel(tick, innerHeight) + 4}
                 fontSize={11}
-                fill={Brand.textMuted}
+                fill={theme.textSecondary}
                 textAnchor="end"
               >
                 {tick}
@@ -138,7 +142,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                   x={x}
                   y={CHART_HEIGHT - PADDING_BOTTOM + 18}
                   fontSize={10}
-                  fill={Brand.textMuted}
+                  fill={theme.textSecondary}
                   textAnchor="middle"
                 >
                   {to12h(minutesToTime(mins))}
@@ -161,8 +165,8 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                 cx={PADDING_LEFT + (p.x / 1440) * innerWidth}
                 cy={yToPixel(p.level, innerHeight)}
                 r={5}
-                fill={levelColor(metric, p.level)}
-                stroke={Brand.card}
+                fill={levelColor(metric, p.level, moodChartScheme)}
+                stroke={theme.background}
                 strokeWidth={2}
               />
             ))}
@@ -178,7 +182,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                   y1={y}
                   x2={width - PADDING_RIGHT}
                   y2={y}
-                  stroke={Brand.border}
+                  stroke={theme.border}
                   strokeWidth={1}
                 />
               );
@@ -189,7 +193,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                 x={PADDING_LEFT - 6}
                 y={yToPixel(tick, innerHeight) + 4}
                 fontSize={11}
-                fill={Brand.textMuted}
+                fill={theme.textSecondary}
                 textAnchor="end"
               >
                 {tick}
@@ -212,7 +216,7 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                   x={x}
                   y={CHART_HEIGHT - PADDING_BOTTOM + 18}
                   fontSize={10}
-                  fill={Brand.textMuted}
+                  fill={theme.textSecondary}
                   textAnchor="middle"
                 >
                   {d.date.slice(5)}
@@ -266,8 +270,8 @@ export function TrendChart({ metric, points, rangeDays }: TrendChartProps) {
                   cx={x}
                   cy={yToPixel(d.level, innerHeight)}
                   r={5}
-                  fill={levelColor(metric, d.level)}
-                  stroke={Brand.card}
+                  fill={levelColor(metric, d.level, moodChartScheme)}
+                  stroke={theme.background}
                   strokeWidth={2}
                   onPress={() => setDrillDate(d.date)}
                 />

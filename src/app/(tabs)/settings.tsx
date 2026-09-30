@@ -19,20 +19,28 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   browserTimezone,
   getMissedGraceMinutes,
+  getMoodChartScheme,
   getSnoozeMinutes,
   getUseDeviceTimezone,
   MISSED_GRACE_MAX_MINUTES,
   MISSED_GRACE_MIN_MINUTES,
   setMissedGraceMinutes,
+  setMoodChartScheme,
   setSnoozeMinutes,
   setUseDeviceTimezone,
+  type MoodChartScheme,
 } from '@/lib/app-settings';
 import {
   cancelAllReminderNotifications,
   getRemindersEnabledSetting,
+  isAlarmSoundEnabled,
+  isVibrationEnabled,
+  previewAlarm,
   requestReminderPermissions,
   resyncReminderNotifications,
+  setAlarmSoundEnabled,
   setRemindersEnabledSetting,
+  setVibrationEnabled,
 } from '@/lib/notifications';
 import { SNOOZE_OPTIONS } from '@/lib/schedule';
 import { useAuth } from '@/lib/supabase/AuthProvider';
@@ -40,6 +48,7 @@ import { useAuth } from '@/lib/supabase/AuthProvider';
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
   const theme = useTheme();
+  const styles = getStyles(theme);
 
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [loadingSetting, setLoadingSetting] = useState(true);
@@ -52,6 +61,10 @@ export default function SettingsScreen() {
   const [graceError, setGraceError] = useState<string | null>(null);
   const [snoozeMinutes, setSnoozeMinutesState] = useState<number | null>(null);
   const [useDeviceTimezone, setUseDeviceTimezoneState] = useState(true);
+  const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
+  const [moodSchemeError, setMoodSchemeError] = useState<string | null>(null);
+  const [alarmSoundEnabled, setAlarmSoundEnabledState] = useState(true);
+  const [vibrationEnabled, setVibrationEnabledState] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,17 +78,28 @@ export default function SettingsScreen() {
         if (!cancelled) setLoadingSetting(false);
       }
     })();
+    // Device-local (AsyncStorage), same as remindersEnabled above — not
+    // gated on a session, so loaded in their own block rather than the
+    // Supabase-backed settings' Promise.all below.
+    (async () => {
+      const [sound, vibration] = await Promise.all([isAlarmSoundEnabled(), isVibrationEnabled()]);
+      if (cancelled) return;
+      setAlarmSoundEnabledState(sound);
+      setVibrationEnabledState(vibration);
+    })();
     (async () => {
       try {
-        const [grace, snooze, useDevice] = await Promise.all([
+        const [grace, snooze, useDevice, moodScheme] = await Promise.all([
           getMissedGraceMinutes(),
           getSnoozeMinutes(),
           getUseDeviceTimezone(),
+          getMoodChartScheme(),
         ]);
         if (cancelled) return;
         setGraceMinutesInput(String(grace));
         setSnoozeMinutesState(snooze);
         setUseDeviceTimezoneState(useDevice);
+        setMoodChartSchemeState(moodScheme);
       } catch {
         // No session yet — leave defaults in place.
       }
@@ -124,6 +148,37 @@ export default function SettingsScreen() {
       await setUseDeviceTimezone(value);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save time zone setting');
+    }
+  }
+
+  async function handleMoodChartSchemeToggle(useTeal: boolean) {
+    const scheme: MoodChartScheme = useTeal ? 'teal' : 'classic';
+    setMoodSchemeError(null);
+    setMoodChartSchemeState(scheme);
+    try {
+      await setMoodChartScheme(scheme);
+    } catch (e) {
+      setMoodSchemeError(e instanceof Error ? e.message : "Couldn't save mood chart color");
+    }
+  }
+
+  async function handleAlarmSoundToggle(value: boolean) {
+    setError(null);
+    setAlarmSoundEnabledState(value);
+    try {
+      await setAlarmSoundEnabled(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save alarm sound setting");
+    }
+  }
+
+  async function handleVibrationToggle(value: boolean) {
+    setError(null);
+    setVibrationEnabledState(value);
+    try {
+      await setVibrationEnabled(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save vibration setting");
     }
   }
 
@@ -214,6 +269,45 @@ export default function SettingsScreen() {
           </ThemedView>
 
           <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="smallBold">Alarm &amp; notification settings</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Alerts you while the dashboard is open when a dose becomes due.
+            </ThemedText>
+
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="small">Alarm sound</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Audible alarm when a dose is due. On by default.
+                </ThemedText>
+              </View>
+              <Switch
+                value={alarmSoundEnabled}
+                onValueChange={handleAlarmSoundToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="small">Vibration</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Device vibration for in-app alarms. On by default.
+                </ThemedText>
+              </View>
+              <Switch
+                value={vibrationEnabled}
+                onValueChange={handleVibrationToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+
+            <Pressable style={styles.testAlarmButton} onPress={() => previewAlarm()}>
+              <ThemedText style={styles.testAlarmButtonText}>Test alarm</ThemedText>
+            </Pressable>
+          </ThemedView>
+
+          <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="smallBold">Missed dose grace period</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
               How many minutes past the scheduled time before a pending dose is marked missed,
@@ -279,6 +373,27 @@ export default function SettingsScreen() {
             </View>
           </ThemedView>
 
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <View style={styles.reminderRow}>
+              <View style={styles.reminderLabel}>
+                <ThemedText type="smallBold">Teal mood chart</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                  Use a teal gradient for the mood trend chart instead of the red-to-green scale.
+                </ThemedText>
+              </View>
+              <Switch
+                value={moodChartScheme === 'teal'}
+                onValueChange={handleMoodChartSchemeToggle}
+                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
+              />
+            </View>
+            {moodSchemeError && (
+              <ThemedText type="small" style={styles.error}>
+                {moodSchemeError}
+              </ThemedText>
+            )}
+          </ThemedView>
+
           <Pressable style={styles.card} onPress={() => router.push('/profile')}>
             <ThemedText type="smallBold">My Profile</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
@@ -293,6 +408,20 @@ export default function SettingsScreen() {
             </ThemedText>
           </Pressable>
 
+          <Pressable style={styles.card} onPress={() => router.push('/export')}>
+            <ThemedText type="smallBold">Doctor Visit Report</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Generate a PDF summary of your medications, adherence, and history to share or print.
+            </ThemedText>
+          </Pressable>
+
+          <Pressable style={styles.card} onPress={() => router.push('/help')}>
+            <ThemedText type="smallBold">Help &amp; FAQ</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              Answers to common questions about how RxTracker works.
+            </ThemedText>
+          </Pressable>
+
           <Pressable style={styles.button} onPress={signOut}>
             <ThemedText style={styles.buttonText}>Sign out</ThemedText>
           </Pressable>
@@ -302,7 +431,8 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function getStyles(theme: ReturnType<typeof useTheme>) {
+  return StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
@@ -317,28 +447,39 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   settingsButton: { alignSelf: 'flex-start' },
+  testAlarmButton: {
+    alignSelf: 'flex-start',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
+  testAlarmButtonText: { fontWeight: '600' },
   error: { color: Brand.danger, marginTop: Spacing.one },
   graceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
   graceInput: {
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 16,
     minWidth: 64,
     textAlign: 'center',
+    color: theme.text,
+    backgroundColor: theme.backgroundElement,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
   chip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Brand.border,
+    borderColor: theme.border,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: Brand.bg },
-  chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  chipTextSelected: { fontWeight: '700', color: theme.accent },
   button: {
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,
@@ -349,3 +490,4 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: Brand.danger, fontWeight: '600' },
 });
+}
