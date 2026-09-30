@@ -293,11 +293,16 @@ async function getDoseHistoryEntries(medicationIds: string[], limit: number): Pr
 // keeps the merged "All" view above; null scopes to standalone-only
 // entries (web's "Independent"); a medication id scopes to that one
 // medication's dose-linked entries only (no standalone entries, since
-// those are never attached to a medication).
+// those are never attached to a medication). `profileMedicationIds`, when
+// the caller already has the profile's medication ids on hand (e.g.
+// pain-mood.tsx already fetched them for its filter chips), skips this
+// function's own resolveProfileMedicationIds query — otherwise it's
+// resolved here as before.
 export async function getHistory(
   limit = 50,
   profileId?: string | null,
   medicationFilter?: string | null,
+  profileMedicationIds?: string[],
 ): Promise<StandaloneHistoryEntry[]> {
   const wantsDose = medicationFilter !== null;
   const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
@@ -306,7 +311,7 @@ export async function getHistory(
     ? []
     : medicationFilter
       ? [medicationFilter]
-      : await resolveProfileMedicationIds(profileId);
+      : (profileMedicationIds ?? (await resolveProfileMedicationIds(profileId)));
 
   let standaloneEntries: StandaloneHistoryEntry[] = [];
   if (wantsStandalone) {
@@ -456,13 +461,15 @@ async function getStandaloneTrendPoints(
 // matches rx-tracker-web's getTrend. `medicationFilter` has the same
 // meaning as getHistory's: undefined = merged "All" (default), null =
 // standalone-only ("Independent"), a medication id = that medication's
-// dose-linked points only.
+// dose-linked points only. `profileMedicationIds` has the same
+// already-resolved-ids meaning as getHistory's.
 export async function getTrend(
   metric: WellbeingMetric,
   startDate: string,
   endDate: string,
   profileId?: string | null,
   medicationFilter?: string | null,
+  profileMedicationIds?: string[],
 ): Promise<TrendPoint[]> {
   const wantsDose = medicationFilter !== null;
   const wantsStandalone = medicationFilter === undefined || medicationFilter === null;
@@ -471,7 +478,7 @@ export async function getTrend(
     ? []
     : medicationFilter
       ? [medicationFilter]
-      : await resolveProfileMedicationIds(profileId);
+      : (profileMedicationIds ?? (await resolveProfileMedicationIds(profileId)));
 
   const [dosePoints, standalonePoints] = await Promise.all([
     wantsDose && doseMedicationIds.length > 0

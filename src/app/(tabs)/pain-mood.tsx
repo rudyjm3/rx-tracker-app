@@ -120,24 +120,46 @@ export default function PainMoodScreen() {
     activeProfileIdRef.current = activeProfileId;
   }, [activeProfileId]);
 
+  // Populated by load() below, keyed by the profile it was resolved for —
+  // read by loadTrend so it can skip re-resolving the same profile's
+  // medication ids a third time. Deliberately a ref (not state): its only
+  // consumer reads it inside an async callback, not during render, so it
+  // doesn't need to trigger a re-render or be a hook dependency.
+  const medicationIdsRef = useRef<{ profileId?: string | null; ids: string[] }>({
+    profileId: undefined,
+    ids: [],
+  });
+
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setLoadError(null);
     try {
-      const [tags, entries, scheme, activeMeds, inactiveMeds] = await Promise.all([
-        getMoodTags(),
-        getHistory(50, activeProfileId, medicationFilter),
-        getMoodChartScheme(),
+      // Resolved first (rather than alongside getHistory below) so its ids
+      // can be handed to getHistory directly instead of getHistory
+      // re-resolving the same profile's medications itself — and cached in
+      // medicationIdsRef for loadTrend to reuse too, since active+inactive
+      // medications don't otherwise change within one profile's session.
+      const [activeMeds, inactiveMeds] = await Promise.all([
         getActiveMedications(activeProfileId),
         getInactiveMedications(activeProfileId),
+      ]);
+      if (requestIdRef.current !== requestId) return;
+      const allMeds = [...activeMeds, ...inactiveMeds];
+      const medicationIds = allMeds.map((m) => m.id);
+      medicationIdsRef.current = { profileId: activeProfileId, ids: medicationIds };
+
+      const [tags, entries, scheme] = await Promise.all([
+        getMoodTags(),
+        getHistory(50, activeProfileId, medicationFilter, medicationIds),
+        getMoodChartScheme(),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMoodTags(tags);
       setHistory(entries);
       setMoodChartSchemeState(scheme);
-      setMedications([...activeMeds, ...inactiveMeds]);
+      setMedications(allMeds);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setLoadError(e instanceof Error ? e.message : 'Failed to load pain & mood data');
@@ -175,7 +197,9 @@ export default function PainMoodScreen() {
     setTrendError(null);
     try {
       const { start, end } = rangeDatesForDays(trendRangeDays, localDateString());
-      const points = await getTrend(trendMetric, start, end, activeProfileId, medicationFilter);
+      const cachedIds =
+        medicationIdsRef.current.profileId === activeProfileId ? medicationIdsRef.current.ids : undefined;
+      const points = await getTrend(trendMetric, start, end, activeProfileId, medicationFilter, cachedIds);
       if (trendRequestIdRef.current !== requestId) return;
       setTrendPoints(points);
     } catch (e) {

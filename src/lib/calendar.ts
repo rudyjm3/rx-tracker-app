@@ -360,6 +360,18 @@ export function buildDayDetails(
     // required slot a day (e.g. twice-daily) still keeps its still-
     // unlogged evening slot planned after only its morning dose is
     // logged.
+    //
+    // Known limitation: because the top-up is a per-medication count, not
+    // matched to which slot is actually still open, a dose logged off-
+    // schedule ("Log at a custom time instead", which doesn't require
+    // picking one of the remaining unlogged slots) can make this display
+    // total read as fully accounted for while a real slot for that
+    // medication is still unlogged. This is purely a cosmetic total — the
+    // dashboard/calendar's actual per-slot status and reminders don't use
+    // it — and disambiguating would require matching logs to slots by
+    // scheduled time again, reintroducing the stale-time-string bug this
+    // count-based approach was written to avoid. Matches rx-tracker-web's
+    // lib/calendar.ts.
     const sumTotals = (meds: CalendarDayMedicationSummary[], asNeeded: boolean) =>
       meds.reduce(
         (n, m) => n + ((medsById.get(m.medicationId)?.as_needed ?? false) === asNeeded ? m.total : 0),

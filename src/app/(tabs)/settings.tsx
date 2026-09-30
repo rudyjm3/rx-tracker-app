@@ -162,14 +162,24 @@ export default function SettingsScreen() {
     }
   }
 
-  function handleAlarmSoundToggle(value: boolean) {
+  async function handleAlarmSoundToggle(value: boolean) {
+    setError(null);
     setAlarmSoundEnabledState(value);
-    setAlarmSoundEnabled(value);
+    try {
+      await setAlarmSoundEnabled(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save alarm sound setting");
+    }
   }
 
-  function handleVibrationToggle(value: boolean) {
+  async function handleVibrationToggle(value: boolean) {
+    setError(null);
     setVibrationEnabledState(value);
-    setVibrationEnabled(value);
+    try {
+      await setVibrationEnabled(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save vibration setting");
+    }
   }
 
   async function handleToggle(value: boolean) {
