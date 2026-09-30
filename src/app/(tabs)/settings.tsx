@@ -478,8 +478,8 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
-  chipSelected: { borderColor: Brand.deepBlue, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { fontWeight: '700', color: Brand.deepBlue },
+  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
+  chipTextSelected: { fontWeight: '700', color: theme.accent },
   button: {
     borderRadius: BorderRadius.sm,
     paddingVertical: Spacing.three,

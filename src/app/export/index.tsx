@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -108,6 +108,22 @@ export default function ExportScreen() {
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+      } else if (Platform.OS === 'web') {
+        // expo-sharing has no native share sheet on web (it's built on the
+        // Web Share API, which has very limited browser support for
+        // files) — isAvailableAsync() commonly returns false there, which
+        // would otherwise discard the generated PDF silently even though
+        // it was created successfully. printToFileAsync's web `uri` is a
+        // directly downloadable blob/data URL, so trigger a normal browser
+        // download instead of the native share sheet.
+        const link = document.createElement('a');
+        link.href = uri;
+        link.download = `RxTracker-report-${startDate}-to-${endDate}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        setError('Sharing is not available on this device — the report was generated but could not be sent.');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report');

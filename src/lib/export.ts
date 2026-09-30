@@ -11,19 +11,22 @@
 // lib/pain-mood.ts's own header comment).
 import { computeAdherence } from "@/lib/adherence";
 import { getProfileAllergies } from "@/lib/allergies";
-import { getCalendarLogs } from "@/lib/dose-logs";
+import { getMissedGraceMinutes } from "@/lib/app-settings";
+import { getCalendarLogs, type CalendarLogRow } from "@/lib/dose-logs";
 import { getDoseHistory } from "@/lib/medications";
 import { getTrend, groupDailyAverages, type WellbeingMetric } from "@/lib/pain-mood";
+import { generateDaySlots, slotDueTime } from "@/lib/schedule";
 import { getSideEffects } from "@/lib/side-effects";
 import type {
   DoseHistoryEntry,
+  DoseLogStatus,
   Medication,
   MedicationDoseChange,
   MedicationStatusEvent,
   SideEffect,
 } from "@/lib/types/medications";
 import type { ProfileAllergyWithName } from "@/lib/types/profile";
-import { scheduleSummary } from "@/lib/utils";
+import { localDateString, scheduleSummary } from "@/lib/utils";
 
 const MISSED_DOSE_DISPLAY_CAP = 25;
 
@@ -93,18 +96,75 @@ function latestStatusEvent(
   return matches.reduce((latest, cur) => (cur.at > latest.at ? cur : latest)).data;
 }
 
+function datesInRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  while (cursor <= end) {
+    dates.push(localDateString(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+interface ReportSlot {
+  medicationId: string;
+  date: string;
+  scheduledTime: string;
+  status: DoseLogStatus | "pending";
+}
+
+// This app never writes a finalized "missed" dose_logs row for a slot the
+// user never touched (see lib/calendar.ts's header comment) — a required
+// dose nobody logged just has no row at all. Reading dose_logs alone (the
+// original approach here) therefore silently drops every untouched dose
+// from both the adherence percentage and the missed-dose list: a patient
+// who took 1 of 10 scheduled doses and ignored the rest would read as
+// "100% adherence, 1 scheduled." Regenerating each date's required slots
+// the same way the dashboard does — via generateDaySlots, matched against
+// the real dose_logs already fetched — and reclassifying any slot still
+// "pending" once its due time plus the grace period has passed as
+// "missed" recovers those untouched doses without needing a real
+// finalized row. Scoped to *active* medications only (no groups needed,
+// since a PRN medication's slots come from group membership but PRN is
+// already excluded here) — matches lib/calendar.ts's own documented
+// simplification of using each medication's current `active` flag rather
+// than replaying status-event history for past dates.
+function reportSlotsForDate(
+  date: string,
+  medications: Medication[],
+  logs: CalendarLogRow[],
+  now: number,
+  graceMinutes: number,
+): ReportSlot[] {
+  const medsForDate = medications.filter(
+    (m) => m.active && !m.as_needed && date >= (m.start_date ?? m.created_at.slice(0, 10)),
+  );
+  if (medsForDate.length === 0) return [];
+  const dayLogs = logs.filter((l) => l.scheduled_for_date === date);
+  const slots = generateDaySlots(date, medsForDate, [], [], dayLogs, [], { ignoreDashboardVisibility: true });
+  return slots.map((s) => ({
+    medicationId: s.medicationId,
+    date,
+    scheduledTime: s.scheduledTime,
+    status: s.status === "pending" && now > slotDueTime(s, date) + graceMinutes * 60_000 ? "missed" : s.status,
+  }));
+}
+
 export async function buildReportData(options: ReportOptions): Promise<ReportData> {
   const { profileId, patientName, startDate, endDate, medications, includePain, includeMood } = options;
   const medicationIds = medications.map((m) => m.id);
 
-  const [logs, allergies, doseHistories, sideEffectLists] = await Promise.all([
+  const [logs, allergies, doseHistories, sideEffectLists, graceMinutes] = await Promise.all([
     getCalendarLogs(startDate, endDate, medicationIds),
     getProfileAllergies(profileId),
     Promise.all(medications.map((m) => getDoseHistory(m.id))),
     Promise.all(medications.map((m) => getSideEffects(m.id))),
+    getMissedGraceMinutes(),
   ]);
 
   const doseHistoryByMed = new Map(medications.map((m, i) => [m.id, doseHistories[i]]));
+  const medNameById = new Map(medications.map((m) => [m.id, m.name]));
 
   const currentMedications = medications.filter((m) => m.active);
   const discontinuedMedications: DiscontinuedRow[] = medications
@@ -123,36 +183,66 @@ export async function buildReportData(options: ReportOptions): Promise<ReportDat
     )
     .sort((a, b) => b.change.changed_at.localeCompare(a.change.changed_at));
 
+  // Regenerated per-day slots (see reportSlotsForDate's doc comment) for
+  // every currently-active required medication in the report range, so
+  // untouched-but-due doses count as missed instead of vanishing. Scoped
+  // to active medications only; a currently-inactive medication's real
+  // dose_logs rows (still legitimate history) are folded back in below
+  // for the missed-dose list, the same way it always was.
+  const now = Date.now();
+  const activeRequiredMeds = medications.filter((m) => m.active && !m.as_needed);
+  const reportDates = datesInRange(startDate, endDate).filter((d) => d <= localDateString());
+  const resolvedSlots = reportDates
+    .flatMap((date) => reportSlotsForDate(date, activeRequiredMeds, logs, now, graceMinutes))
+    .filter((s): s is ReportSlot & { status: DoseLogStatus } => s.status !== "pending");
+
   const adherenceEligibleIds = new Set(
-    medications.filter((m) => !m.as_needed && m.adherence_enabled).map((m) => m.id),
+    medications.filter((m) => m.active && !m.as_needed && m.adherence_enabled).map((m) => m.id),
   );
-  const eligibleLogs = logs.filter((l) => adherenceEligibleIds.has(l.medication_id));
-  const overallAdherencePercent = computeAdherence(eligibleLogs);
-  const dosesScheduled = eligibleLogs.length;
-  const dosesTaken = eligibleLogs.filter((l) => l.status === "taken").length;
-  const dosesMissed = eligibleLogs.filter((l) => l.status === "missed").length;
-  const dosesSkipped = eligibleLogs.filter((l) => l.status === "skipped").length;
+  const eligibleSlots = resolvedSlots.filter((s) => adherenceEligibleIds.has(s.medicationId));
+  const overallAdherencePercent = computeAdherence(eligibleSlots);
+  const dosesScheduled = eligibleSlots.length;
+  const dosesTaken = eligibleSlots.filter((s) => s.status === "taken").length;
+  const dosesMissed = eligibleSlots.filter((s) => s.status === "missed").length;
+  const dosesSkipped = eligibleSlots.filter((s) => s.status === "skipped").length;
   const adherenceBreakout: AdherenceBreakoutRow[] = medications
     .filter((m) => adherenceEligibleIds.has(m.id))
     .map((medication) => {
-      const medLogs = eligibleLogs.filter((l) => l.medication_id === medication.id);
+      const medSlots = eligibleSlots.filter((s) => s.medicationId === medication.id);
       return {
         medication,
-        percent: computeAdherence(medLogs),
-        scheduled: medLogs.length,
-        missed: medLogs.filter((l) => l.status !== "taken").length,
+        percent: computeAdherence(medSlots),
+        scheduled: medSlots.length,
+        missed: medSlots.filter((s) => s.status !== "taken").length,
       };
     })
     .filter((row) => row.scheduled > 0 && row.percent !== overallAdherencePercent);
 
-  const missedLogsAll = logs.filter((l) => l.status === "missed");
-  const missedDoseDetail = missedLogsAll.slice(0, MISSED_DOSE_DISPLAY_CAP).map((l) => ({
-    medicationName: l.medications.name,
-    date: l.scheduled_for_date,
-    time: l.scheduled_time.slice(0, 5),
-  }));
+  // Missed-dose detail: every resolved-missed slot across active required
+  // medications (real dose_logs rows and untouched-past-grace slots
+  // alike, per resolvedSlots above) plus real missed dose_logs rows
+  // belonging to a currently-inactive medication, which resolvedSlots
+  // deliberately doesn't regenerate slots for.
+  const missedFromActive = resolvedSlots
+    .filter((s) => s.status === "missed")
+    .map((s) => ({
+      medicationName: medNameById.get(s.medicationId) ?? "Medication",
+      date: s.date,
+      time: s.scheduledTime,
+    }));
+  const activeRequiredMedIds = new Set(activeRequiredMeds.map((m) => m.id));
+  const missedFromInactive = logs
+    .filter((l) => l.status === "missed" && !activeRequiredMedIds.has(l.medication_id))
+    .map((l) => ({
+      medicationName: l.medications.name,
+      date: l.scheduled_for_date,
+      time: l.scheduled_time.slice(0, 5),
+    }));
+  const missedDoseDetailAll = [...missedFromActive, ...missedFromInactive].sort((a, b) =>
+    a.date !== b.date ? b.date.localeCompare(a.date) : b.time.localeCompare(a.time),
+  );
+  const missedDoseDetail = missedDoseDetailAll.slice(0, MISSED_DOSE_DISPLAY_CAP);
 
-  const medNameById = new Map(medications.map((m) => [m.id, m.name]));
   const sideEffects = medications
     .flatMap((medication, i) =>
       sideEffectLists[i]
@@ -163,7 +253,14 @@ export async function buildReportData(options: ReportOptions): Promise<ReportDat
 
   async function trendSummary(metric: WellbeingMetric, enabled: boolean): Promise<TrendSummary | null> {
     if (!enabled) return null;
-    const points = await getTrend(metric, startDate, endDate, profileId);
+    // getTrend's default "All" scope (medicationFilter left undefined)
+    // otherwise resolves every one of the profile's medications on its
+    // own, ignoring which ones the report screen's checklist excluded —
+    // passing medicationIds as the pre-resolved scope makes it use just
+    // the selected set instead, while still including independent
+    // (medication_id null) standalone entries regardless of the
+    // selection, same as the Pain & Mood tab's own "All" filter.
+    const points = await getTrend(metric, startDate, endDate, profileId, undefined, medicationIds);
     if (points.length === 0) return { metric, points: [] };
     return { metric, points: groupDailyAverages(points) };
   }
@@ -188,7 +285,7 @@ export async function buildReportData(options: ReportOptions): Promise<ReportDat
     discontinuedMedications,
     doseChanges,
     missedDoseDetail,
-    missedDoseDetailTotal: missedLogsAll.length,
+    missedDoseDetailTotal: missedDoseDetailAll.length,
     sideEffects,
     painTrend,
     moodTrend,
