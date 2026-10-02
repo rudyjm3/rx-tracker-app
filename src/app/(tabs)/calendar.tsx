@@ -420,17 +420,24 @@ function MedicationSummaryRow({
         Total doses {med.total} — Taken: {med.taken} / Late: {med.late} — Skipped: {med.skipped} — Missed: {med.missed}
       </ThemedText>
       {med.slots.map((slot) => (
-        <View key={slot.logId} style={styles.slotRow}>
-          <ThemedText type="small">{slot.displayTime}</ThemedText>
-          <ThemedText
-            type="small"
-            style={[
-              styles.slotStatus,
-              { color: slot.status === 'taken' ? COUNT_COLORS.taken : slot.status === 'skipped' ? COUNT_COLORS.skipped : COUNT_COLORS.missed },
-            ]}
-          >
-            {slot.status === 'taken' && slot.isLate ? `Taken (${slot.lateLabel})` : slot.status}
-          </ThemedText>
+        <View key={slot.logId} style={styles.slotBlock}>
+          <View style={styles.slotRow}>
+            <ThemedText type="small">{slot.displayTime}</ThemedText>
+            <ThemedText
+              type="small"
+              style={[
+                styles.slotStatus,
+                { color: slot.status === 'taken' ? COUNT_COLORS.taken : slot.status === 'skipped' ? COUNT_COLORS.skipped : COUNT_COLORS.missed },
+              ]}
+            >
+              {slot.status === 'taken' && slot.isLate ? `Taken (${slot.lateLabel})` : slot.status}
+            </ThemedText>
+          </View>
+          {slot.note ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.slotNote}>
+              {slot.note}
+            </ThemedText>
+          ) : null}
         </View>
       ))}
     </View>
@@ -551,8 +558,10 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   },
   medicationRow: { padding: 2, gap: 2 },
   medicationName: { fontWeight: '700' },
-  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 2 },
+  slotBlock: { paddingVertical: 2 },
+  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   slotStatus: { textTransform: 'capitalize', fontWeight: '600' },
+  slotNote: { fontStyle: 'italic' },
   closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
   closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
 });
