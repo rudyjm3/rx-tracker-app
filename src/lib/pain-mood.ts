@@ -268,19 +268,44 @@ function mapDoseLogToHistoryEntry(log: DoseLog): StandaloneHistoryEntry {
 // Most recent `limit` dose-linked pain/mood entries across a profile's
 // medications (active + inactive) — analogous to rx-tracker-web's
 // getDoseHistoryPoints, but not scoped to one medication since this tab
-// merges every medication's feedback into a single feed.
+// merges every medication's feedback into a single feed. Also includes a
+// dose log with a note but no pain/mood level — `dose_logs.note` defaults
+// to '' (not null; see supabase/schema.sql) — without this, a note left
+// on an otherwise-plain "mark taken" dose was captured but had nowhere in
+// the app it would ever be shown. Run as two separate queries rather than
+// one `.or("...,note.neq.")` string: an empty-string filter value's exact
+// escaping in PostgREST's mini-language isn't worth gambling on on a path
+// with no way to verify it against a live database from here, where
+// getting it wrong would 400 the whole query instead of just missing some
+// notes. `.neq("note", "")` goes through supabase-js's normal method
+// chaining instead, which encodes the value itself.
 async function getDoseHistoryEntries(medicationIds: string[], limit: number): Promise<StandaloneHistoryEntry[]> {
   if (medicationIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from("dose_logs")
-    .select("*")
-    .in("medication_id", medicationIds)
-    .or("pain_level.not.is.null,mood_level.not.is.null")
-    .order("scheduled_for_date", { ascending: false })
-    .order("scheduled_time", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data as DoseLog[]).map(mapDoseLogToHistoryEntry);
+  const baseQuery = () =>
+    supabase
+      .from("dose_logs")
+      .select("*")
+      .in("medication_id", medicationIds)
+      .order("scheduled_for_date", { ascending: false })
+      .order("scheduled_time", { ascending: false })
+      .limit(limit);
+  const [feedbackResult, notedResult] = await Promise.all([
+    baseQuery().or("pain_level.not.is.null,mood_level.not.is.null"),
+    baseQuery().neq("note", ""),
+  ]);
+  if (feedbackResult.error) throw feedbackResult.error;
+  if (notedResult.error) throw notedResult.error;
+
+  const byId = new Map<string, DoseLog>();
+  for (const log of [...(feedbackResult.data as DoseLog[]), ...(notedResult.data as DoseLog[])]) {
+    byId.set(log.id, log);
+  }
+  return Array.from(byId.values())
+    .sort((a, b) =>
+      `${b.scheduled_for_date}T${b.scheduled_time}`.localeCompare(`${a.scheduled_for_date}T${a.scheduled_time}`),
+    )
+    .slice(0, limit)
+    .map(mapDoseLogToHistoryEntry);
 }
 
 // Merges dose-linked (via the profile's medications) and standalone

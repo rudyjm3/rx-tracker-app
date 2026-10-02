@@ -216,6 +216,11 @@ export default function HistoryScreen() {
                       <ThemedText type="small" themeColor="textSecondary">
                         {row.scheduled_for_date} · {to12h(row.scheduled_time.slice(0, 5))}
                       </ThemedText>
+                      {row.note ? (
+                        <ThemedText type="small" themeColor="textSecondary" style={styles.historyNote}>
+                          {row.note}
+                        </ThemedText>
+                      ) : null}
                     </View>
                     <View style={[styles.badge, { backgroundColor: badge.color + '22' }]}>
                       <ThemedText type="small" style={{ color: badge.color, fontWeight: '700' }}>
@@ -636,6 +641,7 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
   scrollContent: { gap: Spacing.two, paddingBottom: Spacing.six },
+  historyNote: { fontStyle: 'italic' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
