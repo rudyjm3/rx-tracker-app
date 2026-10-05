@@ -2,6 +2,7 @@
 // single-medication edit path, and the Add Medication create path. Group
 // management comes later.
 import { supabase } from "@/lib/supabase/client";
+import type { GroupDoseOverride } from "@/lib/utils";
 import type {
   DoseHistoryEntry,
   FeedbackType,
@@ -302,6 +303,26 @@ export async function getGroupMembers(): Promise<
     .select("group_id, medication_id, quantity_per_dose");
   if (error) throw error;
   return data;
+}
+
+/**
+ * Every group-level dose override for each medication, keyed by medication id,
+ * for daysUntilRunout — group-owned schedule rows no longer carry their own
+ * quantity, so callers must supply the membership overrides.
+ */
+export async function getGroupDoseOverridesByMedication(
+  profileId?: string | null,
+): Promise<Map<string, GroupDoseOverride[]>> {
+  const [groups, members] = await Promise.all([getGroups(profileId), getGroupMembers()]);
+  const byMedication = new Map<string, GroupDoseOverride[]>();
+  for (const member of members) {
+    const group = groups.find((g) => g.id === member.group_id);
+    if (!group) continue;
+    const list = byMedication.get(member.medication_id) ?? [];
+    list.push({ scheduled_time: group.scheduled_time, quantity_per_dose: member.quantity_per_dose });
+    byMedication.set(member.medication_id, list);
+  }
+  return byMedication;
 }
 
 // ── Medication groups (create/edit/delete) ─────────────────────────

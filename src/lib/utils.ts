@@ -122,7 +122,9 @@ export function daysUntilRunout(
         doseUnitsForTime(
           medication,
           scheduleTime.reminder_time,
-          scheduleTime.quantity_per_dose,
+          // Group-owned rows defer to the group member's override (or the
+          // medication's own dose) — their copied quantity can go stale.
+          scheduleTime.group_id ? null : scheduleTime.quantity_per_dose,
           groupDoseOverrides,
         ),
       0,
