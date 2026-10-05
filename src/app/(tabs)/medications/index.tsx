@@ -11,10 +11,14 @@ import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
-import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
+import {
+  getActiveMedications,
+  getGroupDoseOverridesByMedication,
+  getInactiveMedications,
+} from '@/lib/medications';
 import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
 import type { Medication } from '@/lib/types/medications';
-import { daysUntilRunout, scheduleSummary } from '@/lib/utils';
+import { daysUntilRunout, scheduleSummary, type GroupDoseOverride } from '@/lib/utils';
 
 // Date-only fields (start_date/created_at's date portion) must be parsed in
 // local time, not UTC — a UTC-midnight parse displays one day earlier for
@@ -37,6 +41,7 @@ export default function MedicationsScreen() {
   const { activeProfileId, familyProfiles } = useActiveProfile();
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +57,15 @@ export default function MedicationsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const data =
+      const [data, overrides] = await Promise.all([
         activeTab === 'active'
-          ? await getActiveMedications(activeProfileId)
-          : await getInactiveMedications(activeProfileId);
+          ? getActiveMedications(activeProfileId)
+          : getInactiveMedications(activeProfileId),
+        getGroupDoseOverridesByMedication(activeProfileId),
+      ]);
       if (requestIdRef.current !== requestId) return;
       setMedications(data);
+      setDoseOverrides(overrides);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load medications');
@@ -127,7 +135,7 @@ export default function MedicationsScreen() {
               </ThemedText>
             )}
             {medications.map((med) => (
-              <MedicationCard key={med.id} medication={med} />
+              <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
             ))}
           </ScrollView>
         )}
@@ -147,7 +155,13 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
   );
 }
 
-function MedicationCard({ medication }: { medication: Medication }) {
+function MedicationCard({
+  medication,
+  groupDoseOverrides,
+}: {
+  medication: Medication;
+  groupDoseOverrides?: GroupDoseOverride[];
+}) {
   const theme = useTheme();
   const styles = getStyles(theme);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -156,7 +170,7 @@ function MedicationCard({ medication }: { medication: Medication }) {
   const starting = medication.starting_quantity ?? 0;
   const fraction = hasInventory && starting > 0 ? Math.max(0, Math.min(1, current / starting)) : 0;
   const isLowSupply = hasInventory && current <= medication.low_supply_threshold;
-  const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
+  const daysLeft = hasInventory ? daysUntilRunout(medication, groupDoseOverrides) : null;
 
   function goToDetail(action?: string) {
     setMenuOpen(false);

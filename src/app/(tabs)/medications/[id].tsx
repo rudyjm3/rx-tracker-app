@@ -23,6 +23,7 @@ import {
   activateMedication,
   deactivateMedication,
   getDoseHistory,
+  getGroupDoseOverridesByMedication,
   getGroupMembers,
   getGroups,
   getMedication,
@@ -59,7 +60,13 @@ import type {
   SideEffectSeverity,
   SideEffectTag,
 } from '@/lib/types/medications';
-import { daysUntilRunout, localDateString, scheduleSummary, to12h } from '@/lib/utils';
+import {
+  daysUntilRunout,
+  localDateString,
+  scheduleSummary,
+  to12h,
+  type GroupDoseOverride,
+} from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -87,6 +94,7 @@ export default function MedicationDetailScreen() {
   const [medication, setMedication] = useState<Medication | null>(null);
   const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
   const [doseHistory, setDoseHistory] = useState<DoseHistoryEntry[]>([]);
+  const [groupDoseOverrides, setGroupDoseOverrides] = useState<GroupDoseOverride[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -141,6 +149,7 @@ export default function MedicationDetailScreen() {
       setMedication(med);
       setRefillHistory(med.inventory_enabled ? await getRefillHistory(id) : []);
       setDoseHistory(await getDoseHistory(id));
+      setGroupDoseOverrides((await getGroupDoseOverridesByMedication(med.profile_id)).get(id) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load medication');
     } finally {
@@ -188,7 +197,7 @@ export default function MedicationDetailScreen() {
   }
 
   const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
-  const daysLeft = hasInventory ? daysUntilRunout(medication) : null;
+  const daysLeft = hasInventory ? daysUntilRunout(medication, groupDoseOverrides) : null;
 
   return (
     <ThemedView style={styles.container}>
