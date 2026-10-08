@@ -4,6 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
@@ -43,6 +44,7 @@ export default function MedicationsScreen() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
   const [loading, setLoading] = useState(true);
+  const { alerts: supplyAlerts, dismiss: dismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +120,9 @@ export default function MedicationsScreen() {
           <SegmentButton label="Inactive" active={tab === 'inactive'} onPress={() => setTab('inactive')} />
         </View>
 
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+        {(error ?? supplyDismissError) && (
+          <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
+        )}
 
         {loading ? (
           <ActivityIndicator style={styles.loading} />
@@ -127,7 +131,7 @@ export default function MedicationsScreen() {
             contentContainerStyle={styles.scrollContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} />}
           >
-            <LowSupplyBanner medications={medications} />
+            <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />
 
             {medications.length === 0 && (
               <ThemedText themeColor="textSecondary">

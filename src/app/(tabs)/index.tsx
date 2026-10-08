@@ -20,6 +20,7 @@ import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { useTheme } from '@/hooks/use-theme';
 import { computeAdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
@@ -32,7 +33,7 @@ import {
   type DoseFeedback,
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
-import { getSupplyAlerts, SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS } from '@/lib/medication-ui';
+import { SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS, type SupplyAlert } from '@/lib/medication-ui';
 import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
@@ -98,6 +99,7 @@ export default function DashboardScreen() {
   // which could otherwise show one profile's doses under another's
   // selected chip and let a dose get recorded against the wrong person.
   const requestIdRef = useRef(0);
+  const { alerts: supplyAlerts, dismiss: handleDismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
 
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
@@ -335,8 +337,6 @@ export default function DashboardScreen() {
   );
   const nextEvent = pendingEvents[0] ?? null;
 
-  const supplyAlerts = getSupplyAlerts(medications);
-
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -376,15 +376,15 @@ export default function DashboardScreen() {
 
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
-          {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+          {(error ?? supplyDismissError) && (
+            <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
+          )}
 
           <ResumeSetupBanner
             profileId={activeProfileId}
             profileName={activeProfile?.display_name ?? 'your'}
             medications={medications}
           />
-
-          <LowSupplyBanner medications={medications} />
 
           <ThemedView type="backgroundElement" style={styles.heroCard}>
             <ThemedText type="small" themeColor="textSecondary">
@@ -402,6 +402,8 @@ export default function DashboardScreen() {
               <ThemedText style={styles.doneText}>All done for today 🎉</ThemedText>
             )}
           </ThemedView>
+
+          <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
             Today&apos;s schedule
@@ -450,7 +452,7 @@ export default function DashboardScreen() {
         />
       )}
 
-      {alertsOpen && <AlertsSheet alerts={supplyAlerts} onClose={() => setAlertsOpen(false)} />}
+      {alertsOpen && <AlertsSheet alerts={supplyAlerts} onDismiss={handleDismissSupply} onClose={() => setAlertsOpen(false)} />}
 
       <DueNowOverlay
         event={dueNowEvent}
@@ -471,12 +473,15 @@ export default function DashboardScreen() {
 
 function AlertsSheet({
   alerts,
+  onDismiss,
   onClose,
 }: {
-  alerts: ReturnType<typeof getSupplyAlerts>;
+  alerts: SupplyAlert[];
+  onDismiss: (medicationId: string) => void;
   onClose: () => void;
 }) {
-  const styles = getStyles(useTheme());
+  const theme = useTheme();
+  const styles = getStyles(theme);
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
@@ -494,27 +499,38 @@ function AlertsSheet({
                   </ThemedText>
                 ) : (
                   alerts.map(({ medication, severity }) => (
-                    <Pressable
-                      key={medication.id}
-                      style={styles.alertRow}
-                      onPress={() => {
-                        onClose();
-                        router.push(`/medications/${medication.id}`);
-                      }}
-                    >
+                    <View key={medication.id} style={styles.alertRow}>
                       <View style={styles.alertRowText}>
                         <ThemedText type="smallBold">
                           {medication.name}
                           {medication.dose ? ` — ${medication.dose}` : ''}
                         </ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {medication.current_quantity} {medication.inventory_unit} left
+                        <ThemedText type="small" style={{ color: SUPPLY_SEVERITY_COLORS[severity], fontWeight: '700' }}>
+                          {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
                         </ThemedText>
                       </View>
-                      <ThemedText type="small" style={{ color: SUPPLY_SEVERITY_COLORS[severity], fontWeight: '700' }}>
-                        {SUPPLY_SEVERITY_LABELS[severity]}
-                      </ThemedText>
-                    </Pressable>
+                      <Pressable
+                        style={styles.alertRefillButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Refill ${medication.name}`}
+                        onPress={() => {
+                          onClose();
+                          router.push(`/medications/${medication.id}?action=refill`);
+                        }}
+                      >
+                        <ThemedText type="smallBold" style={styles.alertRefillText}>
+                          Refill
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Dismiss alert for ${medication.name}`}
+                        onPress={() => onDismiss(medication.id)}
+                      >
+                        <Ionicons name="close" size={20} color={theme.textSecondary} />
+                      </Pressable>
+                    </View>
                   ))
                 )}
               </ScrollView>
@@ -947,6 +963,13 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
     borderBottomColor: theme.border,
   },
   alertRowText: { flex: 1, gap: 2 },
+  alertRefillButton: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Brand.deepBlue,
+  },
+  alertRefillText: { color: '#FFFFFF' },
   fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
   input: {
     borderWidth: 1,
