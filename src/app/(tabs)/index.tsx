@@ -99,7 +99,7 @@ export default function DashboardScreen() {
   // which could otherwise show one profile's doses under another's
   // selected chip and let a dose get recorded against the wrong person.
   const requestIdRef = useRef(0);
-  const { alerts: supplyAlerts, dismiss: handleDismissSupply } = useLowSupplyAlerts(medications);
+  const { alerts: supplyAlerts, dismiss: handleDismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
 
   const load = useCallback(async (isRefresh = false) => {
     const requestId = ++requestIdRef.current;
@@ -376,7 +376,9 @@ export default function DashboardScreen() {
 
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
-          {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+          {(error ?? supplyDismissError) && (
+            <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
+          )}
 
           <ResumeSetupBanner
             profileId={activeProfileId}

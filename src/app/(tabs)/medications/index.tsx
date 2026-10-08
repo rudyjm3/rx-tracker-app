@@ -44,7 +44,7 @@ export default function MedicationsScreen() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
   const [loading, setLoading] = useState(true);
-  const { alerts: supplyAlerts, dismiss: dismissSupply } = useLowSupplyAlerts(medications);
+  const { alerts: supplyAlerts, dismiss: dismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,7 +120,9 @@ export default function MedicationsScreen() {
           <SegmentButton label="Inactive" active={tab === 'inactive'} onPress={() => setTab('inactive')} />
         </View>
 
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+        {(error ?? supplyDismissError) && (
+          <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
+        )}
 
         {loading ? (
           <ActivityIndicator style={styles.loading} />
