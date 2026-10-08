@@ -28,6 +28,7 @@ import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
 import {
   postponeDose,
   recordDose,
+  recordDoseAtTime,
   getTodayLogs,
   getTodayPostpones,
   type DoseFeedback,
@@ -45,7 +46,7 @@ import {
   type NextDoseEvent,
 } from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
-import { formatClockTime, isLate, localDateString, to12h } from '@/lib/utils';
+import { formatClockTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -82,6 +83,22 @@ export default function DashboardScreen() {
   // one's sheet submits, rather than firing setFeedbackSlot once per slot
   // synchronously (which would just overwrite itself down to the last one).
   const [feedbackQueue, setFeedbackQueue] = useState<DaySlot[]>([]);
+  // A group "Take All" past its due time acts on pending members *and*
+  // non-PRN members already auto-finalized as missed, and records them at a
+  // user-entered time (recordDoseAtTime) rather than now. This holds the
+  // in-progress batch: the slots to record, the feedback-requiring ones
+  // still to be asked about (the one currently shown lives in
+  // feedbackSlot), the answers so far, and whether the shared time-entry
+  // step is up.
+  const [batch, setBatch] = useState<{
+    // The schedule date the slots belong to, captured at creation so a
+    // midnight rollover reload can't re-home them under the new date.
+    date: string;
+    slots: DaySlot[];
+    queue: DaySlot[];
+    answers: Map<string, DoseFeedback | undefined>;
+    timeStep: boolean;
+  } | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   // A pending slot the user tapped Snooze on — opens the duration picker.
   const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
@@ -253,6 +270,48 @@ export default function DashboardScreen() {
     }
   }
 
+  // Non-PRN members that are missed (correctable in place) plus anything
+  // still pending, PRN or not — same set as rx-tracker-web's group card.
+  function takeAllSlots(event: NextDoseEvent): DaySlot[] {
+    return eventSlots(event).filter((s) => s.status === 'pending' || (!s.isPrn && s.status === 'missed'));
+  }
+
+  function handleGroupTakeAll(event: NextDoseEvent) {
+    // Still on time: nothing can be missed yet, so keep the instant path.
+    if (event.time > Date.now()) {
+      handleTakeAllForEvent(event);
+      return;
+    }
+    const slots = takeAllSlots(event);
+    if (slots.length === 0) return;
+    const needsFeedback = slots.filter((s) => s.medication.feedback_type !== 'none');
+    setBatch({ date: scheduleDate, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
+    setFeedbackSlot(needsFeedback[0] ?? null);
+  }
+
+  function batchKey(slot: DaySlot) {
+    return `${slot.medicationId}|${slot.scheduledTime}`;
+  }
+
+  async function handleBatchTimeSubmit(takenAtIso: string) {
+    if (!batch) return;
+    await Promise.all(
+      batch.slots.map((slot) =>
+        recordDoseAtTime(
+          slot.medication,
+          batch.date,
+          slot.scheduledTime,
+          takenAtIso,
+          slot.quantityPerDose,
+          batch.answers.get(batchKey(slot)),
+        ),
+      ),
+    );
+    setBatch(null);
+    resyncIfRemindersEnabled();
+    await load(true);
+  }
+
   async function handleSkipAllForEvent(event: NextDoseEvent) {
     for (const slot of eventSlots(event)) {
       if (slot.status === 'pending') await handleAction(slot, 'skipped');
@@ -280,7 +339,7 @@ export default function DashboardScreen() {
   // Suppressed while the feedback sheet is open, so the overlay never
   // stacks on top of it and blocks the user from finishing the Take that
   // opened it.
-  const dueNowEvent = feedbackSlot
+  const dueNowEvent = feedbackSlot || batch
     ? null
     : (doseEvents.find((e) => e.time <= nowTick && nowTick <= e.time + graceMinutes * 60_000) ?? null);
 
@@ -421,7 +480,14 @@ export default function DashboardScreen() {
               type="backgroundElement"
               style={styles.scheduleCard}
             >
-              <EventRow event={event} actingKey={actingKey} onAction={handleAction} onSnooze={setSnoozeSlot} />
+              <EventRow
+                event={event}
+                actingKey={actingKey}
+                onAction={handleAction}
+                onSnooze={setSnoozeSlot}
+                onTakeAll={handleGroupTakeAll}
+                takeAllCount={takeAllSlots(event).length}
+              />
             </ThemedView>
           ))}
         </ScrollView>
@@ -438,17 +504,46 @@ export default function DashboardScreen() {
 
       {feedbackSlot && (
         <FeedbackSheet
+          // Remount per slot so saving/pain/mood/note state doesn't carry
+          // over when a batch or queue advances to the next medication.
+          key={`${feedbackSlot.medicationId}|${feedbackSlot.scheduledTime}`}
           slot={feedbackSlot}
           onClose={() => {
+            if (batch) {
+              // Dismissing means "don't take this one" — drop it from the
+              // batch and move on to the next feedback slot / the time step.
+              const remaining = batch.slots.filter((s) => s !== feedbackSlot);
+              const [next, ...rest] = batch.queue;
+              setBatch(remaining.length === 0 ? null : { ...batch, slots: remaining, queue: rest, timeStep: !next });
+              setFeedbackSlot(remaining.length === 0 ? null : (next ?? null));
+              return;
+            }
             setFeedbackSlot(null);
             setFeedbackQueue([]);
           }}
           onSubmit={async (feedback) => {
+            if (batch) {
+              const answers = new Map(batch.answers).set(batchKey(feedbackSlot), feedback);
+              const [next, ...rest] = batch.queue;
+              setBatch({ ...batch, answers, queue: rest, timeStep: !next });
+              setFeedbackSlot(next ?? null);
+              return;
+            }
             await recordAndReload(feedbackSlot, 'taken', feedback);
             const [next, ...rest] = feedbackQueue;
             setFeedbackSlot(next ?? null);
             setFeedbackQueue(rest);
           }}
+        />
+      )}
+
+      {batch?.timeStep && !feedbackSlot && (
+        <TimeEntrySheet
+          slotCount={batch.slots.length}
+          dueTime={events.find((e) => e.kind === 'group' && e.members.includes(batch.slots[0]))?.time ?? null}
+          date={batch.date}
+          onClose={() => setBatch(null)}
+          onSubmit={handleBatchTimeSubmit}
         />
       )}
 
@@ -662,6 +757,99 @@ function FeedbackSheet({
   );
 }
 
+function TimeEntrySheet({
+  slotCount,
+  dueTime,
+  date,
+  onClose,
+  onSubmit,
+}: {
+  slotCount: number;
+  dueTime: number | null;
+  date: string;
+  onClose: () => void;
+  onSubmit: (takenAtIso: string) => Promise<void>;
+}) {
+  const theme = useTheme();
+  const styles = getStyles(theme);
+  const [value, setValue] = useState(() => {
+    const now = new Date();
+    return to12h(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
+  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    const parsed = parseTimeInput(value);
+    if (!parsed) {
+      setFormError('Enter a time like 8:30 PM or 20:30');
+      return;
+    }
+    const taken = new Date(`${date}T${parsed}`);
+    if (taken.getTime() > Date.now()) {
+      setFormError("The time taken can't be in the future");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit(taken.toISOString());
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't record doses");
+      setSaving(false);
+    }
+  }
+
+  function handleDismiss() {
+    if (!saving) onClose();
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={handleDismiss}>
+      <Pressable style={styles.modalBackdrop} onPress={handleDismiss}>
+        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
+          <ThemedView style={styles.modalSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <ThemedText type="subtitle" style={styles.modalTitle}>
+                What time did you take {slotCount === 1 ? 'this' : 'these'}?
+              </ThemedText>
+              {dueTime !== null && (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
+                  Originally due {formatEventTime(dueTime)}
+                </ThemedText>
+              )}
+              {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+              <FieldLabel>Actual time taken</FieldLabel>
+              <TextInput
+                style={styles.input}
+                value={value}
+                onChangeText={setValue}
+                placeholder="8:30 PM"
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!saving}
+              />
+              <View style={styles.sheetActions}>
+                <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
+                  <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={saving}
+                >
+                  {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.actionText}>Submit</ThemedText>}
+                </Pressable>
+              </View>
+            </SafeAreaView>
+          </ThemedView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function LevelStepper({
   label,
   value,
@@ -728,12 +916,16 @@ function EventRow({
   actingKey,
   onAction,
   onSnooze,
+  onTakeAll,
+  takeAllCount = 0,
   emphasized,
 }: {
   event: NextDoseEvent;
   actingKey: string | null;
   onAction: (slot: DaySlot, status: 'taken' | 'skipped') => void;
   onSnooze: (slot: DaySlot) => void;
+  onTakeAll?: (event: NextDoseEvent) => void;
+  takeAllCount?: number;
   emphasized?: boolean;
 }) {
   const styles = getStyles(useTheme());
@@ -749,7 +941,12 @@ function EventRow({
       <ThemedText type={emphasized ? 'subtitle' : 'default'} style={emphasized ? styles.emphasizedTime : undefined}>
         {displayTime}
       </ThemedText>
-      <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
+      <View style={styles.headingRow}>
+        <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
+        {event.kind === 'group' && onTakeAll && takeAllCount > 0 && (
+          <ActionButton label="Take All" onPress={() => onTakeAll(event)} busy={actingKey !== null} />
+        )}
+      </View>
       {slots.map((slot) => (
         <View key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
           <View style={styles.slotNameColumn}>
@@ -920,6 +1117,7 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   sectionTitle: { marginTop: Spacing.two },
   scheduleCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
   eventRow: { gap: Spacing.one },
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   emphasizedTime: { marginBottom: Spacing.half },
   slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   slotNameColumn: { flex: 1, gap: Spacing.half },

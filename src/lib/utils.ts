@@ -21,6 +21,25 @@ export function to12h(time: string): string {
   return `${displayHour}:${minute} ${period}`;
 }
 
+/**
+ * Parses a user-typed clock time ("8:30 PM", "8:30pm", "830 pm", "20:30")
+ * into 24h "HH:MM", or null when it isn't a valid time.
+ */
+export function parseTimeInput(input: string): string | null {
+  const m = input.trim().toLowerCase().match(/^(\d{1,2}):?(\d{2})?\s*([ap])?\.?m?\.?$/);
+  if (!m) return null;
+  let hour = parseInt(m[1], 10);
+  const minute = m[2] ? parseInt(m[2], 10) : 0;
+  if (minute > 59) return null;
+  if (m[3]) {
+    if (hour < 1 || hour > 12) return null;
+    hour = (hour % 12) + (m[3] === "p" ? 12 : 0);
+  } else if (hour > 23) {
+    return null;
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function timeToMinutes(time: string): number {
   const [hour, minute] = time.split(":").map(Number);
   return hour * 60 + minute;
