@@ -91,6 +91,9 @@ export default function DashboardScreen() {
   // feedbackSlot), the answers so far, and whether the shared time-entry
   // step is up.
   const [batch, setBatch] = useState<{
+    // The schedule date the slots belong to, captured at creation so a
+    // midnight rollover reload can't re-home them under the new date.
+    date: string;
     slots: DaySlot[];
     queue: DaySlot[];
     answers: Map<string, DoseFeedback | undefined>;
@@ -282,7 +285,7 @@ export default function DashboardScreen() {
     const slots = takeAllSlots(event);
     if (slots.length === 0) return;
     const needsFeedback = slots.filter((s) => s.medication.feedback_type !== 'none');
-    setBatch({ slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
+    setBatch({ date: scheduleDate, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
     setFeedbackSlot(needsFeedback[0] ?? null);
   }
 
@@ -296,7 +299,7 @@ export default function DashboardScreen() {
       batch.slots.map((slot) =>
         recordDoseAtTime(
           slot.medication,
-          scheduleDate,
+          batch.date,
           slot.scheduledTime,
           takenAtIso,
           slot.quantityPerDose,
@@ -501,6 +504,9 @@ export default function DashboardScreen() {
 
       {feedbackSlot && (
         <FeedbackSheet
+          // Remount per slot so saving/pain/mood/note state doesn't carry
+          // over when a batch or queue advances to the next medication.
+          key={`${feedbackSlot.medicationId}|${feedbackSlot.scheduledTime}`}
           slot={feedbackSlot}
           onClose={() => {
             if (batch) {
@@ -535,7 +541,7 @@ export default function DashboardScreen() {
         <TimeEntrySheet
           slotCount={batch.slots.length}
           dueTime={events.find((e) => e.kind === 'group' && e.members.includes(batch.slots[0]))?.time ?? null}
-          date={scheduleDate}
+          date={batch.date}
           onClose={() => setBatch(null)}
           onSubmit={handleBatchTimeSubmit}
         />
