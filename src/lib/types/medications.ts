@@ -26,6 +26,8 @@ export interface Medication {
   dose_amount: number | null;
   dose_unit: string | null;
   dose_form: string | null;
+  // Exact DailyMed SPL set id matching this strength; null if never matched.
+  dailymed_setid: string | null;
   instructions: string;
   schedule_mode: ScheduleMode;
   interval_hours: number | null;

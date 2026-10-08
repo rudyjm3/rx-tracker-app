@@ -176,3 +176,67 @@ export function scheduleSummary(med: Medication): string {
     .map((t) => to12h(t.reminder_time))
     .join(", ");
 }
+
+// Canonical spellings for the dose units the app already offers (see the
+// unit <select> in components/medications/wizard/StepIdentity.tsx) plus the
+// spellings openFDA's NDC directory uses for them ("[iU]", "[USP'U]").
+const DOSE_UNIT_ALIASES: Record<string, string> = {
+  mg: "mg",
+  mcg: "mcg",
+  ug: "mcg",
+  "µg": "mcg",
+  g: "g",
+  ml: "mL",
+  iu: "IU",
+  "[iu]": "IU",
+  unit: "units",
+  units: "units",
+  "[usp'u]": "units",
+  "[arb'u]": "units",
+};
+
+export function canonicalDoseUnit(unit: string | null | undefined): string | null {
+  if (!unit) return null;
+  return DOSE_UNIT_ALIASES[unit.trim().toLowerCase()] ?? null;
+}
+
+export interface ParsedStrength {
+  amount: number;
+  unit: string;
+}
+
+// Splits a strength string such as "2 mg", "2mg", ".25 mg/1" (openFDA's
+// per-unit form) or "500 mcg" into a numeric amount and a canonical unit.
+// Returns null when the string isn't a plain per-dosage-unit strength:
+// unknown units, or concentrations like "1 mg/mL" and "100 mg/.28mL", where
+// the amount is per volume rather than per tablet/capsule and so isn't a dose.
+export function parseStrength(value: string | null | undefined): ParsedStrength | null {
+  if (!value) return null;
+  const match = value
+    .trim()
+    .match(/^(\d+(?:\.\d+)?|\.\d+)\s*(\[[^\]]+\]|[a-zA-Zµ]+)(?:\s*\/\s*1)?$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = canonicalDoseUnit(match[2]);
+  if (!Number.isFinite(amount) || amount <= 0 || !unit) return null;
+  return { amount, unit };
+}
+
+const MASS_IN_MCG: Record<string, number> = { mcg: 1, mg: 1000, g: 1_000_000 };
+
+// True when two dose strengths are the same, including across mass units
+// (0.5 mg === 500 mcg).
+export function strengthsEqual(
+  a: { amount: number; unit: string },
+  b: { amount: number; unit: string },
+): boolean {
+  const unitA = canonicalDoseUnit(a.unit);
+  const unitB = canonicalDoseUnit(b.unit);
+  if (!unitA || !unitB) return false;
+  const factorA = MASS_IN_MCG[unitA];
+  const factorB = MASS_IN_MCG[unitB];
+  if (factorA && factorB) {
+    return Math.abs(a.amount * factorA - b.amount * factorB) < 1e-6;
+  }
+  return unitA === unitB && Math.abs(a.amount - b.amount) < 1e-9;
+}

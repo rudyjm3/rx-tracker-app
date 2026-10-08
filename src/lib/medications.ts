@@ -24,6 +24,8 @@ export interface MedicationInput {
   dose_amount?: number | null;
   dose_unit?: string | null;
   dose_form?: string | null;
+  // Omit to leave the stored value untouched on update; null clears it.
+  dailymed_setid?: string | null;
   instructions?: string;
   medication_type: MedicationType;
   as_needed: boolean;
@@ -123,6 +125,7 @@ export async function createMedication(
         dose_amount: input.dose_amount ?? null,
         dose_unit: input.dose_unit ?? null,
         dose_form: input.dose_form ?? null,
+        dailymed_setid: input.dailymed_setid ?? null,
         instructions: input.instructions ?? "",
         schedule_mode: input.schedule_mode,
         interval_hours: input.interval_hours ?? null,
@@ -176,6 +179,7 @@ export async function updateMedication(
       dose_amount: input.dose_amount ?? null,
       dose_unit: input.dose_unit ?? null,
       dose_form: input.dose_form ?? null,
+      ...(input.dailymed_setid !== undefined && { dailymed_setid: input.dailymed_setid }),
       instructions: input.instructions ?? "",
       schedule_mode: input.schedule_mode,
       interval_hours: input.interval_hours ?? null,

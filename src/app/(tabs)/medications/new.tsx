@@ -3,11 +3,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DrugNameAutocomplete } from '@/components/DrugNameAutocomplete';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
+import type { DrugSuggestion } from '@/lib/dailymed';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
@@ -22,6 +24,7 @@ interface NewMedicationFormState {
   doseAmount: string;
   doseUnit: string;
   doseForm: string;
+  dailymedSetId: string;
   medicationType: MedicationType;
   instructions: string;
   asNeeded: boolean;
@@ -44,6 +47,7 @@ const initialState: NewMedicationFormState = {
   doseAmount: '',
   doseUnit: '',
   doseForm: '',
+  dailymedSetId: '',
   medicationType: 'prescription',
   instructions: '',
   asNeeded: false,
@@ -70,6 +74,19 @@ export default function NewMedicationScreen() {
 
   function update<K extends keyof NewMedicationFormState>(key: K, value: NewMedicationFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // A suggestion is a shortcut, not a lock: it fills the name (without the
+  // strength) and, separately, the dose amount/unit and the matched DailyMed
+  // SPL set id, all still editable. A pick with no plain per-unit strength
+  // (a concentration like "1 mg/mL") leaves the dose fields as they were.
+  function applySuggestion(s: DrugSuggestion) {
+    setForm((prev) => ({
+      ...prev,
+      name: s.name,
+      ...(s.doseAmount != null && s.doseUnit ? { doseAmount: String(s.doseAmount), doseUnit: s.doseUnit } : {}),
+      dailymedSetId: s.setId ?? '',
+    }));
   }
 
   function addTime() {
@@ -138,6 +155,7 @@ export default function NewMedicationScreen() {
 
     const input: MedicationInput = {
       name: form.name.trim(),
+      dailymed_setid: form.dailymedSetId || null,
       dose_amount: form.doseAmount ? Number(form.doseAmount) : null,
       dose_unit: form.doseUnit.trim() || null,
       dose_form: form.doseForm.trim() || null,
@@ -181,7 +199,7 @@ export default function NewMedicationScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <ThemedText type="title" style={styles.title}>
             New medication
           </ThemedText>
@@ -189,7 +207,13 @@ export default function NewMedicationScreen() {
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
           <FieldLabel>Name</FieldLabel>
-          <TextInput style={styles.input} value={form.name} onChangeText={(v) => update('name', v)} placeholder="e.g. Lisinopril" placeholderTextColor={theme.textSecondary} />
+          <DrugNameAutocomplete
+            value={form.name}
+            // Typing a different name drops the match picked for the old one.
+            onChangeText={(v) => setForm((prev) => ({ ...prev, name: v, dailymedSetId: '' }))}
+            onSelect={applySuggestion}
+            placeholder="e.g. Lisinopril"
+          />
 
           <View style={styles.row}>
             <View style={styles.rowItem}>
@@ -198,12 +222,12 @@ export default function NewMedicationScreen() {
                 style={styles.input}
                 keyboardType="numeric"
                 value={form.doseAmount}
-                onChangeText={(v) => update('doseAmount', v)}
+                onChangeText={(v) => setForm((prev) => ({ ...prev, doseAmount: v, dailymedSetId: '' }))}
               />
             </View>
             <View style={styles.rowItem}>
               <FieldLabel>Dose unit</FieldLabel>
-              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => update('doseUnit', v)} placeholder="mg" placeholderTextColor={theme.textSecondary} />
+              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => setForm((prev) => ({ ...prev, doseUnit: v, dailymedSetId: '' }))} placeholder="mg" placeholderTextColor={theme.textSecondary} />
             </View>
           </View>
 
