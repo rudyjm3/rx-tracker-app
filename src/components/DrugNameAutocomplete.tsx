@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -25,27 +25,27 @@ interface DrugNameAutocompleteProps {
 export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholder }: DrugNameAutocompleteProps) {
   const theme = useTheme();
   const styles = getStyles(theme);
-  const [suggestions, setSuggestions] = useState<DrugSuggestion[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Results are tagged with the term they were fetched for, so a list for
+  // an earlier term is never shown (or tappable) while the next one loads.
+  const [results, setResults] = useState<{ term: string; items: DrugSuggestion[] }>({ term: '', items: [] });
+  const [focused, setFocused] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Only keystrokes open the list; a programmatic value change (a pick, or
   // the edit form hydrating) must not re-open it.
   const [typed, setTyped] = useState(false);
   const term = value.trim();
-  const active = typed && term.length >= MIN_CHARS;
+  const active = typed && focused && term.length >= MIN_CHARS;
 
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
     const timeout = setTimeout(async () => {
-      setLoading(true);
       try {
-        const results = await searchDrugSuggestions(term, controller.signal);
-        if (!controller.signal.aborted) setSuggestions(results);
+        const items = await searchDrugSuggestions(term, controller.signal);
+        if (!controller.signal.aborted) setResults({ term, items });
       } catch {
         // Offline, rate-limited or aborted: fall back to plain typing.
-        if (!controller.signal.aborted) setSuggestions([]);
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setResults({ term, items: [] });
       }
     }, DEBOUNCE_MS);
     return () => {
@@ -54,6 +54,15 @@ export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholde
     };
   }, [term, active]);
 
+  useEffect(
+    () => () => {
+      if (blurTimer.current) clearTimeout(blurTimer.current);
+    },
+    [],
+  );
+
+  const current = results.term === term ? results : null;
+
   return (
     <View>
       <TextInput
@@ -61,24 +70,35 @@ export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholde
         value={value}
         onChangeText={(v) => {
           setTyped(true);
+          setFocused(true);
           onChangeText(v);
+        }}
+        onFocus={() => {
+          if (blurTimer.current) clearTimeout(blurTimer.current);
+          setFocused(true);
+        }}
+        // Delayed so a tap on a suggestion still lands on web, where the
+        // press blurs the input first. Leaving the field closes the list and
+        // (via the effect cleanup) cancels any lookup still in flight.
+        onBlur={() => {
+          blurTimer.current = setTimeout(() => setFocused(false), 200);
         }}
         placeholder={placeholder}
         placeholderTextColor={theme.textSecondary}
         autoCorrect={false}
       />
-      {active && (loading || suggestions.length > 0) && (
+      {active && (!current || current.items.length > 0) && (
         <View style={styles.list}>
-          {loading && suggestions.length === 0 ? (
+          {!current ? (
             <ActivityIndicator style={styles.loading} />
           ) : (
-            suggestions.map((suggestion) => (
+            current.items.map((suggestion) => (
               <Pressable
                 key={`${suggestion.label}|${suggestion.setId ?? ''}`}
                 style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
                 onPress={() => {
                   setTyped(false);
-                  setSuggestions([]);
+                  setResults({ term: '', items: [] });
                   onSelect(suggestion);
                 }}
               >
