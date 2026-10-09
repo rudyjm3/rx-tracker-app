@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -361,13 +362,13 @@ export default function PainMoodScreen() {
             multiline
           />
 
-          <Pressable
+          <GradientPressable
             style={[styles.primaryButton, (saving || (!trackPain && !trackMood)) && styles.disabled]}
             onPress={handleSave}
             disabled={saving || (!trackPain && !trackMood)}
           >
             {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save entry</ThemedText>}
-          </Pressable>
+          </GradientPressable>
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
             Trend
@@ -666,13 +667,13 @@ function ManageTagsSheet({
                   placeholderTextColor={theme.textSecondary}
                   onSubmitEditing={handleAdd}
                 />
-                <Pressable
+                <GradientPressable
                   style={[styles.primaryButton, styles.addTagButton, (adding || !newTagName.trim()) && styles.disabled]}
                   onPress={handleAdd}
                   disabled={adding || !newTagName.trim()}
                 >
                   {adding ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Add</ThemedText>}
-                </Pressable>
+                </GradientPressable>
               </View>
 
               <Pressable style={styles.closeButton} onPress={onClose}>
@@ -841,7 +842,7 @@ function EditEntrySheet({
                   <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[
                       styles.primaryButton,
                       { flex: 1, marginTop: 0 },
@@ -855,7 +856,7 @@ function EditEntrySheet({
                     ) : (
                       <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
 
                 <Pressable onPress={handleDelete} disabled={saving || deleting} style={styles.deleteButton}>

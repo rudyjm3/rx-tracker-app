@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -366,7 +367,7 @@ function AllergyFormSheet({
                 <Pressable style={styles.secondaryButton} onPress={requestClose} disabled={saving}>
                   <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                 </Pressable>
-                <Pressable
+                <GradientPressable
                   style={[styles.primaryButton, saving && styles.disabled]}
                   onPress={handleSave}
                   disabled={saving}
@@ -376,7 +377,7 @@ function AllergyFormSheet({
                   ) : (
                     <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
                   )}
-                </Pressable>
+                </GradientPressable>
               </View>
             </ScrollView>
             </SafeAreaView>

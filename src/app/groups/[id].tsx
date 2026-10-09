@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -249,9 +250,9 @@ function EditForm({
             <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
               <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
             </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
+            <GradientPressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save</ThemedText>}
-            </Pressable>
+            </GradientPressable>
           </View>
 
           <Pressable style={styles.removeButton} onPress={onRemove} disabled={saving}>

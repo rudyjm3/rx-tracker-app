@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -144,7 +145,7 @@ export default function OnboardingScreen() {
             <ThemedText style={styles.addButtonText}>+ Add a medication</ThemedText>
           </Pressable>
 
-          <Pressable
+          <GradientPressable
             style={[styles.primaryButton, (medications.length === 0 || busy) && styles.disabled]}
             onPress={handleFinish}
             disabled={medications.length === 0 || busy}
@@ -154,7 +155,7 @@ export default function OnboardingScreen() {
             ) : (
               <ThemedText style={styles.primaryButtonText}>Finish setup</ThemedText>
             )}
-          </Pressable>
+          </GradientPressable>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { DrugNameAutocomplete } from '@/components/DrugNameAutocomplete';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -234,9 +235,9 @@ export default function MedicationDetailScreen() {
           )}
 
           <View style={styles.actions}>
-            <Pressable style={styles.primaryButton} onPress={() => setLogDoseOpen(true)}>
+            <GradientPressable style={styles.primaryButton} onPress={() => setLogDoseOpen(true)}>
               <ThemedText style={styles.primaryButtonText}>Log Dose</ThemedText>
-            </Pressable>
+            </GradientPressable>
           </View>
 
           {hasInventory && (
@@ -251,9 +252,9 @@ export default function MedicationDetailScreen() {
           )}
 
           <View style={styles.actions}>
-            <Pressable style={styles.primaryButton} onPress={() => setEditing(true)}>
+            <GradientPressable style={styles.primaryButton} onPress={() => setEditing(true)}>
               <ThemedText style={styles.primaryButtonText}>Edit</ThemedText>
-            </Pressable>
+            </GradientPressable>
             <Pressable
               style={styles.secondaryButton}
               onPress={() => setStatusSheetDirection(medication.active ? 'discontinue' : 'resume')}
@@ -525,7 +526,7 @@ function RefillSheet({
                   <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[styles.primaryButton, saving && styles.disabled]}
                     onPress={handleSubmit}
                     disabled={saving}
@@ -537,7 +538,7 @@ function RefillSheet({
                         {mode === 'refill' ? 'Log Refill' : 'Save'}
                       </ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
               </ScrollView>
             </SafeAreaView>
@@ -636,7 +637,7 @@ function UpdatePrescribedDoseSheet({
                   <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[styles.primaryButton, saving && styles.disabled]}
                     onPress={handleSubmit}
                     disabled={saving}
@@ -646,7 +647,7 @@ function UpdatePrescribedDoseSheet({
                     ) : (
                       <ThemedText style={styles.primaryButtonText}>Save dose change</ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
               </ScrollView>
             </SafeAreaView>
@@ -736,7 +737,7 @@ function StatusChangeSheet({
                   <Pressable style={styles.secondaryButton} onPress={requestClose} disabled={saving}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[styles.primaryButton, saving && styles.disabled]}
                     onPress={handleSubmit}
                     disabled={saving}
@@ -748,7 +749,7 @@ function StatusChangeSheet({
                         {direction === 'discontinue' ? 'Discontinue Use' : 'Resume'}
                       </ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
               </ScrollView>
             </SafeAreaView>
@@ -1088,7 +1089,7 @@ function LogDoseSheet({
                       <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
                         <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                       </Pressable>
-                      <Pressable
+                      <GradientPressable
                         style={[styles.primaryButton, saving && styles.disabled]}
                         onPress={handleSave}
                         disabled={saving}
@@ -1098,7 +1099,7 @@ function LogDoseSheet({
                         ) : (
                           <ThemedText style={styles.primaryButtonText}>Log Dose</ThemedText>
                         )}
-                      </Pressable>
+                      </GradientPressable>
                     </View>
                   </>
                 )}
@@ -1368,7 +1369,7 @@ function SideEffectsSheet({
                       maxLength={30}
                       onSubmitEditing={handleAddTag}
                     />
-                    <Pressable
+                    <GradientPressable
                       style={[styles.primaryButton, styles.addTagButton, (addingTag || !newTagName.trim()) && styles.disabled]}
                       onPress={handleAddTag}
                       disabled={addingTag || !newTagName.trim()}
@@ -1378,7 +1379,7 @@ function SideEffectsSheet({
                       ) : (
                         <ThemedText style={styles.primaryButtonText}>Add</ThemedText>
                       )}
-                    </Pressable>
+                    </GradientPressable>
                   </View>
                 )}
 
@@ -1391,7 +1392,7 @@ function SideEffectsSheet({
                   multiline
                 />
 
-                <Pressable
+                <GradientPressable
                   style={[styles.primaryButton, (saving || selectedTagIds.size === 0) && styles.disabled]}
                   onPress={handleSubmit}
                   disabled={saving || selectedTagIds.size === 0}
@@ -1401,7 +1402,7 @@ function SideEffectsSheet({
                   ) : (
                     <ThemedText style={styles.primaryButtonText}>Add side effect</ThemedText>
                   )}
-                </Pressable>
+                </GradientPressable>
 
                 <ThemedText type="smallBold" style={styles.sectionTitle}>
                   Logged side effects
@@ -1642,13 +1643,13 @@ function ManageSideEffectTagsSheet({
                   placeholder="New tag name"
                   onSubmitEditing={handleAdd}
                 />
-                <Pressable
+                <GradientPressable
                   style={[styles.primaryButton, styles.addTagButton, (adding || !newTagName.trim()) && styles.disabled]}
                   onPress={handleAdd}
                   disabled={adding || !newTagName.trim()}
                 >
                   {adding ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Add</ThemedText>}
-                </Pressable>
+                </GradientPressable>
               </View>
 
               <Pressable style={styles.closeButton} onPress={requestClose} disabled={busy}>
@@ -2100,9 +2101,9 @@ function EditForm({
             <Pressable style={styles.secondaryButton} onPress={onCancel} disabled={saving}>
               <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
             </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
+            <GradientPressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save</ThemedText>}
-            </Pressable>
+            </GradientPressable>
           </View>
         </ScrollView>
       </SafeAreaView>

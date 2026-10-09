@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -542,7 +543,7 @@ function EditDoseLogSheet({
                   <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[styles.primaryButton, (saving || !medication) && styles.disabled]}
                     onPress={handleSave}
                     disabled={saving || deleting || !medication}
@@ -552,7 +553,7 @@ function EditDoseLogSheet({
                     ) : (
                       <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
 
                 <Pressable onPress={confirmDelete} disabled={deleting} style={styles.deleteButton}>

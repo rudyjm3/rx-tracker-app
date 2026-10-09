@@ -4,12 +4,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AuthHero } from '@/components/AuthHero';
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -36,17 +37,12 @@ export default function LoginScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <AuthHero title="Stay on track with every dose." tagline="Sign in to manage your medications and reminders." />
+      <SafeAreaView edges={['bottom']} style={styles.safeArea}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.form}
         >
-          <ThemedText type="title" style={styles.title}>
-            RxTracker
-          </ThemedText>
-          <ThemedText type="subtitle" style={styles.subtitle}>
-            Sign in
-          </ThemedText>
 
           <TextInput
             style={styles.input}
@@ -74,7 +70,7 @@ export default function LoginScreen() {
             </ThemedText>
           )}
 
-          <Pressable
+          <GradientPressable
             style={[styles.button, submitting && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={submitting || !email || !password}
@@ -84,7 +80,7 @@ export default function LoginScreen() {
             ) : (
               <ThemedText style={styles.buttonText}>Sign in</ThemedText>
             )}
-          </Pressable>
+          </GradientPressable>
 
           <Link href="/(auth)/signup" style={styles.link}>
             <ThemedText type="linkPrimary">Need an account? Sign up</ThemedText>
@@ -100,8 +96,6 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
     container: { flex: 1 },
     safeArea: { flex: 1, justifyContent: 'center' },
     form: { paddingHorizontal: Spacing.four, gap: Spacing.two },
-    title: { fontSize: 32, lineHeight: 38, marginBottom: Spacing.one },
-    subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
     input: {
       borderWidth: 1,
       borderColor: theme.border,

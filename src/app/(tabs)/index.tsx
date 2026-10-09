@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
@@ -604,7 +605,7 @@ function AlertsSheet({
                           {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
                         </ThemedText>
                       </View>
-                      <Pressable
+                      <GradientPressable
                         style={styles.alertRefillButton}
                         accessibilityRole="button"
                         accessibilityLabel={`Refill ${medication.name}`}
@@ -616,7 +617,7 @@ function AlertsSheet({
                         <ThemedText type="smallBold" style={styles.alertRefillText}>
                           Refill
                         </ThemedText>
-                      </Pressable>
+                      </GradientPressable>
                       <Pressable
                         hitSlop={10}
                         accessibilityRole="button"
@@ -736,7 +737,7 @@ function FeedbackSheet({
                   <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
                     <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                   </Pressable>
-                  <Pressable
+                  <GradientPressable
                     style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
                     onPress={handleSubmit}
                     disabled={saving}
@@ -746,7 +747,7 @@ function FeedbackSheet({
                     ) : (
                       <ThemedText style={styles.actionText}>Save &amp; take</ThemedText>
                     )}
-                  </Pressable>
+                  </GradientPressable>
                 </View>
               </ScrollView>
             </SafeAreaView>
@@ -834,13 +835,13 @@ function TimeEntrySheet({
                 <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
                   <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
                 </Pressable>
-                <Pressable
+                <GradientPressable
                   style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
                   onPress={handleSubmit}
                   disabled={saving}
                 >
                   {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.actionText}>Submit</ThemedText>}
-                </Pressable>
+                </GradientPressable>
               </View>
             </SafeAreaView>
           </ThemedView>

@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -179,7 +180,7 @@ export function DueNowOverlay({
                       >
                         <ThemedText style={styles.secondaryButtonText}>Snooze</ThemedText>
                       </Pressable>
-                      <Pressable
+                      <GradientPressable
                         style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
                         onPress={onTakeAll}
                         disabled={disabled}
@@ -189,7 +190,7 @@ export function DueNowOverlay({
                         ) : (
                           <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
                         )}
-                      </Pressable>
+                      </GradientPressable>
                     </View>
                   )}
 
@@ -265,7 +266,7 @@ function MemberRow({
                 Snooze
               </ThemedText>
             </Pressable>
-            <Pressable
+            <GradientPressable
               style={[styles.smallActionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
               onPress={onTake}
               disabled={disabled}
@@ -273,7 +274,7 @@ function MemberRow({
               <ThemedText type="small" style={styles.primaryButtonText}>
                 Take
               </ThemedText>
-            </Pressable>
+            </GradientPressable>
           </View>
         ) : (
           <ThemedText type="small" themeColor="textSecondary" style={styles.statusLabel}>

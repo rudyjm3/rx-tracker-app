@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { DrugNameAutocomplete } from '@/components/DrugNameAutocomplete';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -389,9 +390,9 @@ export default function NewMedicationScreen() {
             <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
               <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
             </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleCreate} disabled={saving}>
+            <GradientPressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleCreate} disabled={saving}>
               {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Create</ThemedText>}
-            </Pressable>
+            </GradientPressable>
           </View>
         </ScrollView>
       </SafeAreaView>

@@ -5,6 +5,7 @@ import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleS
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
+import { GradientPressable } from '@/components/ui/gradient-pressable';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
@@ -102,14 +103,14 @@ export default function MedicationsScreen() {
                 Manage groups
               </ThemedText>
             </Pressable>
-            <Pressable
+            <GradientPressable
               style={styles.addButton}
               onPress={() => router.push('/medications/new')}
               hitSlop={8}
               accessibilityLabel="Add medication"
             >
               <ThemedText style={styles.addButtonText}>+</ThemedText>
-            </Pressable>
+            </GradientPressable>
           </View>
         </View>
 
@@ -150,12 +151,13 @@ export default function MedicationsScreen() {
 
 function SegmentButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const styles = getStyles(useTheme());
+  const Button = active ? GradientPressable : Pressable;
   return (
-    <Pressable style={[styles.segmentButton, active && styles.segmentButtonActive]} onPress={onPress}>
+    <Button style={styles.segmentButton} onPress={onPress}>
       <ThemedText type="smallBold" style={active ? styles.segmentTextActive : styles.segmentText}>
         {label}
       </ThemedText>
-    </Pressable>
+    </Button>
   );
 }
 
@@ -348,9 +350,8 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   addButtonText: { color: '#ffffff', fontSize: 22, lineHeight: 24, fontWeight: '600' },
   segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2, marginBottom: Spacing.three },
   segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: theme.backgroundElement },
   segmentText: { color: theme.textSecondary },
-  segmentTextActive: { color: theme.text },
+  segmentTextActive: { color: '#ffffff' },
   error: { color: Brand.danger, marginBottom: Spacing.two },
   loading: { marginTop: Spacing.five },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
