@@ -383,7 +383,7 @@ function DayDetailContent({
     <View>
       {summaryLine}
       {endingCallout}
-      {totalMedications === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
+      {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
         <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
       ) : (
         <>
@@ -396,6 +396,20 @@ function DayDetailContent({
                   med={med}
                   endingToday={endingIds.has(med.medicationId)}
                 />
+              ))}
+              {group.pendingAsNeeded.map((member) => (
+                <View key={member.medicationId} style={styles.slotRow}>
+                  <ThemedText type="smallBold" style={styles.pendingName}>
+                    {member.name}
+                    {member.dose ? ` ${member.dose}` : ''}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Not yet logged
+                  </ThemedText>
+                  <Pressable onPress={() => onLogAsNeeded(member.medicationId, day.date)} hitSlop={8}>
+                    <ThemedText style={styles.pendingAction}>Log dose</ThemedText>
+                  </Pressable>
+                </View>
               ))}
             </View>
           ))}
