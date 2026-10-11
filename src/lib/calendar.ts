@@ -120,6 +120,11 @@ export interface CalendarDayGroupSummary {
   groupId: string;
   groupName: string;
   medications: CalendarDayMedicationSummary[];
+  // as_needed members of this group with no dose_logs row on this date at
+  // all — an as_needed dose is never auto-finalized as "missed", so it
+  // would otherwise be invisible here once its required groupmates
+  // already have a logged/missed entry.
+  pendingAsNeeded: CalendarDayPendingMember[];
 }
 
 // A schedule-driven occurrence for a date with no dose_logs to report on
@@ -152,6 +157,16 @@ export interface CalendarDayEndingMedication {
   dose_unit: string | null;
 }
 
+export interface CalendarDayPendingMember {
+  medicationId: string;
+  name: string;
+  dose: string | null;
+  dose_amount: number | null;
+  dose_unit: string | null;
+  // Only set for ungrouped as-needed entries (pendingUngroupedAsNeeded).
+  alreadyLogged?: boolean;
+}
+
 export interface CalendarDayDetail {
   date: string;
   dayName: string; // e.g. "Friday"
@@ -171,6 +186,12 @@ export interface CalendarDayDetail {
   endingMedications: CalendarDayEndingMedication[];
   medications: CalendarDayMedicationSummary[]; // medications with no single shared group that day
   groups: CalendarDayGroupSummary[]; // medications sharing a group that day, nested under it
+  // Eligible ungrouped as_needed medications for this date (past/today
+  // only), with `alreadyLogged` set once they have any dose_logs row.
+  // They never get a scheduled slot, so without this there'd be no way to
+  // log them from the day detail — and as-needed meds can be taken more
+  // than once a day, so they stay listed after the first dose.
+  pendingUngroupedAsNeeded: CalendarDayPendingMember[];
   // Populated for a future date only: what the recurring schedule plans
   // to generate, since nothing has been logged yet to summarize instead.
   plannedMedications: CalendarDayPlannedSlot[];
@@ -210,6 +231,16 @@ export function buildDayDetails(
   }
   const groupsById = new Map(groups.map((g) => [g.id, g]));
   const medsById = new Map(medications.map((m) => [m.id, m]));
+  // Memberships of a deactivated group don't count: `groups` only holds
+  // active groups, and generateDaySlots can't produce a slot for them.
+  const activeGroupMembers = groupMembers.filter((m) => groupsById.has(m.group_id));
+  const groupedMedicationIds = new Set(activeGroupMembers.map((m) => m.medication_id));
+  const memberIdsByGroup = new Map<string, string[]>();
+  for (const member of activeGroupMembers) {
+    const existing = memberIdsByGroup.get(member.group_id) ?? [];
+    existing.push(member.medication_id);
+    memberIdsByGroup.set(member.group_id, existing);
+  }
 
   const result: Record<string, CalendarDayDetail> = {};
   const groupIdsByDateAndMedication = new Map<string, Map<string, Set<string | null>>>();
@@ -226,6 +257,7 @@ export function buildDayDetails(
       endingMedications: [],
       medications: [],
       groups: [],
+      pendingUngroupedAsNeeded: [],
       plannedMedications: [],
       plannedGroups: [],
     };
@@ -297,6 +329,20 @@ export function buildDayDetails(
 
   for (const [date, day] of Object.entries(result)) {
     const byMedication = groupIdsByDateAndMedication.get(date) ?? new Map();
+    // Every medication with *any* log that day, whichever group bucket (if
+    // any) it ended up in — must not also show as pending.
+    const loggedMedicationIds = new Set(byMedication.keys());
+    // Every group any logged slot resolved to that day — broader than
+    // groupBuckets' keys, since a medication with a mix of grouped and
+    // individual doses is left out of groupBuckets but its groupmates can
+    // still owe a pending member.
+    const candidateGroupIds = new Set<string>();
+    for (const ids of byMedication.values()) {
+      for (const id of ids) {
+        if (id) candidateGroupIds.add(id);
+      }
+    }
+
     const ungrouped: CalendarDayMedicationSummary[] = [];
     const groupBuckets = new Map<string, CalendarDayMedicationSummary[]>();
 
@@ -312,12 +358,45 @@ export function buildDayDetails(
       }
     }
 
+    function pendingAsNeededFor(groupId: string): CalendarDayPendingMember[] {
+      return (memberIdsByGroup.get(groupId) ?? [])
+        .filter((id) => !loggedMedicationIds.has(id))
+        .map((id) => medsById.get(id))
+        .filter((m): m is NonNullable<typeof m> => !!m && m.as_needed && m.active)
+        .filter(
+          (m) =>
+            (!m.start_date || date >= m.start_date) &&
+            (!m.end_date || date <= m.end_date) &&
+            date >= m.created_at.slice(0, 10),
+        )
+        .map((m) => ({
+          medicationId: m.id,
+          name: m.name,
+          dose: m.dose,
+          dose_amount: m.dose_amount,
+          dose_unit: m.dose_unit,
+        }));
+    }
+
     day.medications = ungrouped;
     day.groups = [...groupBuckets.entries()].map(([groupId, meds]) => ({
       groupId,
       groupName: groupsById.get(groupId)!.name,
       medications: meds,
+      pendingAsNeeded: pendingAsNeededFor(groupId),
     }));
+
+    for (const groupId of candidateGroupIds) {
+      if (groupBuckets.has(groupId) || !groupsById.has(groupId)) continue;
+      const pendingAsNeeded = pendingAsNeededFor(groupId);
+      if (pendingAsNeeded.length === 0) continue;
+      day.groups.push({
+        groupId,
+        groupName: groupsById.get(groupId)!.name,
+        medications: [],
+        pendingAsNeeded,
+      });
+    }
   }
 
   // Ensure every date in the visible month has an entry — including future
@@ -334,6 +413,31 @@ export function buildDayDetails(
 
     const isFuture = date > todayDate;
     day.isFuture = isFuture;
+
+    if (!isFuture) {
+      const loggedIds = new Set([
+        ...day.medications.map((m) => m.medicationId),
+        ...day.groups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+      ]);
+      day.pendingUngroupedAsNeeded = medications
+        .filter(
+          (m) =>
+            m.active &&
+            m.as_needed &&
+            !groupedMedicationIds.has(m.id) &&
+            (!m.start_date || date >= m.start_date) &&
+            (!m.end_date || date <= m.end_date) &&
+            date >= m.created_at.slice(0, 10),
+        )
+        .map((m) => ({
+          medicationId: m.id,
+          name: m.name,
+          dose: m.dose,
+          dose_amount: m.dose_amount,
+          dose_unit: m.dose_unit,
+          alreadyLogged: loggedIds.has(m.id),
+        }));
+    }
 
     // A medication with a null start_date has no explicit lower bound in
     // generateDaySlots, so without this it would report planned doses for

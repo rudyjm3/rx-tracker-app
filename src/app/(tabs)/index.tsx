@@ -57,6 +57,7 @@ export default function DashboardScreen() {
   const styles = getStyles(theme);
   const { activeProfileId, activeProfile, familyProfiles } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [asNeededMeds, setAsNeededMeds] = useState<Medication[]>([]);
   const [slots, setSlots] = useState<DaySlot[]>([]);
   const [graceMinutes, setGraceMinutes] = useState(60);
   const [events, setEvents] = useState<NextDoseEvent[]>([]);
@@ -137,6 +138,24 @@ export default function DashboardScreen() {
         ]);
       if (requestIdRef.current !== requestId) return;
       setMedications(activeMedications);
+      // Ungrouped as_needed medications never get a schedule slot, so
+      // surface them separately with a Log dose action.
+      // Only memberships of active groups count — `groups` excludes
+      // deactivated ones, which generateDaySlots can't slot a med into.
+      const activeGroupIds = new Set(groups.map((g) => g.id));
+      const groupedIds = new Set(
+        groupMembers.filter((m) => activeGroupIds.has(m.group_id)).map((m) => m.medication_id),
+      );
+      setAsNeededMeds(
+        activeMedications.filter(
+          (m) =>
+            m.as_needed &&
+            m.dashboard_enabled &&
+            !groupedIds.has(m.id) &&
+            (!m.start_date || date >= m.start_date) &&
+            (!m.end_date || date <= m.end_date),
+        ),
+      );
       setDefaultSnoozeMinutes(snoozeMinutes);
       setGraceMinutes(graceMinutes);
       const slots = generateDaySlots(date, activeMedications, groups, groupMembers, doseLogs, postpones);
@@ -490,6 +509,30 @@ export default function DashboardScreen() {
               />
             </ThemedView>
           ))}
+
+          {asNeededMeds.length > 0 && (
+            <>
+              <ThemedText type="smallBold" style={styles.sectionTitle}>
+                As needed
+              </ThemedText>
+              {asNeededMeds.map((med) => (
+                <ThemedView key={med.id} type="backgroundElement" style={styles.scheduleCard}>
+                  <View style={styles.asNeededRow}>
+                    <ThemedText type="smallBold" style={styles.asNeededName}>
+                      {med.name}
+                      {med.dose ? ` ${med.dose}` : ''}
+                    </ThemedText>
+                    <Pressable
+                      onPress={() => router.push(`/medications/${med.id}?action=logDose`)}
+                      hitSlop={8}
+                    >
+                      <ThemedText style={styles.asNeededAction}>Log dose</ThemedText>
+                    </Pressable>
+                  </View>
+                </ThemedView>
+              ))}
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
 
@@ -1116,6 +1159,9 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   doneText: { fontSize: 16, marginTop: Spacing.one },
   sectionTitle: { marginTop: Spacing.two },
   scheduleCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
+  asNeededRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  asNeededName: { flex: 1 },
+  asNeededAction: { color: Brand.deepBlue, fontWeight: '700' },
   eventRow: { gap: Spacing.one },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   emphasizedTime: { marginBottom: Spacing.half },

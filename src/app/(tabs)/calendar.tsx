@@ -277,7 +277,13 @@ export default function CalendarScreen() {
                   {selectedDay ? `${selectedDay.dayName}, ${selectedDay.displayDate}` : selectedDate}
                 </ThemedText>
                 <ScrollView style={styles.modalList}>
-                  <DayDetailContent day={selectedDay} />
+                  <DayDetailContent
+                    day={selectedDay}
+                    onLogAsNeeded={(medicationId, date) => {
+                      setSelectedDate(null);
+                      router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
+                    }}
+                  />
                 </ScrollView>
                 <Pressable style={styles.closeButton} onPress={() => setSelectedDate(null)}>
                   <ThemedText style={styles.closeButtonText}>Close</ThemedText>
@@ -291,7 +297,13 @@ export default function CalendarScreen() {
   );
 }
 
-function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
+function DayDetailContent({
+  day,
+  onLogAsNeeded,
+}: {
+  day: CalendarDayDetail | null;
+  onLogAsNeeded: (medicationId: string, date: string) => void;
+}) {
   const styles = getStyles(useTheme());
   if (!day) {
     return <ThemedText themeColor="textSecondary">No data for this day.</ThemedText>;
@@ -371,7 +383,7 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
     <View>
       {summaryLine}
       {endingCallout}
-      {totalMedications === 0 ? (
+      {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
         <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
       ) : (
         <>
@@ -385,6 +397,20 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
                   endingToday={endingIds.has(med.medicationId)}
                 />
               ))}
+              {group.pendingAsNeeded.map((member) => (
+                <View key={member.medicationId} style={styles.slotRow}>
+                  <ThemedText type="smallBold" style={styles.pendingName}>
+                    {member.name}
+                    {member.dose ? ` ${member.dose}` : ''}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Not yet logged
+                  </ThemedText>
+                  <Pressable onPress={() => onLogAsNeeded(member.medicationId, day.date)} hitSlop={8}>
+                    <ThemedText style={styles.pendingAction}>Log dose</ThemedText>
+                  </Pressable>
+                </View>
+              ))}
             </View>
           ))}
           {day.medications.map((med) => (
@@ -393,6 +419,22 @@ function DayDetailContent({ day }: { day: CalendarDayDetail | null }) {
               style={[styles.medicationCard, endingIds.has(med.medicationId) && styles.endingHighlight]}
             >
               <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} />
+            </View>
+          ))}
+          {day.pendingUngroupedAsNeeded.map((med) => (
+            <View key={med.medicationId} style={styles.medicationCard}>
+              <View style={styles.slotRow}>
+                <ThemedText type="smallBold" style={styles.pendingName}>
+                  {med.name}
+                  {med.dose ? ` ${med.dose}` : ''}
+                </ThemedText>
+                <Pressable onPress={() => onLogAsNeeded(med.medicationId, day.date)} hitSlop={8}>
+                  <ThemedText style={styles.pendingAction}>{med.alreadyLogged ? 'Log another dose' : 'Log dose'}</ThemedText>
+                </Pressable>
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                {med.alreadyLogged ? 'As needed' : 'As needed · not yet logged'}
+              </ThemedText>
             </View>
           ))}
         </>
@@ -559,6 +601,8 @@ function getStyles(theme: ReturnType<typeof useTheme>) {
   medicationRow: { padding: 2, gap: 2 },
   medicationName: { fontWeight: '700' },
   slotBlock: { paddingVertical: 2 },
+  pendingName: { flex: 1 },
+  pendingAction: { color: Brand.deepBlue, fontWeight: '700' },
   slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   slotStatus: { textTransform: 'capitalize', fontWeight: '600' },
   slotNote: { fontStyle: 'italic' },

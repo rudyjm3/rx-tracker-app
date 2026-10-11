@@ -92,7 +92,7 @@ const RESUME_REASONS = ["Doctor's orders", "Symptoms returned", "Retrying", "Res
 
 export default function MedicationDetailScreen() {
   const styles = getStyles(useTheme());
-  const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
+  const { id, action, date: actionDate } = useLocalSearchParams<{ id: string; action?: string; date?: string }>();
   const [medication, setMedication] = useState<Medication | null>(null);
   const [refillHistory, setRefillHistory] = useState<MedicationRefill[]>([]);
   const [doseHistory, setDoseHistory] = useState<DoseHistoryEntry[]>([]);
@@ -312,6 +312,7 @@ export default function MedicationDetailScreen() {
       {logDoseOpen && (
         <LogDoseSheet
           medication={medication}
+          initialDate={actionDate && DATE_RE.test(actionDate) ? actionDate : undefined}
           onClose={() => setLogDoseOpen(false)}
           onSaved={async () => {
             setLogDoseOpen(false);
@@ -789,17 +790,20 @@ type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_do
  */
 function LogDoseSheet({
   medication,
+  initialDate,
   onClose,
   onSaved,
 }: {
   medication: Medication;
+  // Set when opened from a specific calendar day (?date=YYYY-MM-DD).
+  initialDate?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const theme = useTheme();
   const styles = getStyles(theme);
   const today = localDateString();
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate && initialDate <= today ? initialDate : today);
   const [slot, setSlot] = useState<DaySlot | null>(null);
   const [entryStepChosen, setEntryStepChosen] = useState(false);
 
