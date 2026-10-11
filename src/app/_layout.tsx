@@ -1,3 +1,4 @@
+import '@/global.css';
 import { DarkTheme, DefaultTheme, router, Slot, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';

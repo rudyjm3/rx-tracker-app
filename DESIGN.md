@@ -723,6 +723,14 @@ No page transitions, skeleton shimmers or parallax.
 
 The app is Expo SDK 57 / React Native 0.86 with Expo Router (`src/app`). Existing tabs: Dashboard, Medications, Calendar, Pain & Mood, Settings; stack screens exist for auth, onboarding, groups, export, family, history, profile and help.
 
+### 17.0 Styling: NativeWind
+
+The app styles with **NativeWind 4.2.7** (Tailwind CSS v3). Web uses Tailwind v4, so tokens are defined twice — `@theme` in `rx-tracker-web/app/globals.css` and `tailwind.config.js` in the app — but **class names are shared** (`bg-brand-bg`, `text-status-danger`, `rounded-card`, `shadow-card`, `border-brand-border`, …). Keep the two files in sync with section 2 and 4.
+
+- Prefer `className` over `StyleSheet.create` in new code. Base components live in `src/components/ui/`: `Button` (primary / secondary / ghost / danger, default / compact), `Card` (`flat` drops the shadow), `Badge`, `Field`.
+- Not expressible as classes: gradients (use `expo-linear-gradient`, see `Button`), hover states (use `active:`), `backdrop-blur`, web grid layouts.
+- Opacity tints work as on web: `bg-status-success/10`.
+
 ### 17.1 Tokens
 
 Reuse `Brand`, `BorderRadius` (10 / 18 / 28) and `Spacing` from `src/constants/theme.ts`. Add what is missing:
