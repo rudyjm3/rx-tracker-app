@@ -163,6 +163,8 @@ export interface CalendarDayPendingMember {
   dose: string | null;
   dose_amount: number | null;
   dose_unit: string | null;
+  // Only set for ungrouped as-needed entries (pendingUngroupedAsNeeded).
+  alreadyLogged?: boolean;
 }
 
 export interface CalendarDayDetail {
@@ -184,9 +186,11 @@ export interface CalendarDayDetail {
   endingMedications: CalendarDayEndingMedication[];
   medications: CalendarDayMedicationSummary[]; // medications with no single shared group that day
   groups: CalendarDayGroupSummary[]; // medications sharing a group that day, nested under it
-  // Ungrouped as_needed medications with no dose_logs row on this date
-  // (past/today only). They never get a scheduled slot, so without this
-  // there'd be no way to log them from the day detail.
+  // Eligible ungrouped as_needed medications for this date (past/today
+  // only), with `alreadyLogged` set once they have any dose_logs row.
+  // They never get a scheduled slot, so without this there'd be no way to
+  // log them from the day detail — and as-needed meds can be taken more
+  // than once a day, so they stay listed after the first dose.
   pendingUngroupedAsNeeded: CalendarDayPendingMember[];
   // Populated for a future date only: what the recurring schedule plans
   // to generate, since nothing has been logged yet to summarize instead.
@@ -421,7 +425,6 @@ export function buildDayDetails(
             m.active &&
             m.as_needed &&
             !groupedMedicationIds.has(m.id) &&
-            !loggedIds.has(m.id) &&
             (!m.start_date || date >= m.start_date) &&
             (!m.end_date || date <= m.end_date) &&
             date >= m.created_at.slice(0, 10),
@@ -432,6 +435,7 @@ export function buildDayDetails(
           dose: m.dose,
           dose_amount: m.dose_amount,
           dose_unit: m.dose_unit,
+          alreadyLogged: loggedIds.has(m.id),
         }));
     }
 

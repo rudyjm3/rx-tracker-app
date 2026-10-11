@@ -429,11 +429,11 @@ function DayDetailContent({
                   {med.dose ? ` ${med.dose}` : ''}
                 </ThemedText>
                 <Pressable onPress={() => onLogAsNeeded(med.medicationId, day.date)} hitSlop={8}>
-                  <ThemedText style={styles.pendingAction}>Log dose</ThemedText>
+                  <ThemedText style={styles.pendingAction}>{med.alreadyLogged ? 'Log another dose' : 'Log dose'}</ThemedText>
                 </Pressable>
               </View>
               <ThemedText type="small" themeColor="textSecondary">
-                As needed · not yet logged
+                {med.alreadyLogged ? 'As needed' : 'As needed · not yet logged'}
               </ThemedText>
             </View>
           ))}
