@@ -140,11 +140,17 @@ export default function DashboardScreen() {
       setMedications(activeMedications);
       // Ungrouped as_needed medications never get a schedule slot, so
       // surface them separately with a Log dose action.
-      const groupedIds = new Set(groupMembers.map((m) => m.medication_id));
+      // Only memberships of active groups count — `groups` excludes
+      // deactivated ones, which generateDaySlots can't slot a med into.
+      const activeGroupIds = new Set(groups.map((g) => g.id));
+      const groupedIds = new Set(
+        groupMembers.filter((m) => activeGroupIds.has(m.group_id)).map((m) => m.medication_id),
+      );
       setAsNeededMeds(
         activeMedications.filter(
           (m) =>
             m.as_needed &&
+            m.dashboard_enabled &&
             !groupedIds.has(m.id) &&
             (!m.start_date || date >= m.start_date) &&
             (!m.end_date || date <= m.end_date),

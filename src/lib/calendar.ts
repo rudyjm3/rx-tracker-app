@@ -227,9 +227,12 @@ export function buildDayDetails(
   }
   const groupsById = new Map(groups.map((g) => [g.id, g]));
   const medsById = new Map(medications.map((m) => [m.id, m]));
-  const groupedMedicationIds = new Set(groupMembers.map((m) => m.medication_id));
+  // Memberships of a deactivated group don't count: `groups` only holds
+  // active groups, and generateDaySlots can't produce a slot for them.
+  const activeGroupMembers = groupMembers.filter((m) => groupsById.has(m.group_id));
+  const groupedMedicationIds = new Set(activeGroupMembers.map((m) => m.medication_id));
   const memberIdsByGroup = new Map<string, string[]>();
-  for (const member of groupMembers) {
+  for (const member of activeGroupMembers) {
     const existing = memberIdsByGroup.get(member.group_id) ?? [];
     existing.push(member.medication_id);
     memberIdsByGroup.set(member.group_id, existing);
