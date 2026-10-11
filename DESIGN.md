@@ -397,7 +397,7 @@ Bell 18 px with a count badge when alerts exist. Menu `min-w-18rem`: label "Noti
 
 ## 8. Screens
 
-`/` redirects to `/dashboard` when signed in, else `/login`. Only the auth routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback`) are public; every other route, **including `/help`**, redirects to `/login` when signed out.
+`/` redirects to `/dashboard` when signed in, else `/login`. Only the auth routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback`) and the legal pages (`/terms`, `/privacy`) are public; every other route, **including `/help`**, redirects to `/login` when signed out.
 
 ### 8.1 Login `/login`
 
@@ -407,7 +407,7 @@ Split screen (from `md`/768: 55% / 45%).
 
 **Right panel:** `brand-bg` on mobile web / white on desktop; centered card, `max-w 420` (520 at md), padding 28 (40 at md), radius 18 (28 at md), `shadow-card`. On small screens the logo (58 px) and "RxTracker" (20 px extrabold navy) sit above the form.
 
-Order inside the card: h1 "Welcome back!" (centered) → "Sign in to continue tracking your medications." (muted, 32 px below) → error alert → form (gap ≈ 17.6): Email (mail icon), Password (lock icon, eye toggle, right-aligned "Forgot password?" 13.4 px semibold blue) → checkbox "Remember me for 30 days" → full-width **Sign in** primary (8 px extra top margin; "Signing in…") → divider with "or" → full-width secondary **G Continue with Google** → "Don't have an account? **Sign up**".
+Order inside the card: h1 "Welcome back!" (centered) → "Sign in to continue tracking your medications." (muted, 32 px below) → error alert → form (gap ≈ 17.6): Email (mail icon), Password (lock icon, eye toggle, right-aligned "Forgot password?" 13.4 px semibold blue) → checkbox "Remember me for 30 days" → full-width **Sign in** primary (8 px extra top margin; "Signing in…") → divider with "or" → full-width secondary **G Continue with Google** → "Don't have an account? **Sign up**" → a centered 12 px muted footer "Terms of Use · Privacy Policy" (16 px below) linking to the legal pages (8.16).
 
 Inline error alert: `role=alert`, radius 10, red-50 bg, red-200 border, `px-16 py-12`, 14 px semibold `status-danger`.
 
@@ -415,9 +415,9 @@ Inline error alert: `role=alert`, radius 10, red-50 bg, red-200 border, `px-16 p
 
 Same shell. Left copy: "Take control of your health." / "Join thousands of people who trust RxTracker to manage their medications every day." with four features (*Medication reminders, Refill tracking, Dose history, Adherence reports*) and a phone-mockup illustration (75% ring, three time rows with green checks).
 
-Fields: Full name (user icon), Email, Password, Confirm password (both with eye toggles), checkbox "I agree to the Terms of Service and Privacy Policy", **Create account**, divider, Google button, "Already have an account? Sign in".
+Fields: Full name (user icon), Email, Password, Confirm password (both with eye toggles), checkbox "I agree to the Terms of Use and Privacy Policy" (both linked), **Create account**, divider, Google button, "Already have an account? Sign in", then the same "Terms of Use · Privacy Policy" footer.
 
-Validation messages (inline alert): "Passwords do not match." · "Password must be at least 8 characters and include a number." · "Please agree to the Terms of Service and Privacy Policy."
+Validation messages (inline alert): "Passwords do not match." · "Password must be at least 8 characters and include a number." · "Please agree to the Terms of Use and Privacy Policy."
 
 Success replaces the form: h1 "Check your email" and "Confirm your account, then **sign in**."
 
@@ -553,6 +553,17 @@ Full screen on `brand-bg`; content `max-w-2xl`, `px-16 py-32`.
 ### 8.15 Help `/help`
 
 h1 "Help & FAQ" and a muted intro. One flat panel of `<details>` accordions (radius 10, border, `p-12`; open state `brand-bg`): *What does RxTracker do?*, *How do dose reminders and snoozing work?*, *How does inventory tracking and refill logging work?*, *What does "adherence" mean…*, *How do family profiles work?*, *How do I export a doctor visit report?*. Footer disclaimer (12 px muted): "RxTracker is a tracking aid only and does not provide medical advice — for anything about your treatment itself, please check with your doctor or pharmacist."
+
+
+### 8.16 Terms of Use `/terms` and Privacy Policy `/privacy`
+
+Ported from the original build (`routes/terms.php`, `routes/privacy.php`); the text lives in `lib/legal-content.ts` (web) and `src/lib/legal-content.ts` (app) and must stay identical. **Public** — reachable signed out (linked from sign-in, sign-up and the More menu) and signed in.
+
+- Page: `brand-bg` background, centered column `max-w-[720px]`, `px-16 py-32`.
+- **Back** link on top (16 px arrow + "Back", 14 px medium blue). Signed in → dashboard, signed out → sign-in; in the app it goes back, else to `/`.
+- Card: white, radius 18 (28 at ≥768), padding 28 (40 at ≥768), `shadow-card`. Inside: 48 px logo + "RxTracker" (20 px extrabold navy); h1 (25.6 px extrabold navy, "Terms of Use" / "Privacy Policy"); "Effective date: June 1, 2025" (14 px muted, 32 px below); then numbered sections.
+- Sections: h2 (17.6 px bold navy, e.g. "1. Acceptance of Terms"), 8 px gap, body 16 px / 24 px; bullet lists indented 20 px with 28 px line height; a paragraph after a list gets 12 px extra top spacing; 28 px between sections. Inline: **bold** and links (Terms §5 links to the Privacy Policy) in `brand-blue`.
+- Terms: 10 sections (Acceptance of Terms, Not Medical Advice, Your Account, Acceptable Use, Data and Privacy, Disclaimer of Warranties, Limitation of Liability, Modifications, Governing Law, Contact). Privacy: 11 sections (Information We Collect, How We Use Your Information, Health Information, Data Retention, Push Notifications, Cookies and Sessions, Third-Party Services, Your Rights, Children's Privacy, Changes to This Policy, Contact).
 
 ---
 
@@ -769,7 +780,7 @@ export const Gradient = {
 
 | Web | Mobile |
 |---|---|
-| Top nav links (Dashboard, Medications, Calendar, Export, Pain Tracking, Mood & Wellbeing) | **Bottom tabs, matching the original build's mobile nav:** **Dashboard · Medications · Calendar · Export · More** (icons: house, pills, calendar, file-export, ellipsis; active = deep-blue with bold label, white bar). **More** opens a bottom sheet listing **Settings, Pain Tracking, Mood & Wellbeing, Help, Terms of Use, Privacy Policy** (22 px blue icons: gear, chart-line, smiley, question-circle, document, shield; 64 px rows, 18 px labels). Settings and Pain/Mood stay in the tab group as hidden screens so the bar stays visible and More is highlighted. History, Family and Profile are stack screens reached from the dashboard/Settings/avatar sheet |
+| Top nav links (Dashboard, Medications, Calendar, Export, Pain Tracking, Mood & Wellbeing) | **Bottom tabs, matching the original build's mobile nav:** **Dashboard · Medications · Calendar · Export · More** (icons: house, pills, calendar, file-export, ellipsis; active = deep-blue with bold label, white bar). **More** opens a bottom sheet listing **Settings, Pain Tracking, Mood & Wellbeing, Help, Terms of Use, Privacy Policy** (the last two open the in-app public pages, 8.16) (22 px blue icons: gear, chart-line, smiley, question-circle, document, shield; 64 px rows, 18 px labels). Settings and Pain/Mood stay in the tab group as hidden screens so the bar stays visible and More is highlighted. History, Family and Profile are stack screens reached from the dashboard/Settings/avatar sheet |
 | Avatar dropdown (Profile, owner/family switch, Manage Family, Sign out) | Header avatar (40 px circle, initial on the profile color) → **bottom sheet** in the same order; the active profile row is highlighted. Replaces the old per-screen profile chip row |
 | Bell dropdown | Header bell (40 px white circle with border, red count badge) → **bottom sheet** of supply alerts (same rows: name + dose, severity line, Refill, dismiss) |
 | Settings gear / Help icons | Inside the More sheet (Settings, Help) |
