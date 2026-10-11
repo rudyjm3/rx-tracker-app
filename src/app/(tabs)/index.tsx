@@ -7,7 +7,10 @@ import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
+import { NextDoseHero } from '@/components/dashboard/next-dose-hero';
+import { SlotActions } from '@/components/dashboard/slot-actions';
 import { Button } from '@/components/ui/button';
+import { MedTypeBadge } from '@/components/ui/med-type-badge';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
 import { SafeArea } from '@/components/ui/safe-area';
@@ -15,7 +18,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { useTheme } from '@/hooks/use-theme';
-import { computeAdherenceStats } from '@/lib/adherence';
+import { computeAdherenceStats, type AdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
 import {
@@ -32,6 +35,7 @@ import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/li
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
+  generateAdHocPrnSlots,
   generateDaySlots,
   slotDueTime,
   SNOOZE_OPTIONS,
@@ -39,7 +43,7 @@ import {
   type NextDoseEvent,
 } from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
-import { formatClockTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
+import { formatClockTime, formatEpochTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -59,9 +63,13 @@ export default function DashboardScreen() {
   // the date the on-screen slot actually belongs to, not "today" as of the
   // tap.
   const [scheduleDate, setScheduleDate] = useState(localDateString());
-  // null = no required (adherence-tracked, non-PRN) doses today, so the
-  // chip is hidden rather than showing a misleading "0%".
-  const [adherencePercent, setAdherencePercent] = useState<number | null>(null);
+  // Slots feeding the adherence card, kept raw so the stats can be recomputed
+  // as time passes (an untouched required dose turns "missed" once its grace
+  // period expires, with no dose_logs row written — see lib/export.ts).
+  const [adherenceSlots, setAdherenceSlots] = useState<{ required: DaySlot[]; nonRequired: DaySlot[] }>({
+    required: [],
+    nonRequired: [],
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -155,10 +163,11 @@ export default function DashboardScreen() {
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
 
-      // Separate from `slots` above (which stays scoped to what's shown on
-      // screen): a medication hidden from the daily schedule but still
-      // opted into adherence tracking must still count toward it.
-      const requiredSlots = generateDaySlots(
+      // Visibility-independent slots: a medication hidden from the daily
+      // schedule (or an as-needed one in a group hidden from it) can still be
+      // opted into adherence tracking, so required AND optional tracking are
+      // both built from this set rather than the on-screen `slots`.
+      const adherenceSource = generateDaySlots(
         date,
         activeMedications,
         groups,
@@ -166,17 +175,23 @@ export default function DashboardScreen() {
         doseLogs,
         postpones,
         { ignoreDashboardVisibility: true },
-      )
-        .filter((s) => !s.isPrn && s.medication.adherence_enabled)
-        .map((s) => ({
-          status: s.status,
-          late: isLate(
-            { status: s.status, taken_at: s.takenAt, scheduled_for_date: date, scheduled_time: s.scheduledTime },
-            graceMinutes,
+      ).filter((s) => s.medication.adherence_enabled);
+      setAdherenceSlots({
+        required: adherenceSource.filter((s) => !s.isPrn),
+        // "Take as needed" medications opted into adherence tracking are
+        // tracked separately: scheduled (grouped) PRN slots plus ungrouped
+        // ones logged ad hoc. Only memberships of active groups count — a
+        // deleted group leaves its membership rows behind, and its meds are
+        // ungrouped again.
+        nonRequired: [
+          ...adherenceSource.filter((s) => s.isPrn),
+          ...generateAdHocPrnSlots(
+            activeMedications,
+            groupMembers.filter((m) => activeGroupIds.has(m.group_id)),
+            doseLogs,
           ),
-        }));
-      const stats = computeAdherenceStats(requiredSlots);
-      setAdherencePercent(stats.requiredTotal > 0 ? stats.percent : null);
+        ],
+      });
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
@@ -392,6 +407,25 @@ export default function DashboardScreen() {
     }
   }, [slots, scheduleDate, graceMinutes, nowTick]);
 
+  const adherenceStats: AdherenceStats = useMemo(() => {
+    const track = (s: DaySlot, required: boolean) => ({
+      // Required doses nobody acted on are missed once due time + grace has
+      // passed (as-needed doses never are).
+      status:
+        required && s.status === 'pending' && nowTick > slotDueTime(s, scheduleDate) + graceMinutes * 60_000
+          ? ('missed' as const)
+          : s.status,
+      late: isLate(
+        { status: s.status, taken_at: s.takenAt, scheduled_for_date: scheduleDate, scheduled_time: s.scheduledTime },
+        graceMinutes,
+      ),
+    });
+    return computeAdherenceStats(
+      adherenceSlots.required.map((s) => track(s, true)),
+      adherenceSlots.nonRequired.map((s) => track(s, false)),
+    );
+  }, [adherenceSlots, nowTick, graceMinutes, scheduleDate]);
+
   if (loading) {
     return (
       <View className="flex-1 bg-brand-bg dark:bg-night-bg">
@@ -406,6 +440,7 @@ export default function DashboardScreen() {
     e.kind === 'single' ? e.slot.status === 'pending' : e.members.some((m) => m.status === 'pending'),
   );
   const nextEvent = pendingEvents[0] ?? null;
+  const upcomingEvent = nextEvent ? (pendingEvents.find((e) => e.time > nextEvent.time) ?? null) : null;
 
   return (
     <View className="flex-1 bg-brand-bg dark:bg-night-bg">
@@ -417,13 +452,6 @@ export default function DashboardScreen() {
           <View className="flex-row items-center justify-between gap-2">
             <Text className="text-[28px] font-bold leading-[34px] text-brand-navy dark:text-white">Today</Text>
             <View className="flex-row items-center gap-2">
-              {adherencePercent !== null && (
-                <View className="rounded-full border border-brand-border bg-white px-2 py-0.5 dark:border-night-border dark:bg-night-selected">
-                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
-                    {adherencePercent}%
-                  </Text>
-                </View>
-              )}
               {supplyAlerts.length > 0 && (
                 <Pressable
                   className="p-1"
@@ -454,22 +482,7 @@ export default function DashboardScreen() {
             medications={medications}
           />
 
-          <Card className="gap-1 p-4">
-            <Text muted className="text-sm font-medium">
-              Next dose
-            </Text>
-            {nextEvent ? (
-              <EventRow
-                event={nextEvent}
-                actingKey={actingKey}
-                onAction={handleAction}
-                onSnooze={setSnoozeSlot}
-                emphasized
-              />
-            ) : (
-              <Text className="mt-1 text-base">All done for today 🎉</Text>
-            )}
-          </Card>
+          <NextDoseHero next={nextEvent} upcoming={upcomingEvent} adherence={adherenceStats} />
 
           <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 
@@ -782,7 +795,7 @@ function TimeEntrySheet({
       </Text>
       {dueTime !== null && (
         <Text muted className="mb-2 text-sm">
-          Originally due {formatEventTime(dueTime)}
+          Originally due {formatEpochTime(dueTime)}
         </Text>
       )}
       {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
@@ -851,13 +864,6 @@ function LevelStepper({
   );
 }
 
-function formatEventTime(ms: number): string {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return to12h(`${hh}:${mm}`);
-}
-
 function EventRow({
   event,
   actingKey,
@@ -865,7 +871,6 @@ function EventRow({
   onSnooze,
   onTakeAll,
   takeAllCount = 0,
-  emphasized,
 }: {
   event: NextDoseEvent;
   actingKey: string | null;
@@ -873,35 +878,36 @@ function EventRow({
   onSnooze: (slot: DaySlot) => void;
   onTakeAll?: (event: NextDoseEvent) => void;
   takeAllCount?: number;
-  emphasized?: boolean;
 }) {
   const slots = event.kind === 'group' ? event.members : [event.slot];
   const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
   // event.time is the slot's effective due time (postponedUntil when
   // snoozed, else its scheduledTime) — use it rather than the slot's own
   // scheduledTime, which stays the original time even after a snooze.
-  const displayTime = formatEventTime(event.time);
+  const displayTime = formatEpochTime(event.time);
 
   return (
     <View className="gap-1">
-      <Text className={emphasized ? 'mb-0.5 text-4xl font-extrabold text-brand-navy dark:text-white' : 'text-base font-semibold'}>
+      <Text className="text-base font-semibold">
         {displayTime}
       </Text>
       <View className="flex-row items-center justify-between gap-2">
-        <Text className={emphasized ? 'text-base font-semibold' : 'text-sm font-bold'}>{heading}</Text>
+        <Text className="text-sm font-bold">{heading}</Text>
         {event.kind === 'group' && onTakeAll && takeAllCount > 0 && (
           <Button label="Take All" size="compact" onPress={() => onTakeAll(event)} loading={actingKey !== null} />
         )}
       </View>
       {slots.map((slot) => {
         const key = `${slot.medicationId}|${slot.scheduledTime}`;
-        const busy = actingKey === key;
         return (
           <View key={key} className="flex-row items-center justify-between gap-2">
             <View className="flex-1 gap-0.5">
-              <Text className="flex-1 text-sm font-medium">
-                {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-              </Text>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Text className="text-sm font-medium">
+                  {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
+                </Text>
+                <MedTypeBadge type={slot.medication.medication_type} />
+              </View>
               {slot.status === 'pending' && slot.postponedUntil && (
                 <Text muted className="text-sm">
                   {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
@@ -909,11 +915,7 @@ function EventRow({
               )}
             </View>
             {slot.status === 'pending' ? (
-              <View className="flex-row gap-2">
-                <Button label="Skip" variant="secondary" size="compact" onPress={() => onAction(slot, 'skipped')} loading={busy} />
-                <Button label="Snooze" variant="secondary" size="compact" onPress={() => onSnooze(slot)} loading={busy} />
-                <Button label="Take" size="compact" onPress={() => onAction(slot, 'taken')} loading={busy} />
-              </View>
+              <SlotActions slot={slot} actingKey={actingKey} onAction={onAction} onSnooze={onSnooze} />
             ) : (
               <Text muted className="text-sm font-medium capitalize">
                 {slot.status}

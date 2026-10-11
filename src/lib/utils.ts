@@ -240,3 +240,11 @@ export function strengthsEqual(
   }
   return unitA === unitB && Math.abs(a.amount - b.amount) < 1e-9;
 }
+
+// "8:30 AM" for an epoch-ms timestamp, in local time.
+export function formatEpochTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return to12h(`${hh}:${mm}`);
+}

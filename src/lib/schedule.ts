@@ -1,6 +1,6 @@
 // Ported from rx-tracker-web's lib/schedule.ts — pure data logic with no
 // React/Next dependency, so it's copied verbatim (minus the ad-hoc PRN
-// helper, not needed yet) rather than reinvented, to keep the two apps'
+// helper, added below for the dashboard's non-required adherence) rather than reinvented, to keep the two apps'
 // notion of "today's doses" identical.
 import type {
   DoseLog,
@@ -211,4 +211,47 @@ export function buildDoseEvents(slots: DaySlot[], date: string): NextDoseEvent[]
   }
 
   return events;
+}
+
+/**
+ * Slots for "take as needed" medications logged ad hoc rather than on a
+ * fixed schedule: an as_needed medication with no group membership never
+ * gets a slot from generateDaySlots (see its doc comment above) — its
+ * doses go straight into dose_logs at whatever time the user enters via
+ * the Log Past Dose / Free Log flow. Only medications with
+ * adherence_enabled are included, since that's what opts an as_needed
+ * medication into the dashboard's non-required dose-tracking bucket
+ * instead of leaving it untracked entirely.
+ */
+export function generateAdHocPrnSlots(
+  medications: Medication[],
+  groupMembers: Pick<MedicationGroupMember, "medication_id">[],
+  doseLogs: DoseLog[],
+): DaySlot[] {
+  const groupedMedicationIds = new Set(groupMembers.map((m) => m.medication_id));
+  const eligible = new Map(
+    medications
+      .filter((m) => m.as_needed && m.adherence_enabled && !groupedMedicationIds.has(m.id))
+      .map((m) => [m.id, m] as const),
+  );
+
+  return doseLogs
+    .filter((log) => eligible.has(log.medication_id))
+    .map((log) => {
+      const medication = eligible.get(log.medication_id)!;
+      return {
+        medicationId: medication.id,
+        medicationName: medication.name,
+        dose: medication.dose,
+        scheduledTime: log.scheduled_time.slice(0, 5),
+        groupId: null,
+        groupName: null,
+        quantityPerDose: log.deducted_quantity ?? medication.quantity_per_dose,
+        status: log.status,
+        takenAt: log.taken_at,
+        postponedUntil: null,
+        isPrn: true,
+        medication,
+      };
+    });
 }

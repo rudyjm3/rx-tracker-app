@@ -134,8 +134,11 @@ export default function ExportScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ThemedText type="title" style={styles.screenTitle}>
+            Export
+          </ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
             Compiles your medications, adherence, dose changes, side effects, allergies, and
             (optionally) pain/mood trends into one PDF you can share or print for a doctor visit.
@@ -271,6 +274,7 @@ function FieldLabel({ children }: { children: string }) {
 
 function getStyles(theme: ReturnType<typeof useTheme>) {
   return StyleSheet.create({
+  screenTitle: { fontSize: 28, lineHeight: 34 },
     container: { flex: 1 },
     safeArea: { flex: 1 },
     scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },

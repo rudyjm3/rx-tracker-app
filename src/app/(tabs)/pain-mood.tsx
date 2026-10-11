@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -79,7 +79,17 @@ export default function PainMoodScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [trendMetric, setTrendMetric] = useState<WellbeingMetric>('pain');
+  // The More menu opens this screen as "Pain Tracking" (?metric=pain) or
+  // "Mood & Wellbeing" (?metric=mood).
+  const { metric: metricParam } = useLocalSearchParams<{ metric?: string }>();
+  const [trendMetric, setTrendMetric] = useState<WellbeingMetric>(metricParam === 'mood' ? 'mood' : 'pain');
+  // This tab stays mounted, so follow the param when it changes (adjusting
+  // state during render rather than in an effect).
+  const [seenMetricParam, setSeenMetricParam] = useState(metricParam);
+  if (metricParam !== seenMetricParam) {
+    setSeenMetricParam(metricParam);
+    if (metricParam === 'mood' || metricParam === 'pain') setTrendMetric(metricParam);
+  }
   const [trendRangeDays, setTrendRangeDays] = useState<RangeDays>(DEFAULT_RANGE_DAYS);
   const [moodChartScheme, setMoodChartSchemeState] = useState<MoodChartScheme>('classic');
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);

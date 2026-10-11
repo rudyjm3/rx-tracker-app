@@ -4,6 +4,7 @@ import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleShee
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { MedTypeBadge } from '@/components/ui/med-type-badge';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -120,6 +121,9 @@ export function DueNowOverlay({
                           {event.slot.dose}
                         </ThemedText>
                       ) : null}
+                      <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                        <MedTypeBadge type={event.slot.medication.medication_type} />
+                      </View>
                     </>
                   )}
                 </View>
@@ -162,14 +166,14 @@ export function DueNowOverlay({
                   ) : (
                     <View style={styles.mainActions}>
                       <Pressable
-                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-                        onPress={onSkipAll}
+                        style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
+                        onPress={onTakeAll}
                         disabled={disabled}
                       >
                         {disabled ? (
-                          <ActivityIndicator size="small" color={theme.textSecondary} />
+                          <ActivityIndicator size="small" color="#ffffff" />
                         ) : (
-                          <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
+                          <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
                         )}
                       </Pressable>
                       <Pressable
@@ -180,14 +184,14 @@ export function DueNowOverlay({
                         <ThemedText style={styles.secondaryButtonText}>Snooze</ThemedText>
                       </Pressable>
                       <Pressable
-                        style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
-                        onPress={onTakeAll}
+                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
+                        onPress={onSkipAll}
                         disabled={disabled}
                       >
                         {disabled ? (
-                          <ActivityIndicator size="small" color="#ffffff" />
+                          <ActivityIndicator size="small" color={theme.textSecondary} />
                         ) : (
-                          <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
+                          <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
                         )}
                       </Pressable>
                     </View>
@@ -248,12 +252,12 @@ function MemberRow({
         {slot.status === 'pending' ? (
           <View style={styles.actions}>
             <Pressable
-              style={[styles.smallActionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-              onPress={onSkip}
+              style={[styles.smallActionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
+              onPress={onTake}
               disabled={disabled}
             >
-              <ThemedText type="small" style={styles.secondaryButtonText}>
-                Skip
+              <ThemedText type="small" style={styles.primaryButtonText}>
+                Take
               </ThemedText>
             </Pressable>
             <Pressable
@@ -266,12 +270,12 @@ function MemberRow({
               </ThemedText>
             </Pressable>
             <Pressable
-              style={[styles.smallActionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
-              onPress={onTake}
+              style={[styles.smallActionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
+              onPress={onSkip}
               disabled={disabled}
             >
-              <ThemedText type="small" style={styles.primaryButtonText}>
-                Take
+              <ThemedText type="small" style={styles.secondaryButtonText}>
+                Skip
               </ThemedText>
             </Pressable>
           </View>

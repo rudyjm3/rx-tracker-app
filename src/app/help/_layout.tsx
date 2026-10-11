@@ -9,7 +9,7 @@ export default function HelpStackLayout() {
 
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: 'Help & FAQ', headerBackTitle: 'Settings' }} />
+      <Stack.Screen name="index" options={{ title: 'Help & FAQ', headerBackTitle: 'Back' }} />
     </Stack>
   );
 }
