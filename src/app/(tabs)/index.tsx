@@ -63,7 +63,13 @@ export default function DashboardScreen() {
   // the date the on-screen slot actually belongs to, not "today" as of the
   // tap.
   const [scheduleDate, setScheduleDate] = useState(localDateString());
-  const [adherenceStats, setAdherenceStats] = useState<AdherenceStats>(() => computeAdherenceStats([]));
+  // Slots feeding the adherence card, kept raw so the stats can be recomputed
+  // as time passes (an untouched required dose turns "missed" once its grace
+  // period expires, with no dose_logs row written — see lib/export.ts).
+  const [adherenceSlots, setAdherenceSlots] = useState<{ required: DaySlot[]; nonRequired: DaySlot[] }>({
+    required: [],
+    nonRequired: [],
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -157,17 +163,11 @@ export default function DashboardScreen() {
       setScheduleDate(date);
       setEvents(buildDoseEvents(slots, date));
 
-      // Separate from `slots` above (which stays scoped to what's shown on
-      // screen): a medication hidden from the daily schedule but still
-      // opted into adherence tracking must still count toward it.
-      const toTracked = (s: DaySlot) => ({
-        status: s.status,
-        late: isLate(
-          { status: s.status, taken_at: s.takenAt, scheduled_for_date: date, scheduled_time: s.scheduledTime },
-          graceMinutes,
-        ),
-      });
-      const requiredSlots = generateDaySlots(
+      // Visibility-independent slots: a medication hidden from the daily
+      // schedule (or an as-needed one in a group hidden from it) can still be
+      // opted into adherence tracking, so required AND optional tracking are
+      // both built from this set rather than the on-screen `slots`.
+      const adherenceSource = generateDaySlots(
         date,
         activeMedications,
         groups,
@@ -175,17 +175,23 @@ export default function DashboardScreen() {
         doseLogs,
         postpones,
         { ignoreDashboardVisibility: true },
-      )
-        .filter((s) => !s.isPrn && s.medication.adherence_enabled)
-        .map(toTracked);
-      // "Take as needed" medications opted into adherence tracking are
-      // tracked separately: scheduled (grouped) PRN slots plus ungrouped
-      // ones logged ad hoc.
-      const nonRequiredSlots = [
-        ...slots.filter((s) => s.isPrn && s.medication.adherence_enabled),
-        ...generateAdHocPrnSlots(activeMedications, groupMembers, doseLogs),
-      ].map(toTracked);
-      setAdherenceStats(computeAdherenceStats(requiredSlots, nonRequiredSlots));
+      ).filter((s) => s.medication.adherence_enabled);
+      setAdherenceSlots({
+        required: adherenceSource.filter((s) => !s.isPrn),
+        // "Take as needed" medications opted into adherence tracking are
+        // tracked separately: scheduled (grouped) PRN slots plus ungrouped
+        // ones logged ad hoc. Only memberships of active groups count — a
+        // deleted group leaves its membership rows behind, and its meds are
+        // ungrouped again.
+        nonRequired: [
+          ...adherenceSource.filter((s) => s.isPrn),
+          ...generateAdHocPrnSlots(
+            activeMedications,
+            groupMembers.filter((m) => activeGroupIds.has(m.group_id)),
+            doseLogs,
+          ),
+        ],
+      });
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
@@ -400,6 +406,25 @@ export default function DashboardScreen() {
       triggerVibration();
     }
   }, [slots, scheduleDate, graceMinutes, nowTick]);
+
+  const adherenceStats: AdherenceStats = useMemo(() => {
+    const track = (s: DaySlot, required: boolean) => ({
+      // Required doses nobody acted on are missed once due time + grace has
+      // passed (as-needed doses never are).
+      status:
+        required && s.status === 'pending' && nowTick > slotDueTime(s, scheduleDate) + graceMinutes * 60_000
+          ? ('missed' as const)
+          : s.status,
+      late: isLate(
+        { status: s.status, taken_at: s.takenAt, scheduled_for_date: scheduleDate, scheduled_time: s.scheduledTime },
+        graceMinutes,
+      ),
+    });
+    return computeAdherenceStats(
+      adherenceSlots.required.map((s) => track(s, true)),
+      adherenceSlots.nonRequired.map((s) => track(s, false)),
+    );
+  }, [adherenceSlots, nowTick, graceMinutes, scheduleDate]);
 
   if (loading) {
     return (
