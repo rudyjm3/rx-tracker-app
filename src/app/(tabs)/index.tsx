@@ -7,6 +7,8 @@ import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
+import { NextDoseHero } from '@/components/dashboard/next-dose-hero';
+import { SlotActions } from '@/components/dashboard/slot-actions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
@@ -39,7 +41,7 @@ import {
   type NextDoseEvent,
 } from '@/lib/schedule';
 import type { Medication } from '@/lib/types/medications';
-import { formatClockTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
+import { formatClockTime, formatEpochTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
 
 const MIN_LEVEL = 1;
 const MAX_LEVEL = 10;
@@ -406,6 +408,7 @@ export default function DashboardScreen() {
     e.kind === 'single' ? e.slot.status === 'pending' : e.members.some((m) => m.status === 'pending'),
   );
   const nextEvent = pendingEvents[0] ?? null;
+  const upcomingEvent = nextEvent ? (pendingEvents.find((e) => e.time > nextEvent.time) ?? null) : null;
 
   return (
     <View className="flex-1 bg-brand-bg dark:bg-night-bg">
@@ -454,22 +457,15 @@ export default function DashboardScreen() {
             medications={medications}
           />
 
-          <Card className="gap-1 p-4">
-            <Text muted className="text-sm font-medium">
-              Next dose
-            </Text>
-            {nextEvent ? (
-              <EventRow
-                event={nextEvent}
-                actingKey={actingKey}
-                onAction={handleAction}
-                onSnooze={setSnoozeSlot}
-                emphasized
-              />
-            ) : (
-              <Text className="mt-1 text-base">All done for today 🎉</Text>
-            )}
-          </Card>
+          <NextDoseHero
+            next={nextEvent}
+            upcoming={upcomingEvent}
+            actingKey={actingKey}
+            onAction={handleAction}
+            onSnooze={setSnoozeSlot}
+            onTakeAll={handleGroupTakeAll}
+            takeAllCount={nextEvent ? takeAllSlots(nextEvent).length : 0}
+          />
 
           <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 
@@ -782,7 +778,7 @@ function TimeEntrySheet({
       </Text>
       {dueTime !== null && (
         <Text muted className="mb-2 text-sm">
-          Originally due {formatEventTime(dueTime)}
+          Originally due {formatEpochTime(dueTime)}
         </Text>
       )}
       {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
@@ -851,13 +847,6 @@ function LevelStepper({
   );
 }
 
-function formatEventTime(ms: number): string {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return to12h(`${hh}:${mm}`);
-}
-
 function EventRow({
   event,
   actingKey,
@@ -865,7 +854,6 @@ function EventRow({
   onSnooze,
   onTakeAll,
   takeAllCount = 0,
-  emphasized,
 }: {
   event: NextDoseEvent;
   actingKey: string | null;
@@ -873,29 +861,27 @@ function EventRow({
   onSnooze: (slot: DaySlot) => void;
   onTakeAll?: (event: NextDoseEvent) => void;
   takeAllCount?: number;
-  emphasized?: boolean;
 }) {
   const slots = event.kind === 'group' ? event.members : [event.slot];
   const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
   // event.time is the slot's effective due time (postponedUntil when
   // snoozed, else its scheduledTime) — use it rather than the slot's own
   // scheduledTime, which stays the original time even after a snooze.
-  const displayTime = formatEventTime(event.time);
+  const displayTime = formatEpochTime(event.time);
 
   return (
     <View className="gap-1">
-      <Text className={emphasized ? 'mb-0.5 text-4xl font-extrabold text-brand-navy dark:text-white' : 'text-base font-semibold'}>
+      <Text className="text-base font-semibold">
         {displayTime}
       </Text>
       <View className="flex-row items-center justify-between gap-2">
-        <Text className={emphasized ? 'text-base font-semibold' : 'text-sm font-bold'}>{heading}</Text>
+        <Text className="text-sm font-bold">{heading}</Text>
         {event.kind === 'group' && onTakeAll && takeAllCount > 0 && (
           <Button label="Take All" size="compact" onPress={() => onTakeAll(event)} loading={actingKey !== null} />
         )}
       </View>
       {slots.map((slot) => {
         const key = `${slot.medicationId}|${slot.scheduledTime}`;
-        const busy = actingKey === key;
         return (
           <View key={key} className="flex-row items-center justify-between gap-2">
             <View className="flex-1 gap-0.5">
@@ -909,11 +895,7 @@ function EventRow({
               )}
             </View>
             {slot.status === 'pending' ? (
-              <View className="flex-row gap-2">
-                <Button label="Skip" variant="secondary" size="compact" onPress={() => onAction(slot, 'skipped')} loading={busy} />
-                <Button label="Snooze" variant="secondary" size="compact" onPress={() => onSnooze(slot)} loading={busy} />
-                <Button label="Take" size="compact" onPress={() => onAction(slot, 'taken')} loading={busy} />
-              </View>
+              <SlotActions slot={slot} actingKey={actingKey} onAction={onAction} onSnooze={onSnooze} />
             ) : (
               <Text muted className="text-sm font-medium capitalize">
                 {slot.status}

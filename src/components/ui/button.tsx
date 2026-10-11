@@ -26,8 +26,23 @@ const PADDING: Record<Size, string> = {
 };
 const TEXT_SIZE: Record<Size, string> = { default: 'text-sm', compact: 'text-xs' };
 
+// Variants for gradient / navy surfaces (dashboard hero, alarm): DESIGN.md 6.1.
+const ON_DARK: Record<Variant, string> = {
+  primary: 'bg-white shadow-none active:opacity-90',
+  secondary: 'border border-white/30 bg-white/10 active:bg-white/20',
+  ghost: 'active:bg-white/10',
+  danger: 'bg-status-danger shadow-none active:opacity-90',
+};
+const ON_DARK_TEXT: Record<Variant, string> = {
+  primary: 'text-brand-deep-blue',
+  secondary: 'text-white',
+  ghost: 'text-white',
+  danger: 'text-white',
+};
+
 export interface ButtonProps extends Omit<PressableProps, 'children'> {
   label: string;
+  onDark?: boolean;
   variant?: Variant;
   size?: Size;
   loading?: boolean;
@@ -38,6 +53,7 @@ export function Button({
   label,
   variant = 'primary',
   size = 'default',
+  onDark,
   loading,
   disabled,
   className,
@@ -49,9 +65,9 @@ export function Button({
       accessibilityRole="button"
       disabled={isDisabled}
       hitSlop={size === 'compact' ? 6 : 0}
-      className={cn(BASE, VARIANT[variant], PADDING[size], isDisabled && 'opacity-50', className)}
+      className={cn(BASE, onDark ? ON_DARK[variant] : VARIANT[variant], PADDING[size], isDisabled && 'opacity-50', className)}
       {...props}>
-      {variant === 'primary' && (
+      {variant === 'primary' && !onDark && (
         <LinearGradient
           colors={['#14CFE0', '#0A8AC8', '#0754A8']}
           start={{ x: 0, y: 0 }}
@@ -59,8 +75,8 @@ export function Button({
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
         />
       )}
-      {loading && <ActivityIndicator size="small" color={variant === 'secondary' || variant === 'ghost' ? '#102B57' : '#fff'} />}
-      <Text className={cn('font-semibold', TEXT[variant], TEXT_SIZE[size])}>{label}</Text>
+      {loading && <ActivityIndicator size="small" color={onDark ? (variant === 'primary' ? '#0754A8' : '#fff') : variant === 'secondary' || variant === 'ghost' ? '#102B57' : '#fff'} />}
+      <Text className={cn('font-semibold', onDark ? ON_DARK_TEXT[variant] : TEXT[variant], TEXT_SIZE[size])}>{label}</Text>
     </Pressable>
   );
 }

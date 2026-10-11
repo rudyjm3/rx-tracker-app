@@ -248,7 +248,7 @@ Rule of thumb: **cards have a 1 px `brand-border` border and `shadow-card`**; fl
 | Device | `Smartphone` |
 | Setup nudge | `ClipboardList` |
 
-**Dose-form illustrations** (circle-cropped PNGs in `public/images/dose-forms/`): tablet → `med-pill`, capsule → `med-capsule`, liquid → `med-bottle`, inhaler → `med-inhaler`, injection → `med-injection`, patch → `med-patch`, drops → `med-drop`; default `med-pill`. Rendered in a circle with fill `rgba(255,255,255,0.12)`, 3 px `rgba(255,255,255,0.30)` border, shadow `0 8px 24px rgba(0,0,0,0.22)`; **104 px** in the hero, **64 px** in the alarm. The same artwork exists in the app repo (`assets/images/med-*.png`).
+**Dose-form illustrations** (circle-cropped PNGs in `public/images/dose-forms/`): tablet → `med-pill`, capsule → `med-capsule`, liquid → `med-bottle`, inhaler → `med-inhaler`, injection → `med-injection`, patch → `med-patch`, drops → `med-drop`; default `med-pill`. Rendered in a circle with fill `rgba(255,255,255,0.12)`, 3 px `rgba(255,255,255,0.30)` border, shadow `0 8px 24px rgba(0,0,0,0.22)`; **104 px** in the hero, **64 px** in the alarm. The same files are copied into the app repo at `assets/images/dose-forms/` (used by `src/components/dashboard/dose-form-icon.tsx`).
 
 **Auth illustrations:** `public/images/auth/med-{bottle,inhaler,pill,capsule,drop,patch}.png`, rotated ±8–20°, `drop-shadow-2xl`, desktop-only on the gradient panel.
 
@@ -730,6 +730,7 @@ The app is Expo SDK 57 / React Native 0.86 with Expo Router (`src/app`). Existin
 The app styles with **NativeWind 4.2.7** (Tailwind CSS v3). Web uses Tailwind v4, so tokens are defined twice — `@theme` in `rx-tracker-web/app/globals.css` and `tailwind.config.js` in the app — but **class names are shared** (`bg-brand-bg`, `text-status-danger`, `rounded-card`, `shadow-card`, `border-brand-border`, …). Keep the two files in sync with section 2 and 4.
 
 - Prefer `className` over `StyleSheet.create` in new code. Base components live in `src/components/ui/`: `Button` (primary / secondary / ghost / danger, default / compact), `Card` (`flat` drops the shadow), `Badge`, `Field`.
+- `Button` has an `onDark` prop (white primary, translucent secondary) for gradient / navy surfaces such as the Next dose hero.
 - Not expressible as classes: gradients (use `expo-linear-gradient`, see `Button`), hover states (use `active:`), `backdrop-blur`, web grid layouts.
 - Opacity tints work as on web: `bg-status-success/10`.
 
