@@ -769,10 +769,10 @@ export const Gradient = {
 
 | Web | Mobile |
 |---|---|
-| Top nav links (Dashboard, Medications, Calendar, Export, Pain Tracking, Mood & Wellbeing) | **Bottom tabs:** Dashboard · Medications · Calendar · Pain & Mood · Settings. Export, History, Family, Profile and Help are stack screens reached from the dashboard, Settings or the avatar sheet |
+| Top nav links (Dashboard, Medications, Calendar, Export, Pain Tracking, Mood & Wellbeing) | **Bottom tabs, matching the original build's mobile nav:** **Dashboard · Medications · Calendar · Export · More** (icons: house, pills, calendar, file-export, ellipsis; active = deep-blue with bold label, white bar). **More** opens a bottom sheet listing **Settings, Pain Tracking, Mood & Wellbeing, Help, Terms of Use, Privacy Policy** (22 px blue icons: gear, chart-line, smiley, question-circle, document, shield; 64 px rows, 18 px labels). Settings and Pain/Mood stay in the tab group as hidden screens so the bar stays visible and More is highlighted. History, Family and Profile are stack screens reached from the dashboard/Settings/avatar sheet |
 | Avatar dropdown (Profile, owner/family switch, Manage Family, Sign out) | Header avatar → **bottom sheet** with the same order |
 | Bell dropdown | Bell → **bottom sheet** with the same row layout |
-| Settings gear / Help icons | Settings tab; Help from Settings |
+| Settings gear / Help icons | Inside the More sheet (Settings, Help) |
 | Resume-setup and family-context banners | Same banners, pinned under the safe-area top inset above screen content |
 | `max-w-6xl` container with `px-4` | Full width with **16 px horizontal padding** and safe-area insets; on tablets center and clamp to `MaxContentWidth` (800) |
 | Two-column dashboard grid | Single column: Hero → refill banner(s) → Today schedule → Quick actions → Medications overview → Today's history |
