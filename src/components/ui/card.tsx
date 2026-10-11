@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn';
 export function Card({ className, flat, ...props }: ViewProps & { className?: string; flat?: boolean }) {
   return (
     <View
-      className={cn('rounded-card border border-brand-border bg-brand-card p-4', !flat && 'shadow-card', className)}
+      className={cn('rounded-card border border-brand-border bg-brand-card p-4 dark:border-night-border dark:bg-night-card', !flat && 'shadow-card', className)}
       {...props}
     />
   );

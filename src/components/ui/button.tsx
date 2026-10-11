@@ -10,13 +10,13 @@ type Size = 'default' | 'compact';
 const BASE = 'flex-row items-center justify-center gap-2 rounded-control';
 const VARIANT: Record<Variant, string> = {
   primary: 'overflow-hidden shadow-card active:opacity-90',
-  secondary: 'border border-brand-border bg-white active:bg-brand-bg',
+  secondary: 'border border-brand-border bg-white active:bg-brand-bg dark:border-night-border dark:bg-night-card dark:active:bg-night-selected',
   ghost: 'active:bg-brand-bg',
   danger: 'bg-status-danger shadow-card active:opacity-90',
 };
 const TEXT: Record<Variant, string> = {
   primary: 'text-white',
-  secondary: 'text-brand-navy',
+  secondary: 'text-brand-navy dark:text-white',
   ghost: 'text-brand-deep-blue',
   danger: 'text-white',
 };

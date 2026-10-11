@@ -21,6 +21,15 @@ module.exports = {
           'text-muted': '#60708A',
           purple: '#8B5CF6',
         },
+        // Dark-mode surfaces (mobile only; web is light-only). Mirrors
+        // Colors.dark in src/constants/theme.ts.
+        night: {
+          bg: '#000000',
+          card: '#212225',
+          selected: '#2E3135',
+          border: '#3A3E44',
+          muted: '#B0B4BA',
+        },
         status: {
           success: '#18BFA6',
           warning: '#F5A524',
