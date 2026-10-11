@@ -457,16 +457,7 @@ export default function DashboardScreen() {
             medications={medications}
           />
 
-          <NextDoseHero
-            next={nextEvent}
-            upcoming={upcomingEvent}
-            adherence={adherenceStats}
-            actingKey={actingKey}
-            onAction={handleAction}
-            onSnooze={setSnoozeSlot}
-            onTakeAll={handleGroupTakeAll}
-            takeAllCount={nextEvent ? takeAllSlots(nextEvent).length : 0}
-          />
+          <NextDoseHero next={nextEvent} upcoming={upcomingEvent} adherence={adherenceStats} />
 
           <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 

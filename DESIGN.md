@@ -157,6 +157,8 @@ The web app **has no dark mode** (light only; a few stray `dark:` classes exist 
 
 **Medication name + dose.** Always rendered as the name at the parent size/weight followed by the dose at `0.875em`, bold, `#6B7280` (white 75% on dark). On the hero and alarm, the dose becomes a pill: full-round, `border cyan-300/40`, `bg cyan-500/25`, white 12 px extrabold, 12 × 4 px padding (`px-3 py-1`).
 
+**Order rule.** A medication is always shown as **name → dose → type badge** (e.g. "Clonidine 0.1 mg  RX"), and dose actions are always **Take → Snooze → Skip**, everywhere (schedule rows, group cards, alarm, "manage each" lists).
+
 Uppercase labels use `font-semibold uppercase tracking-wide` (med-type badge, feedback chip, table headers, "DOSE HISTORY" caption).
 
 ---
@@ -431,7 +433,7 @@ Single column, `gap-6`, in this order:
 
 1. **Setup-complete banner** (only right after onboarding, `?setup=complete`): success callout with a check icon, "**You're all set.** Your medications are ready to track."
 2. **Hero panel** (radius 32). Two glass cards in a `grid lg:[1.4fr_1fr]`, gap 24 (stacked on mobile), each `min-h-330`:
-   - **Next dose:** eyebrow with clock "NEXT DOSE"; time in 36 px / 800 (`8:00 AM`); medication name 24 px / 800 with dose pill and type badge (on dark). For groups: group name, "{n} medications in group", a full-width 48 px outlined-white toggle "view group meds / hide group meds" that reveals names + badges. Dose-form illustration 104 px on the right (≥640). Bottom "UPCOMING" block (top border `white/20`): time bold + name (+ dose pill for groups). Empty: "All scheduled doses complete for today."
+   - **Next dose** (display only — **no Take / Snooze / Skip buttons**; those live in Today's schedule on web and app): eyebrow with clock "NEXT DOSE"; time in 36 px / 800 (`8:00 AM`); medication name 24 px / 800 with dose pill and type badge (on dark). For groups: group name, "{n} medications in group", a full-width 48 px outlined-white toggle that reveals the group's medications — "view group meds / hide group meds" on web, "view more / view less" in the app — each as name, dose, then type badge. Dose-form illustration 104 px on the right (≥640). Bottom "UPCOMING" block (top border `white/20`): time bold + name (+ dose pill for groups). Empty: "All scheduled doses complete for today."
    - **Today's adherence:** eyebrow with calendar-check; ring 148 px (outer 12 px stroke; optional-dose inner ring 9 px stroke; centered `%` in 30 px extrabold); text stack 16 px `white/90`, line height 32: "Required doses taken: X of Y"; (only when optional doses exist) amber dot + "Non required doses taken: X of Y"; (when X > 0) "On time: n · Late: n · Skipped: n"; "Missed required doses today: n".
 3. **Low-supply reminder banners** (one per medication; see 10.2). Dismissible for the rest of the day.
 4. **PWA install banner** — gradient bar: "Add RxTracker to your home screen for the best experience" + compact secondary "Install" + dismiss ×. Web only.
@@ -445,13 +447,13 @@ Single column, `gap-6`, in this order:
 **Dose row (`DoseRow`):** radius 18 card, `p-12`, content left and actions right.
 - Left: clock 12 px + time ("8:00 AM", "(PRN)") → name + dose with type badge → optional group chip.
 - Right, by state:
-  - *Pending:* **Take** (primary compact) · **Skip** (secondary compact) · **Snooze** (ghost compact, menu)
+  - *Pending:* **Take** (primary compact) · **Snooze** (ghost compact, menu) · **Skip** (secondary compact) — always in this order
   - *Taken:* green "Taken" badge; late → amber `Taken (12 min late)`
   - *Missed:* red "Missed" badge + **Take**
   - *Skipped:* amber "Skipped" badge
   - *Snoozed:* blue `Snoozed until 8:15 AM`
 
-**Group dose card (`GroupDoseCard`):** same shell. Header: time, `Layers` (deep-blue) + group name, count chip. Actions **Take All / Skip / Snooze** apply to every pending member. When everything is resolved: aggregate badge (precedence missed > skipped > late > taken) and, if any member was missed, **Take All**. A centered 12 px "Show medications ⌄" toggle expands a top-bordered list of inset member rows (name, type badge, "(PRN)", per-member badge); "Manage Individually" reveals per-member Take / Skip / Snooze.
+**Group dose card (`GroupDoseCard`):** same shell. Header: time, `Layers` (deep-blue) + group name, count chip. Actions **Take All / Snooze / Skip** apply to every pending member. When everything is resolved: aggregate badge (precedence missed > skipped > late > taken) and, if any member was missed, **Take All**. A centered 12 px "Show medications ⌄" toggle expands a top-bordered list of inset member rows (name, type badge, "(PRN)", per-member badge); "Manage Individually" reveals per-member Take / Snooze / Skip.
 
 Loading: "Loading dashboard…" (muted). The page re-checks due doses every 20 s.
 
@@ -600,8 +602,8 @@ Top → bottom:
 1. 96 px area with a pinging `white/20` ring and a pulsing `white/10` ring around the 64 px dose-form illustration.
 2. Eyebrow: bell 13 px + "DOSE DUE NOW" (12 px semibold uppercase, `white/70`).
 3. Title 24 px bold: medication name with dose pill; below it the type badge (on-dark). Groups: group name + "{n} medications in group".
-4. Actions (wrapping, centered, gap 12): primary **Take Now** (min width 144), on-dark secondary **Skip**, and for groups **Manage Each**; below them an on-dark ghost **Snooze ▾** menu (z-110).
-5. *Manage Each* replaces the actions with a `white/10` radius-18 list (`p-12`): each medication shows name + time, with Take / Skip / Snooze, or its status text ("Taken", "Skipped", "Missed" + Take).
+4. Actions (wrapping, centered, gap 12), in this order: primary **Take Now** (min width 144), on-dark ghost **Snooze ▾** menu (z-110), on-dark secondary **Skip**, and for groups **Manage Each**.
+5. *Manage Each* replaces the actions with a `white/10` radius-18 list (`p-12`): each medication shows name + time, with name + dose then the on-dark type badge, and Take / Snooze / Skip, or its status text ("Taken", "Skipped", "Missed" + Take).
 
 Triggering: shows for a pending, non-PRN dose whose window is open (`due ≤ now ≤ due + grace`, grace default 60 min). It is suppressed while the feedback, zero-pill or time-input dialogs are open. Sound: two 880 Hz sine beeps (0.3 s each, 0.35 s apart, peak gain 0.3). Vibration if enabled in Settings. Sound and vibration fire once per non-as-needed slot per due time (a snooze changes the due time and can alarm again), while the overlay shows the earliest pending, non-as-needed event inside its window.
 
@@ -805,7 +807,7 @@ export const Gradient = {
 ### 17.4 Touch ergonomics (expected deviations from web)
 
 - Minimum touch target **44 × 44 pt**: add padding or `hitSlop`; compact buttons keep their visual size.
-- Dose-row actions (Take / Skip / Snooze) may wrap onto a second line below the medication info on screens narrower than 360 pt; keep the order Take → Skip → Snooze.
+- Dose-row actions (Take / Snooze / Skip) may wrap onto a second line below the medication info on screens narrower than 360 pt; keep the order Take → Snooze → Skip.
 - Replace hover-only affordances (tooltips) with visible labels or long-press.
 - Calendar cells shrink to roughly 44–52 pt squares showing the day number plus colored dots (green / amber / red); the full detail stays in the day sheet. T / S / M counts may appear beneath at 9–10 pt if space permits.
 - Wizard / onboarding stepper keeps the circles but shows a label only for the active step below 360 pt.
