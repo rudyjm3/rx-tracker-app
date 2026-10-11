@@ -4,6 +4,7 @@ Source of truth for the **web** UI (`rx-tracker-web`, Next.js 16 + Tailwind CSS 
 
 - Every value below was read from the web code. File references are in `code font` so you can verify.
 - Tailwind class → pixel conversions use the default 4 px scale (`p-4` = 16 px).
+- **Spacing shorthand in this document is in pixels, not Tailwind classes.** Where a padding or gap is written like `px-12 py-4`, `p-16` or `gap-8`, the number is a pixel value (12 × 4 px, 16 px, 8 px). Real Tailwind classes use the 4 px scale: 4 px = `1`, 8 px = `2`, 12 px = `3`, 16 px = `4`, 20 px = `5`, 24 px = `6`, 32 px = `8` (e.g. 12 × 4 px = `px-3 py-1`). When a class name is stated in parentheses or in the Tailwind snippets in section 4, use that; do not copy a pixel shorthand into `className`.
 - Section 17 explains how to translate each web pattern to React Native. Section 18 lists known inconsistencies and web-only behavior.
 
 ---
@@ -154,7 +155,7 @@ The web app **has no dark mode** (light only; a few stray `dark:` classes exist 
 | Auth field label | 13.9 (`0.87rem`) | 700 | text | login / signup |
 | Auth input text | 15.2 (`0.95rem`) | 400 | text | login / signup |
 
-**Medication name + dose.** Always rendered as the name at the parent size/weight followed by the dose at `0.875em`, bold, `#6B7280` (white 75% on dark). On the hero and alarm, the dose becomes a pill: full-round, `border cyan-300/40`, `bg cyan-500/25`, white 12 px extrabold, `px-12 py-4`.
+**Medication name + dose.** Always rendered as the name at the parent size/weight followed by the dose at `0.875em`, bold, `#6B7280` (white 75% on dark). On the hero and alarm, the dose becomes a pill: full-round, `border cyan-300/40`, `bg cyan-500/25`, white 12 px extrabold, 12 × 4 px padding (`px-3 py-1`).
 
 Uppercase labels use `font-semibold uppercase tracking-wide` (med-type badge, feedback chip, table headers, "DOSE HISTORY" caption).
 
@@ -314,7 +315,7 @@ Variations
 - **Toggle row** (settings): checkbox plus two-line label: title `font-medium` 14 px, description 12 px muted.
 - **Range pills / page tabs:** radius 10; range pills `px-12 py-6`, page tabs `px-16 py-8`, 14 px. Active = brand gradient + white text. Inactive = `brand-bg` + muted (range) or white + border (page tabs).
 - **Level grid (1–10):** 5 columns × 2 rows, gap 6; each a full-round pill, 2 px border in tier color, `py-6`, 14 px bold. Unselected bg `brand-bg` + muted text; selected = solid tier color + white text.
-- **Tag pills (mood / side effects):** full-round, `px-12 py-4`, 12 px medium. Unselected white + border; selected = brand gradient + white. A dashed "+ Tags" pill adds one; "Manage tags" link below.
+- **Tag pills (mood / side effects):** full-round, 12 × 4 px padding (`px-3 py-1`), 12 px medium. Unselected white + border; selected = brand gradient + white. A dashed "+ Tags" pill adds one; "Manage tags" link below.
 - **Autocomplete (DailyMed):** input plus an absolutely positioned list (`max-h-56`, scrolls, radius 10, border, `shadow-card`); items 14 px with `hover:bg-brand-bg`; starts at 3 characters, 300 ms debounce.
 - **Number stepper:** `[−] n [+] unit` as in the zero-pill dialog.
 - **Avatar picker:** 64 px avatar plus outlined small buttons "Upload photo" / "Take a photo" and a red "Remove" text button.
@@ -394,7 +395,7 @@ Bell 18 px with a count badge when alerts exist. Menu `min-w-18rem`: label "Noti
 
 ## 8. Screens
 
-`/` redirects to `/dashboard` when signed in, else `/login`. All routes except auth and help require sign-in.
+`/` redirects to `/dashboard` when signed in, else `/login`. Only the auth routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/callback`) are public; every other route, **including `/help`**, redirects to `/login` when signed out.
 
 ### 8.1 Login `/login`
 
@@ -813,7 +814,7 @@ export const Gradient = {
 
 - Medication name always rendered as name + dose suffix (0.875em, bold, muted).
 - Status colors and labels exactly per section 12.
-- Take flow: feedback dialog (if pain/mood tracked) → time-input step (when past due) → zero-pill check (inventory 0) → toast "Dose recorded".
+- Take flow: zero-pill check (inventory tracked and quantity ≤ 0; the user can cancel here) → feedback dialog (if pain/mood tracked) → time-input step (**only** for past-due / alarm takes; on-time takes record immediately) → toast "Dose recorded".
 - Group dose card aggregate badge precedence: missed > skipped > late > taken.
 - Refill reminders dismissible per day; the bell and the banners share dismissals.
 - Settings: grace minutes (5–240), default snooze (5 / 10 / 15 / 30), timezone, alarm sound, vibration (device-local), teal mood chart.
