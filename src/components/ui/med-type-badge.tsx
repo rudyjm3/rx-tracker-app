@@ -14,7 +14,7 @@ const BG: Record<MedicationType, string> = {
 };
 const FG: Record<MedicationType, string> = {
   prescription: 'text-brand-deep-blue dark:text-brand-cyan',
-  otc: 'text-brand-blue',
+  otc: 'text-brand-blue dark:text-sky-400',
   supplement: 'text-status-warning',
 };
 const ON_DARK_BG: Record<MedicationType, string> = {
