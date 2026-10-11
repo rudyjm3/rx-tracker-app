@@ -770,10 +770,10 @@ export const Gradient = {
 | Web | Mobile |
 |---|---|
 | Top nav links (Dashboard, Medications, Calendar, Export, Pain Tracking, Mood & Wellbeing) | **Bottom tabs, matching the original build's mobile nav:** **Dashboard · Medications · Calendar · Export · More** (icons: house, pills, calendar, file-export, ellipsis; active = deep-blue with bold label, white bar). **More** opens a bottom sheet listing **Settings, Pain Tracking, Mood & Wellbeing, Help, Terms of Use, Privacy Policy** (22 px blue icons: gear, chart-line, smiley, question-circle, document, shield; 64 px rows, 18 px labels). Settings and Pain/Mood stay in the tab group as hidden screens so the bar stays visible and More is highlighted. History, Family and Profile are stack screens reached from the dashboard/Settings/avatar sheet |
-| Avatar dropdown (Profile, owner/family switch, Manage Family, Sign out) | Header avatar → **bottom sheet** with the same order |
-| Bell dropdown | Bell → **bottom sheet** with the same row layout |
+| Avatar dropdown (Profile, owner/family switch, Manage Family, Sign out) | Header avatar (40 px circle, initial on the profile color) → **bottom sheet** in the same order; the active profile row is highlighted. Replaces the old per-screen profile chip row |
+| Bell dropdown | Header bell (40 px white circle with border, red count badge) → **bottom sheet** of supply alerts (same rows: name + dose, severity line, Refill, dismiss) |
 | Settings gear / Help icons | Inside the More sheet (Settings, Help) |
-| Resume-setup and family-context banners | Same banners, pinned under the safe-area top inset above screen content |
+| Top bar and banners | **Global header on every tab screen** (hidden on medication detail / new, which have their own stack header): 42 px logo + "RxTracker" (18 px bold navy) left, bell + avatar right, on the page background with no bar. Under it: the **family banner** while a family member is active (cream `#FFFAEB`, bottom border `#F3E2A9`, brown `#7A3E0C` text, 22 px avatar, "Viewing **{Name}**'s medications", outlined brown compact "Switch back to Me") and the **resume-setup** nudge (hidden on Settings). The dashboard has no title row |
 | `max-w-6xl` container with `px-4` | Full width with **16 px horizontal padding** and safe-area insets; on tablets center and clamp to `MaxContentWidth` (800) |
 | Two-column dashboard grid | Single column: Hero → refill banner(s) → Today schedule → Quick actions → Medications overview → Today's history |
 | Hero two-card grid | Stack the Next-dose and Adherence glass cards (ring 148 → 132 on small phones) |

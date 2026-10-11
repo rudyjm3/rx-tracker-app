@@ -1,8 +1,7 @@
 // Ported from rx-tracker-web's components/layout/ResumeSetupBanner.tsx —
 // persistent nudge for whichever profile is currently active (owner or a
-// family member) toward /onboarding, shown on the dashboard only (web
-// mounts it in TopNav so it shows on every screen; scoped down here to
-// avoid re-querying onboarding progress on every tab). Medications can
+// family member) toward /onboarding. Mounted in the app header (like web's
+// TopNav) so it shows on every tab; it fetches its own medications. Medications can
 // exist for a profile without a completed profile_onboarding row (e.g. a
 // medication added before this screen existed) — "already has
 // medications" counts as done too, same as web, so this never nudges
@@ -13,18 +12,17 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { getActiveMedications } from '@/lib/medications';
 import { getOnboardingProgress } from '@/lib/onboarding';
-import type { Medication } from '@/lib/types/medications';
 
 export function ResumeSetupBanner({
   profileId,
   profileName,
-  medications,
 }: {
   profileId?: string | null;
   profileName: string;
-  medications: Medication[];
 }) {
+  const [hasMedications, setHasMedications] = useState(false);
   // Resets to "not yet known complete" whenever profileId changes —
   // adjusted during render (not inside the effect below) so a profile
   // switch can't render one tick of the *previous* profile's completed
@@ -41,6 +39,11 @@ export function ResumeSetupBanner({
 
   useEffect(() => {
     let cancelled = false;
+    getActiveMedications(profileId)
+      .then((meds) => {
+        if (!cancelled) setHasMedications(meds.length > 0);
+      })
+      .catch(() => undefined);
     getOnboardingProgress(profileId)
       .then((progress) => {
         if (cancelled || progress?.status !== 'completed') return;
@@ -52,7 +55,7 @@ export function ResumeSetupBanner({
     };
   }, [profileId]);
 
-  if (checked.completed || medications.length > 0) return null;
+  if (checked.completed || hasMedications) return null;
 
   return (
     <Pressable style={styles.banner} onPress={() => router.push('/onboarding')}>

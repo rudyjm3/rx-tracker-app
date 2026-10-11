@@ -3,6 +3,7 @@ import { Redirect, Tabs, usePathname } from 'expo-router';
 import { useState } from 'react';
 import type { ColorValue } from 'react-native';
 
+import { AppHeader } from '@/components/app-header';
 import { MoreSheet } from '@/components/more-sheet';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
@@ -35,7 +36,8 @@ export default function TabsLayout() {
     <>
       <Tabs
         screenOptions={{
-          headerShown: false,
+          headerShown: true,
+          header: () => <AppHeader />,
           tabBarActiveTintColor: theme.accent,
           tabBarInactiveTintColor: theme.textSecondary,
           tabBarStyle: { backgroundColor: theme.backgroundElement, borderTopColor: theme.border },

@@ -43,6 +43,8 @@ const ON_DARK_TEXT: Record<Variant, string> = {
 export interface ButtonProps extends Omit<PressableProps, 'children'> {
   label: string;
   onDark?: boolean;
+  /** Extra classes for the label (e.g. a custom text color). */
+  labelClassName?: string;
   variant?: Variant;
   size?: Size;
   loading?: boolean;
@@ -54,6 +56,7 @@ export function Button({
   variant = 'primary',
   size = 'default',
   onDark,
+  labelClassName,
   loading,
   disabled,
   className,
@@ -76,7 +79,7 @@ export function Button({
         />
       )}
       {loading && <ActivityIndicator size="small" color={onDark ? (variant === 'primary' ? '#0754A8' : '#fff') : variant === 'secondary' || variant === 'ghost' ? '#102B57' : '#fff'} />}
-      <Text className={cn('font-semibold', onDark ? ON_DARK_TEXT[variant] : TEXT[variant], TEXT_SIZE[size])}>{label}</Text>
+      <Text className={cn('font-semibold', onDark ? ON_DARK_TEXT[variant] : TEXT[variant], TEXT_SIZE[size], labelClassName)}>{label}</Text>
     </Pressable>
   );
 }

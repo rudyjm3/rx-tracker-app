@@ -135,7 +135,7 @@ export default function CalendarScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <View style={styles.titleRow}>
           <ThemedText type="title" style={styles.pageTitle}>
             Calendar

@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
-import { ProfileSwitcher } from '@/components/ProfileSwitcher';
-import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
 import { NextDoseHero } from '@/components/dashboard/next-dose-hero';
 import { SlotActions } from '@/components/dashboard/slot-actions';
 import { Button } from '@/components/ui/button';
@@ -17,7 +14,6 @@ import { SafeArea } from '@/components/ui/safe-area';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
-import { useTheme } from '@/hooks/use-theme';
 import { computeAdherenceStats, type AdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
@@ -30,7 +26,6 @@ import {
   type DoseFeedback,
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
-import { SUPPLY_SEVERITY_COLORS, SUPPLY_SEVERITY_LABELS, type SupplyAlert } from '@/lib/medication-ui';
 import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/lib/notifications';
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
@@ -50,8 +45,7 @@ const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 
 export default function DashboardScreen() {
-  const theme = useTheme();
-  const { activeProfileId, activeProfile, familyProfiles } = useActiveProfile();
+  const { activeProfileId } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [asNeededMeds, setAsNeededMeds] = useState<Medication[]>([]);
   const [slots, setSlots] = useState<DaySlot[]>([]);
@@ -100,7 +94,6 @@ export default function DashboardScreen() {
     answers: Map<string, DoseFeedback | undefined>;
     timeStep: boolean;
   } | null>(null);
-  const [alertsOpen, setAlertsOpen] = useState(false);
   // A pending slot the user tapped Snooze on — opens the duration picker.
   const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
   const [defaultSnoozeMinutes, setDefaultSnoozeMinutes] = useState<number | null>(null);
@@ -429,7 +422,7 @@ export default function DashboardScreen() {
   if (loading) {
     return (
       <View className="flex-1 bg-brand-bg dark:bg-night-bg">
-        <SafeArea className="flex-1 items-center justify-center">
+        <SafeArea edges={['left', 'right']} className="flex-1 items-center justify-center">
           <ActivityIndicator />
         </SafeArea>
       </View>
@@ -444,43 +437,14 @@ export default function DashboardScreen() {
 
   return (
     <View className="flex-1 bg-brand-bg dark:bg-night-bg">
-      <SafeArea className="flex-1">
+      <SafeArea edges={['left', 'right']} className="flex-1">
         <ScrollView
           contentContainerClassName="gap-4 px-4 pb-16 pt-6"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         >
-          <View className="flex-row items-center justify-between gap-2">
-            <Text className="text-[28px] font-bold leading-[34px] text-brand-navy dark:text-white">Today</Text>
-            <View className="flex-row items-center gap-2">
-              {supplyAlerts.length > 0 && (
-                <Pressable
-                  className="p-1"
-                  onPress={() => setAlertsOpen(true)}
-                  hitSlop={8}
-                  accessibilityLabel={`Supply alerts (${supplyAlerts.length})`}
-                >
-                  <Ionicons name="notifications-outline" size={22} color={theme.text} />
-                  <View className="absolute right-0 top-0 h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-[3px]">
-                    <Text className="text-[10px] font-bold leading-3 text-white dark:text-white">
-                      {supplyAlerts.length}
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
-            </View>
-          </View>
-
-          {familyProfiles.length > 0 && <ProfileSwitcher />}
-
           {(error ?? supplyDismissError) && (
             <Text className="text-status-danger dark:text-status-danger">{error ?? supplyDismissError}</Text>
           )}
-
-          <ResumeSetupBanner
-            profileId={activeProfileId}
-            profileName={activeProfile?.display_name ?? 'your'}
-            medications={medications}
-          />
 
           <NextDoseHero next={nextEvent} upcoming={upcomingEvent} adherence={adherenceStats} />
 
@@ -588,8 +552,6 @@ export default function DashboardScreen() {
         />
       )}
 
-      {alertsOpen && <AlertsSheet alerts={supplyAlerts} onDismiss={handleDismissSupply} onClose={() => setAlertsOpen(false)} />}
-
       <DueNowOverlay
         event={dueNowEvent}
         groupMembers={dueNowGroupMembers}
@@ -604,65 +566,6 @@ export default function DashboardScreen() {
         error={dueNowEvent ? error : null}
       />
     </View>
-  );
-}
-
-function AlertsSheet({
-  alerts,
-  onDismiss,
-  onClose,
-}: {
-  alerts: SupplyAlert[];
-  onDismiss: (medicationId: string) => void;
-  onClose: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Sheet onClose={onClose}>
-      <ScrollView>
-        <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">Supply alerts</Text>
-
-        {alerts.length === 0 ? (
-          <Text muted className="mb-2 text-sm">
-            You&apos;re all caught up.
-          </Text>
-        ) : (
-          alerts.map(({ medication, severity }) => (
-            <View
-              key={medication.id}
-              className="flex-row items-center justify-between gap-2 border-b border-brand-border py-2 dark:border-night-border"
-            >
-              <View className="flex-1 gap-0.5">
-                <Text className="text-sm font-bold">
-                  {medication.name}
-                  {medication.dose ? ` — ${medication.dose}` : ''}
-                </Text>
-                <Text className="text-sm font-bold" style={{ color: SUPPLY_SEVERITY_COLORS[severity] }}>
-                  {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
-                </Text>
-              </View>
-              <Button
-                label="Refill"
-                size="compact"
-                accessibilityLabel={`Refill ${medication.name}`}
-                onPress={() => {
-                  onClose();
-                  router.push(`/medications/${medication.id}?action=refill`);
-                }}
-              />
-              <Pressable
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={`Dismiss alert for ${medication.name}`}
-                onPress={() => onDismiss(medication.id)}
-              >
-                <Ionicons name="close" size={20} color={theme.textSecondary} />
-              </Pressable>
-            </View>
-          ))
-        )}
-      </ScrollView>
-    </Sheet>
   );
 }
 
