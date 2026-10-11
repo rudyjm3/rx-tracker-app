@@ -1,25 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { SafeArea } from '@/components/ui/safe-area';
+import { Sheet } from '@/components/ui/sheet';
+import { Text } from '@/components/ui/text';
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { useTheme } from '@/hooks/use-theme';
 import { computeAdherenceStats } from '@/lib/adherence';
@@ -54,7 +47,6 @@ const DEFAULT_LEVEL = 5;
 
 export default function DashboardScreen() {
   const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId, activeProfile, familyProfiles } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [asNeededMeds, setAsNeededMeds] = useState<Medication[]>([]);
@@ -402,11 +394,11 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.centered}>
+      <View className="flex-1 bg-brand-bg dark:bg-night-bg">
+        <SafeArea className="flex-1 items-center justify-center">
           <ActivityIndicator />
-        </SafeAreaView>
-      </ThemedView>
+        </SafeArea>
+      </View>
     );
   }
 
@@ -416,36 +408,34 @@ export default function DashboardScreen() {
   const nextEvent = pendingEvents[0] ?? null;
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+    <View className="flex-1 bg-brand-bg dark:bg-night-bg">
+      <SafeArea className="flex-1">
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerClassName="gap-4 px-4 pb-16 pt-6"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         >
-          <View style={styles.titleRow}>
-            <ThemedText type="title" style={styles.title}>
-              Today
-            </ThemedText>
-            <View style={styles.titleActions}>
+          <View className="flex-row items-center justify-between gap-2">
+            <Text className="text-[28px] font-bold leading-[34px] text-brand-navy dark:text-white">Today</Text>
+            <View className="flex-row items-center gap-2">
               {adherencePercent !== null && (
-                <View style={styles.adherenceChip}>
-                  <ThemedText type="small" style={styles.adherenceChipText}>
+                <View className="rounded-full border border-brand-border bg-white px-2 py-0.5 dark:border-night-border dark:bg-night-selected">
+                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
                     {adherencePercent}%
-                  </ThemedText>
+                  </Text>
                 </View>
               )}
               {supplyAlerts.length > 0 && (
                 <Pressable
-                  style={styles.bellButton}
+                  className="p-1"
                   onPress={() => setAlertsOpen(true)}
                   hitSlop={8}
                   accessibilityLabel={`Supply alerts (${supplyAlerts.length})`}
                 >
                   <Ionicons name="notifications-outline" size={22} color={theme.text} />
-                  <View style={styles.bellBadge}>
-                    <ThemedText type="small" style={styles.bellBadgeText}>
+                  <View className="absolute right-0 top-0 h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-[3px]">
+                    <Text className="text-[10px] font-bold leading-3 text-white dark:text-white">
                       {supplyAlerts.length}
-                    </ThemedText>
+                    </Text>
                   </View>
                 </Pressable>
               )}
@@ -455,7 +445,7 @@ export default function DashboardScreen() {
           {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {(error ?? supplyDismissError) && (
-            <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
+            <Text className="text-status-danger dark:text-status-danger">{error ?? supplyDismissError}</Text>
           )}
 
           <ResumeSetupBanner
@@ -464,10 +454,10 @@ export default function DashboardScreen() {
             medications={medications}
           />
 
-          <ThemedView type="backgroundElement" style={styles.heroCard}>
-            <ThemedText type="small" themeColor="textSecondary">
+          <Card className="gap-1 p-4">
+            <Text muted className="text-sm font-medium">
               Next dose
-            </ThemedText>
+            </Text>
             {nextEvent ? (
               <EventRow
                 event={nextEvent}
@@ -477,27 +467,24 @@ export default function DashboardScreen() {
                 emphasized
               />
             ) : (
-              <ThemedText style={styles.doneText}>All done for today 🎉</ThemedText>
+              <Text className="mt-1 text-base">All done for today 🎉</Text>
             )}
-          </ThemedView>
+          </Card>
 
           <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            Today&apos;s schedule
-          </ThemedText>
+          <Text className="mt-2 text-lg font-bold text-brand-navy dark:text-white">Today&apos;s schedule</Text>
 
           {events.length === 0 && (
-            <ThemedText themeColor="textSecondary">
+            <Text muted className="text-sm">
               No scheduled doses today. Add a medication to get started.
-            </ThemedText>
+            </Text>
           )}
 
           {events.map((event) => (
-            <ThemedView
+            <Card
               key={event.kind === 'group' ? `${event.groupId}|${event.time}` : `${event.slot.medicationId}|${event.slot.scheduledTime}`}
-              type="backgroundElement"
-              style={styles.scheduleCard}
+              className="gap-1"
             >
               <EventRow
                 event={event}
@@ -507,34 +494,32 @@ export default function DashboardScreen() {
                 onTakeAll={handleGroupTakeAll}
                 takeAllCount={takeAllSlots(event).length}
               />
-            </ThemedView>
+            </Card>
           ))}
 
           {asNeededMeds.length > 0 && (
             <>
-              <ThemedText type="smallBold" style={styles.sectionTitle}>
-                As needed
-              </ThemedText>
+              <Text className="mt-2 text-lg font-bold text-brand-navy dark:text-white">As needed</Text>
               {asNeededMeds.map((med) => (
-                <ThemedView key={med.id} type="backgroundElement" style={styles.scheduleCard}>
-                  <View style={styles.asNeededRow}>
-                    <ThemedText type="smallBold" style={styles.asNeededName}>
+                <Card key={med.id} className="gap-1">
+                  <View className="flex-row items-center justify-between gap-2">
+                    <Text className="flex-1 text-sm font-bold">
                       {med.name}
                       {med.dose ? ` ${med.dose}` : ''}
-                    </ThemedText>
-                    <Pressable
+                    </Text>
+                    <Button
+                      label="Log dose"
+                      variant="secondary"
+                      size="compact"
                       onPress={() => router.push(`/medications/${med.id}?action=logDose`)}
-                      hitSlop={8}
-                    >
-                      <ThemedText style={styles.asNeededAction}>Log dose</ThemedText>
-                    </Pressable>
+                    />
                   </View>
-                </ThemedView>
+                </Card>
               ))}
             </>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </SafeArea>
 
       {snoozeSlot && (
         <SnoozeSheet
@@ -605,7 +590,7 @@ export default function DashboardScreen() {
         disabled={actingKey !== null}
         error={dueNowEvent ? error : null}
       />
-    </ThemedView>
+    </View>
   );
 }
 
@@ -619,64 +604,52 @@ function AlertsSheet({
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const styles = getStyles(theme);
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ScrollView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Supply alerts
-                </ThemedText>
+    <Sheet onClose={onClose}>
+      <ScrollView>
+        <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">Supply alerts</Text>
 
-                {alerts.length === 0 ? (
-                  <ThemedText themeColor="textSecondary" style={styles.sheetSubtitle}>
-                    You&apos;re all caught up.
-                  </ThemedText>
-                ) : (
-                  alerts.map(({ medication, severity }) => (
-                    <View key={medication.id} style={styles.alertRow}>
-                      <View style={styles.alertRowText}>
-                        <ThemedText type="smallBold">
-                          {medication.name}
-                          {medication.dose ? ` — ${medication.dose}` : ''}
-                        </ThemedText>
-                        <ThemedText type="small" style={{ color: SUPPLY_SEVERITY_COLORS[severity], fontWeight: '700' }}>
-                          {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
-                        </ThemedText>
-                      </View>
-                      <Pressable
-                        style={styles.alertRefillButton}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Refill ${medication.name}`}
-                        onPress={() => {
-                          onClose();
-                          router.push(`/medications/${medication.id}?action=refill`);
-                        }}
-                      >
-                        <ThemedText type="smallBold" style={styles.alertRefillText}>
-                          Refill
-                        </ThemedText>
-                      </Pressable>
-                      <Pressable
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Dismiss alert for ${medication.name}`}
-                        onPress={() => onDismiss(medication.id)}
-                      >
-                        <Ionicons name="close" size={20} color={theme.textSecondary} />
-                      </Pressable>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        {alerts.length === 0 ? (
+          <Text muted className="mb-2 text-sm">
+            You&apos;re all caught up.
+          </Text>
+        ) : (
+          alerts.map(({ medication, severity }) => (
+            <View
+              key={medication.id}
+              className="flex-row items-center justify-between gap-2 border-b border-brand-border py-2 dark:border-night-border"
+            >
+              <View className="flex-1 gap-0.5">
+                <Text className="text-sm font-bold">
+                  {medication.name}
+                  {medication.dose ? ` — ${medication.dose}` : ''}
+                </Text>
+                <Text className="text-sm font-bold" style={{ color: SUPPLY_SEVERITY_COLORS[severity] }}>
+                  {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
+                </Text>
+              </View>
+              <Button
+                label="Refill"
+                size="compact"
+                accessibilityLabel={`Refill ${medication.name}`}
+                onPress={() => {
+                  onClose();
+                  router.push(`/medications/${medication.id}?action=refill`);
+                }}
+              />
+              <Pressable
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Dismiss alert for ${medication.name}`}
+                onPress={() => onDismiss(medication.id)}
+              >
+                <Ionicons name="close" size={20} color={theme.textSecondary} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -689,8 +662,6 @@ function FeedbackSheet({
   onClose: () => void;
   onSubmit: (feedback?: DoseFeedback) => Promise<void>;
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const medication = slot.medication;
   const trackPain = medicationTracksPain(medication);
   const trackMood = medicationTracksMood(medication);
@@ -725,78 +696,41 @@ function FeedbackSheet({
   // the catch above updates only this now-unmounted component's state, so
   // the dashboard would show no error and the user could believe the dose
   // was recorded when it wasn't. Block dismissal until the request settles.
-  function handleDismiss() {
-    if (saving) return;
-    onClose();
-  }
-
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={handleDismiss}>
-      <Pressable style={styles.modalBackdrop} onPress={handleDismiss}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ScrollView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Take {medication.name}
-                </ThemedText>
-                {medication.dose ? (
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
-                    {medication.dose}
-                  </ThemedText>
-                ) : null}
+    <Sheet onClose={onClose} dismissible={!saving}>
+      <ScrollView>
+        <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">Take {medication.name}</Text>
+        {medication.dose ? (
+          <Text muted className="mb-2 text-sm">
+            {medication.dose}
+          </Text>
+        ) : null}
 
-                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+        {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
 
-                {trackPain && (
-                  <LevelStepper
-                    label="Pain level"
-                    value={painLevel}
-                    onChange={setPainLevel}
-                    color={levelColor('pain', painLevel)}
-                  />
-                )}
-                {trackMood && (
-                  <LevelStepper
-                    label="Mood level"
-                    value={moodLevel}
-                    onChange={setMoodLevel}
-                    color={levelColor('mood', moodLevel)}
-                  />
-                )}
+        {trackPain && (
+          <LevelStepper label="Pain level" value={painLevel} onChange={setPainLevel} color={levelColor('pain', painLevel)} />
+        )}
+        {trackMood && (
+          <LevelStepper label="Mood level" value={moodLevel} onChange={setMoodLevel} color={levelColor('mood', moodLevel)} />
+        )}
 
-                <FieldLabel>Note (optional)</FieldLabel>
-                <TextInput
-                  style={[styles.input, styles.multiline]}
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="How are you feeling?"
-                  placeholderTextColor={theme.textSecondary}
-                  multiline
-                />
+        <Field
+          label="Note (optional)"
+          className="min-h-20 py-2"
+          style={{ textAlignVertical: 'top' }}
+          value={note}
+          onChangeText={setNote}
+          placeholder="How are you feeling?"
+          multiline
+        />
 
-                <View style={styles.sheetActions}>
-                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
-                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
-                    onPress={handleSubmit}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <ActivityIndicator color="#ffffff" />
-                    ) : (
-                      <ThemedText style={styles.actionText}>Save &amp; take</ThemedText>
-                    )}
-                  </Pressable>
-                </View>
-              </ScrollView>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        <View className="mt-6 flex-row gap-2">
+          <Button label="Cancel" variant="secondary" className="flex-1" onPress={onClose} disabled={saving} />
+          <Button label="Save & take" className="flex-1" onPress={handleSubmit} loading={saving} />
+        </View>
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -813,8 +747,6 @@ function TimeEntrySheet({
   onClose: () => void;
   onSubmit: (takenAtIso: string) => Promise<void>;
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [value, setValue] = useState(() => {
     const now = new Date();
     return to12h(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
@@ -843,53 +775,31 @@ function TimeEntrySheet({
     }
   }
 
-  function handleDismiss() {
-    if (!saving) onClose();
-  }
-
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={handleDismiss}>
-      <Pressable style={styles.modalBackdrop} onPress={handleDismiss}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ThemedText type="subtitle" style={styles.modalTitle}>
-                What time did you take {slotCount === 1 ? 'this' : 'these'}?
-              </ThemedText>
-              {dueTime !== null && (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
-                  Originally due {formatEventTime(dueTime)}
-                </ThemedText>
-              )}
-              {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
-              <FieldLabel>Actual time taken</FieldLabel>
-              <TextInput
-                style={styles.input}
-                value={value}
-                onChangeText={setValue}
-                placeholder="8:30 PM"
-                placeholderTextColor={theme.textSecondary}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                editable={!saving}
-              />
-              <View style={styles.sheetActions}>
-                <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving}>
-                  <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[styles.actionButton, styles.sheetPrimaryButton, saving && styles.actionButtonDisabled]}
-                  onPress={handleSubmit}
-                  disabled={saving}
-                >
-                  {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.actionText}>Submit</ThemedText>}
-                </Pressable>
-              </View>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <Sheet onClose={onClose} dismissible={!saving}>
+      <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">
+        What time did you take {slotCount === 1 ? 'this' : 'these'}?
+      </Text>
+      {dueTime !== null && (
+        <Text muted className="mb-2 text-sm">
+          Originally due {formatEventTime(dueTime)}
+        </Text>
+      )}
+      {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
+      <Field
+        label="Actual time taken"
+        value={value}
+        onChangeText={setValue}
+        placeholder="8:30 PM"
+        autoCapitalize="characters"
+        autoCorrect={false}
+        editable={!saving}
+      />
+      <View className="mt-6 flex-row gap-2">
+        <Button label="Cancel" variant="secondary" className="flex-1" onPress={onClose} disabled={saving} />
+        <Button label="Submit" className="flex-1" onPress={handleSubmit} loading={saving} />
+      </View>
+    </Sheet>
   );
 }
 
@@ -904,46 +814,40 @@ function LevelStepper({
   onChange: (value: number) => void;
   color: string;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={styles.stepperBlock}>
-      <FieldLabel>{label}</FieldLabel>
-      <View style={styles.stepperRow}>
+    <View className="mt-3 gap-1">
+      <Text muted className="text-sm font-medium">
+        {label}
+      </Text>
+      <View className="flex-row items-center gap-2">
         <Pressable
-          style={styles.stepperButton}
+          className="h-11 w-11 items-center justify-center rounded-control border border-brand-border dark:border-night-border"
           onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
           disabled={value <= MIN_LEVEL}
           hitSlop={8}
+          accessibilityLabel={`Decrease ${label}`}
         >
-          <ThemedText style={styles.stepperButtonText}>−</ThemedText>
+          <Text className="text-xl font-semibold">−</Text>
         </Pressable>
-        <View style={[styles.stepperValue, { borderColor: color }]}>
-          <ThemedText type="smallBold" style={{ color }}>
+        <View className="h-11 w-12 items-center justify-center rounded-control border-2" style={{ borderColor: color }}>
+          <Text className="text-sm font-bold" style={{ color }}>
             {value}
-          </ThemedText>
+          </Text>
         </View>
         <Pressable
-          style={styles.stepperButton}
+          className="h-11 w-11 items-center justify-center rounded-control border border-brand-border dark:border-night-border"
           onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
           disabled={value >= MAX_LEVEL}
           hitSlop={8}
+          accessibilityLabel={`Increase ${label}`}
         >
-          <ThemedText style={styles.stepperButtonText}>+</ThemedText>
+          <Text className="text-xl font-semibold">+</Text>
         </Pressable>
-        <ThemedText type="small" themeColor="textSecondary">
+        <Text muted className="text-sm">
           out of {MAX_LEVEL}
-        </ThemedText>
+        </Text>
       </View>
     </View>
-  );
-}
-
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
   );
 }
 
@@ -971,7 +875,6 @@ function EventRow({
   takeAllCount?: number;
   emphasized?: boolean;
 }) {
-  const styles = getStyles(useTheme());
   const slots = event.kind === 'group' ? event.members : [event.slot];
   const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
   // event.time is the slot's effective due time (postponedUntil when
@@ -980,55 +883,45 @@ function EventRow({
   const displayTime = formatEventTime(event.time);
 
   return (
-    <View style={styles.eventRow}>
-      <ThemedText type={emphasized ? 'subtitle' : 'default'} style={emphasized ? styles.emphasizedTime : undefined}>
+    <View className="gap-1">
+      <Text className={emphasized ? 'mb-0.5 text-4xl font-extrabold text-brand-navy dark:text-white' : 'text-base font-semibold'}>
         {displayTime}
-      </ThemedText>
-      <View style={styles.headingRow}>
-        <ThemedText type={emphasized ? undefined : 'smallBold'}>{heading}</ThemedText>
+      </Text>
+      <View className="flex-row items-center justify-between gap-2">
+        <Text className={emphasized ? 'text-base font-semibold' : 'text-sm font-bold'}>{heading}</Text>
         {event.kind === 'group' && onTakeAll && takeAllCount > 0 && (
-          <ActionButton label="Take All" onPress={() => onTakeAll(event)} busy={actingKey !== null} />
+          <Button label="Take All" size="compact" onPress={() => onTakeAll(event)} loading={actingKey !== null} />
         )}
       </View>
-      {slots.map((slot) => (
-        <View key={`${slot.medicationId}|${slot.scheduledTime}`} style={styles.slotRow}>
-          <View style={styles.slotNameColumn}>
-            <ThemedText type="small" style={styles.slotName}>
-              {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-            </ThemedText>
-            {slot.status === 'pending' && slot.postponedUntil && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
-              </ThemedText>
+      {slots.map((slot) => {
+        const key = `${slot.medicationId}|${slot.scheduledTime}`;
+        const busy = actingKey === key;
+        return (
+          <View key={key} className="flex-row items-center justify-between gap-2">
+            <View className="flex-1 gap-0.5">
+              <Text className="flex-1 text-sm font-medium">
+                {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
+              </Text>
+              {slot.status === 'pending' && slot.postponedUntil && (
+                <Text muted className="text-sm">
+                  {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
+                </Text>
+              )}
+            </View>
+            {slot.status === 'pending' ? (
+              <View className="flex-row gap-2">
+                <Button label="Skip" variant="secondary" size="compact" onPress={() => onAction(slot, 'skipped')} loading={busy} />
+                <Button label="Snooze" variant="secondary" size="compact" onPress={() => onSnooze(slot)} loading={busy} />
+                <Button label="Take" size="compact" onPress={() => onAction(slot, 'taken')} loading={busy} />
+              </View>
+            ) : (
+              <Text muted className="text-sm font-medium capitalize">
+                {slot.status}
+              </Text>
             )}
           </View>
-          {slot.status === 'pending' ? (
-            <View style={styles.actions}>
-              <ActionButton
-                label="Skip"
-                onPress={() => onAction(slot, 'skipped')}
-                busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
-                variant="secondary"
-              />
-              <ActionButton
-                label="Snooze"
-                onPress={() => onSnooze(slot)}
-                busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
-                variant="secondary"
-              />
-              <ActionButton
-                label="Take"
-                onPress={() => onAction(slot, 'taken')}
-                busy={actingKey === `${slot.medicationId}|${slot.scheduledTime}`}
-              />
-            </View>
-          ) : (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.statusLabel}>
-              {slot.status}
-            </ThemedText>
-          )}
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -1044,218 +937,34 @@ function SnoozeSheet({
   onClose: () => void;
   onSelect: (minutes: number) => void;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={busy ? undefined : onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={busy ? undefined : onClose}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ThemedText type="subtitle" style={styles.modalTitle}>
-                Snooze dose
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.sheetSubtitle}>
-                Choose how long to delay this dose.
-              </ThemedText>
-              <View style={styles.chipRow}>
-                {SNOOZE_OPTIONS.map((minutes) => (
-                  <Pressable
-                    key={minutes}
-                    style={[styles.chip, minutes === defaultMinutes && styles.chipSelected]}
-                    onPress={() => onSelect(minutes)}
-                    disabled={busy}
-                  >
-                    <ThemedText
-                      type="small"
-                      style={minutes === defaultMinutes ? styles.chipTextSelected : undefined}
-                    >
-                      {minutes} min
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
-              <Pressable style={styles.secondaryButton} onPress={onClose} disabled={busy}>
-                <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-              </Pressable>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <Sheet onClose={onClose} dismissible={!busy}>
+      <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">Snooze dose</Text>
+      <Text muted className="mb-2 text-sm">
+        Choose how long to delay this dose.
+      </Text>
+      <View className="mb-4 mt-2 flex-row flex-wrap gap-2">
+        {SNOOZE_OPTIONS.map((minutes) => {
+          const selected = minutes === defaultMinutes;
+          return (
+            <Pressable
+              key={minutes}
+              className={
+                selected
+                  ? 'min-h-11 justify-center rounded-full border border-brand-deep-blue bg-brand-bg px-4 dark:border-brand-cyan dark:bg-night-selected'
+                  : 'min-h-11 justify-center rounded-full border border-brand-border px-4 dark:border-night-border'
+              }
+              onPress={() => onSelect(minutes)}
+              disabled={busy}
+            >
+              <Text className={selected ? 'text-sm font-bold text-brand-deep-blue dark:text-brand-cyan' : 'text-sm font-medium'}>
+                {minutes} min
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Button label="Cancel" variant="secondary" onPress={onClose} disabled={busy} />
+    </Sheet>
   );
-}
-
-function ActionButton({
-  label,
-  onPress,
-  busy,
-  variant = 'primary',
-}: {
-  label: string;
-  onPress: () => void;
-  busy: boolean;
-  variant?: 'primary' | 'secondary';
-}) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={busy}
-      style={[
-        styles.actionButton,
-        variant === 'secondary' && styles.actionButtonSecondary,
-        busy && styles.actionButtonDisabled,
-      ]}
-    >
-      {busy ? (
-        <ActivityIndicator size="small" color={variant === 'secondary' ? theme.textSecondary : '#ffffff'} />
-      ) : (
-        <ThemedText
-          type="small"
-          style={variant === 'secondary' ? styles.actionTextSecondary : styles.actionText}
-        >
-          {label}
-        </ThemedText>
-      )}
-    </Pressable>
-  );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scrollContent: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  title: { fontSize: 28, lineHeight: 34 },
-  titleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  bellButton: { padding: Spacing.one },
-  bellBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Brand.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  bellBadgeText: { color: '#ffffff', fontSize: 10, lineHeight: 12, fontWeight: '700' },
-  adherenceChip: {
-    borderRadius: 999,
-    backgroundColor: theme.backgroundSelected,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.half,
-    paddingHorizontal: Spacing.two,
-  },
-  adherenceChipText: { color: Brand.deepBlue, fontWeight: '700' },
-  error: { color: Brand.danger },
-  heroCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
-  doneText: { fontSize: 16, marginTop: Spacing.one },
-  sectionTitle: { marginTop: Spacing.two },
-  scheduleCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
-  asNeededRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  asNeededName: { flex: 1 },
-  asNeededAction: { color: Brand.deepBlue, fontWeight: '700' },
-  eventRow: { gap: Spacing.one },
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  emphasizedTime: { marginBottom: Spacing.half },
-  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  slotNameColumn: { flex: 1, gap: Spacing.half },
-  slotName: { flex: 1 },
-  statusLabel: { textTransform: 'capitalize' },
-  actions: { flexDirection: 'row', gap: Spacing.two },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.three },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-  },
-  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { fontWeight: '700', color: theme.accent },
-  actionButton: {
-    backgroundColor: Brand.deepBlue,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  actionButtonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.border },
-  actionButtonDisabled: { opacity: 0.6 },
-  actionText: { color: '#ffffff', fontWeight: '600' },
-  actionTextSecondary: { fontWeight: '600' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheetWrapper: { maxHeight: '85%' },
-  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.half },
-  sheetSubtitle: { marginBottom: Spacing.two },
-  alertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  alertRowText: { flex: 1, gap: 2 },
-  alertRefillButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: Brand.deepBlue,
-  },
-  alertRefillText: { color: '#FFFFFF' },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    color: theme.text,
-    backgroundColor: theme.backgroundElement,
-  },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  stepperBlock: { marginTop: Spacing.one },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  stepperButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperButtonText: { fontSize: 20, fontWeight: '600' },
-  stepperValue: {
-    width: 48,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetActions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  sheetPrimaryButton: { flex: 1, paddingVertical: Spacing.three },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { fontWeight: '600' },
-});
 }
