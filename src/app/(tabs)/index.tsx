@@ -10,6 +10,7 @@ import { ResumeSetupBanner } from '@/components/ResumeSetupBanner';
 import { NextDoseHero } from '@/components/dashboard/next-dose-hero';
 import { SlotActions } from '@/components/dashboard/slot-actions';
 import { Button } from '@/components/ui/button';
+import { MedTypeBadge } from '@/components/ui/med-type-badge';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
 import { SafeArea } from '@/components/ui/safe-area';
@@ -17,7 +18,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { useTheme } from '@/hooks/use-theme';
-import { computeAdherenceStats } from '@/lib/adherence';
+import { computeAdherenceStats, type AdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
 import {
@@ -34,6 +35,7 @@ import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/li
 import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
+  generateAdHocPrnSlots,
   generateDaySlots,
   slotDueTime,
   SNOOZE_OPTIONS,
@@ -61,9 +63,7 @@ export default function DashboardScreen() {
   // the date the on-screen slot actually belongs to, not "today" as of the
   // tap.
   const [scheduleDate, setScheduleDate] = useState(localDateString());
-  // null = no required (adherence-tracked, non-PRN) doses today, so the
-  // chip is hidden rather than showing a misleading "0%".
-  const [adherencePercent, setAdherencePercent] = useState<number | null>(null);
+  const [adherenceStats, setAdherenceStats] = useState<AdherenceStats>(() => computeAdherenceStats([]));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -160,6 +160,13 @@ export default function DashboardScreen() {
       // Separate from `slots` above (which stays scoped to what's shown on
       // screen): a medication hidden from the daily schedule but still
       // opted into adherence tracking must still count toward it.
+      const toTracked = (s: DaySlot) => ({
+        status: s.status,
+        late: isLate(
+          { status: s.status, taken_at: s.takenAt, scheduled_for_date: date, scheduled_time: s.scheduledTime },
+          graceMinutes,
+        ),
+      });
       const requiredSlots = generateDaySlots(
         date,
         activeMedications,
@@ -170,15 +177,15 @@ export default function DashboardScreen() {
         { ignoreDashboardVisibility: true },
       )
         .filter((s) => !s.isPrn && s.medication.adherence_enabled)
-        .map((s) => ({
-          status: s.status,
-          late: isLate(
-            { status: s.status, taken_at: s.takenAt, scheduled_for_date: date, scheduled_time: s.scheduledTime },
-            graceMinutes,
-          ),
-        }));
-      const stats = computeAdherenceStats(requiredSlots);
-      setAdherencePercent(stats.requiredTotal > 0 ? stats.percent : null);
+        .map(toTracked);
+      // "Take as needed" medications opted into adherence tracking are
+      // tracked separately: scheduled (grouped) PRN slots plus ungrouped
+      // ones logged ad hoc.
+      const nonRequiredSlots = [
+        ...slots.filter((s) => s.isPrn && s.medication.adherence_enabled),
+        ...generateAdHocPrnSlots(activeMedications, groupMembers, doseLogs),
+      ].map(toTracked);
+      setAdherenceStats(computeAdherenceStats(requiredSlots, nonRequiredSlots));
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load today’s schedule');
@@ -420,13 +427,6 @@ export default function DashboardScreen() {
           <View className="flex-row items-center justify-between gap-2">
             <Text className="text-[28px] font-bold leading-[34px] text-brand-navy dark:text-white">Today</Text>
             <View className="flex-row items-center gap-2">
-              {adherencePercent !== null && (
-                <View className="rounded-full border border-brand-border bg-white px-2 py-0.5 dark:border-night-border dark:bg-night-selected">
-                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
-                    {adherencePercent}%
-                  </Text>
-                </View>
-              )}
               {supplyAlerts.length > 0 && (
                 <Pressable
                   className="p-1"
@@ -460,6 +460,7 @@ export default function DashboardScreen() {
           <NextDoseHero
             next={nextEvent}
             upcoming={upcomingEvent}
+            adherence={adherenceStats}
             actingKey={actingKey}
             onAction={handleAction}
             onSnooze={setSnoozeSlot}
@@ -885,9 +886,12 @@ function EventRow({
         return (
           <View key={key} className="flex-row items-center justify-between gap-2">
             <View className="flex-1 gap-0.5">
-              <Text className="flex-1 text-sm font-medium">
-                {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-              </Text>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Text className="text-sm font-medium">
+                  {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
+                </Text>
+                <MedTypeBadge type={slot.medication.medication_type} />
+              </View>
               {slot.status === 'pending' && slot.postponedUntil && (
                 <Text muted className="text-sm">
                   {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}

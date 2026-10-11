@@ -4,6 +4,7 @@ import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleShee
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { MedTypeBadge } from '@/components/ui/med-type-badge';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -120,6 +121,9 @@ export function DueNowOverlay({
                           {event.slot.dose}
                         </ThemedText>
                       ) : null}
+                      <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                        <MedTypeBadge type={event.slot.medication.medication_type} />
+                      </View>
                     </>
                   )}
                 </View>
