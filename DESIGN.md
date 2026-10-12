@@ -557,13 +557,13 @@ h1 "Help & FAQ" and a muted intro. One flat panel of `<details>` accordions (rad
 
 ### 8.16 Terms of Use `/terms` and Privacy Policy `/privacy`
 
-Ported from the original build (`routes/terms.php`, `routes/privacy.php`); the text lives in `lib/legal-content.ts` (web) and `src/lib/legal-content.ts` (app) and must stay identical. **Public** — reachable signed out (linked from sign-in, sign-up and the More menu) and signed in.
+Ported from the original build (`routes/terms.php`, `routes/privacy.php`) and updated for the current web and mobile builds (Supabase, Google sign-in, profile photos, DailyMed/openFDA lookups, on-device reminders, account deletion on the website only); the text lives in `lib/legal-content.ts` (web) and `src/lib/legal-content.ts` (app) and must stay identical. **Public** — reachable signed out (linked from sign-in, sign-up and the More menu) and signed in.
 
 - Page: `brand-bg` background, centered column `max-w-[720px]`, `px-16 py-32`.
 - **Back** link on top (16 px arrow + "Back", 14 px medium blue). Signed in → dashboard, signed out → sign-in; in the app it goes back, else to `/`.
-- Card: white, radius 18 (28 at ≥768), padding 28 (40 at ≥768), `shadow-card`. Inside: 48 px logo + "RxTracker" (20 px extrabold navy); h1 (25.6 px extrabold navy, "Terms of Use" / "Privacy Policy"); "Effective date: June 1, 2025" (14 px muted, 32 px below); then numbered sections.
+- Card: white, radius 18 (28 at ≥768), padding 28 (40 at ≥768), `shadow-card`. Inside: 48 px logo + "RxTracker" (20 px extrabold navy); h1 (25.6 px extrabold navy, "Terms of Use" / "Privacy Policy"); "Effective date: October 12, 2026" (14 px muted, 32 px below); then numbered sections.
 - Sections: h2 (17.6 px bold navy, e.g. "1. Acceptance of Terms"), 8 px gap, body 16 px / 24 px; bullet lists indented 20 px with 28 px line height; a paragraph after a list gets 12 px extra top spacing; 28 px between sections. Inline: **bold** and links (Terms §5 links to the Privacy Policy) in `brand-blue`.
-- Terms: 10 sections (Acceptance of Terms, Not Medical Advice, Your Account, Acceptable Use, Data and Privacy, Disclaimer of Warranties, Limitation of Liability, Modifications, Governing Law, Contact). Privacy: 11 sections (Information We Collect, How We Use Your Information, Health Information, Data Retention, Push Notifications, Cookies and Sessions, Third-Party Services, Your Rights, Children's Privacy, Changes to This Policy, Contact).
+- Terms: 10 sections (Acceptance of Terms, Not Medical Advice, Your Account, Acceptable Use, Data and Privacy, Disclaimer of Warranties, Limitation of Liability, Modifications, Governing Law, Contact). Privacy: 11 sections (Information We Collect, How We Use Your Information, Health Information, Data Retention, Reminders and Push Notifications, Cookies, Sessions and Local Storage, Third-Party Services, Your Rights, Children's Privacy, Changes to This Policy, Contact).
 
 ---
 

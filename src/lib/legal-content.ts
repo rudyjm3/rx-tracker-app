@@ -1,5 +1,7 @@
-// Terms of Use and Privacy Policy text, ported verbatim from the original
-// RxTracker build (routes/terms.php, routes/privacy.php). Keep identical to
+// Terms of Use and Privacy Policy text. Originally ported from the original
+// RxTracker build (routes/terms.php, routes/privacy.php), then updated for
+// the current web and mobile apps (Supabase, Google sign-in, profile photos,
+// DailyMed/openFDA lookups, on-device reminders). Keep identical to
 // rx-tracker-web's lib/legal-content.ts.
 //
 // Inline markup: **bold** and [label](href). A paragraph that follows a list
@@ -11,14 +13,14 @@ export interface LegalSection {
   blocks: LegalBlock[];
 }
 
-export const LEGAL_EFFECTIVE_DATE = "June 1, 2025";
+export const LEGAL_EFFECTIVE_DATE = "October 12, 2026";
 
 export const TERMS_SECTIONS: LegalSection[] = [
   {
     title: "1. Acceptance of Terms",
     blocks: [
       {
-        p: 'By accessing or using RxTracker ("the App"), you agree to be bound by these Terms of Use. If you do not agree to these terms, do not use the App.',
+        p: 'By accessing or using RxTracker, including its website and its mobile app (together, "the App"), you agree to be bound by these Terms of Use. If you do not agree to these terms, do not use the App.',
       },
     ],
   },
@@ -28,13 +30,19 @@ export const TERMS_SECTIONS: LegalSection[] = [
       {
         p: "RxTracker is a personal medication tracking tool and is provided for informational and organizational purposes only. **The App does not provide medical advice, diagnosis, or treatment.** Nothing in the App should be construed as a substitute for professional medical advice from a qualified healthcare provider. Always consult your doctor, pharmacist, or other qualified health professional before making any decisions about your medications or health.",
       },
+      {
+        p: "Medication information shown in the App, including label details from DailyMed and openFDA, is for general reference only and may be incomplete or out of date. Pain, mood, and side effect tracking and the adherence figures and Doctor Visit Reports the App produces are summaries of what you enter; they are not clinical assessments, and you are responsible for checking that the information is accurate before sharing it.",
+      },
     ],
   },
   {
     title: "3. Your Account",
     blocks: [
       {
-        p: "You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. Notify us immediately if you believe your account has been compromised. You must provide accurate information when creating your account.",
+        p: "You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. Notify us immediately if you believe your account has been compromised. You must provide accurate information when creating your account. You may sign up with an email address and password or sign in with Google.",
+      },
+      {
+        p: "If you add a family member to your account, you confirm that you are authorized to manage their medication information, for example as a parent, guardian, or caregiver.",
       },
     ],
   },
@@ -64,7 +72,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     title: "6. Disclaimer of Warranties",
     blocks: [
       {
-        p: 'The App is provided "as is" and "as available" without warranties of any kind, either express or implied. We do not warrant that the App will be uninterrupted, error-free, or that medication reminders will be delivered at any particular time. You are solely responsible for managing your medications.',
+        p: 'The App is provided "as is" and "as available" without warranties of any kind, either express or implied. We do not warrant that the App will be uninterrupted, error-free, or that medication reminders will be delivered at any particular time. Alarms in the website only sound while RxTracker is open in your browser, and reminders in the mobile app depend on the notification settings and permissions on your device. You are solely responsible for managing your medications.',
       },
     ],
   },
@@ -109,10 +117,11 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       { p: "When you use RxTracker, we collect information you provide directly:" },
       {
         ul: [
-          "**Account information:** email address, display name, and a securely hashed password",
-          "**Medication data:** medication names, dosage details, schedules, dose logs, refill records, and side effect notes you enter",
+          "**Account information:** email address, name or display name, and a securely hashed password. If you sign in with Google, we receive your name and email address from Google; we do not receive your Google password",
+          "**Profile information:** birth date, height, weight, allergies and intolerances, and an optional profile photo, for you and for any family members you add. Profile photos are kept in cloud storage and served from a web address; anyone who has that exact address can open the photo",
+          "**Medication and health data:** medication names, dosages, instructions, schedules, supply and refill records, dose logs, side effects, notes, and the pain and mood levels and tags you record",
           "**Usage data:** timestamps of logged doses, settings preferences, and family profile data you create",
-          "**Device data:** browser push notification subscription tokens if you enable reminders (stored per-device)",
+          "**Device data:** if you register a mobile device for push notifications, its device name and notification token (stored per device). Reminders that the mobile app schedules on your device are not sent to us",
         ],
       },
     ],
@@ -141,8 +150,9 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       { p: "Medication and health data you enter is sensitive. We take this seriously:" },
       {
         ul: [
-          "Your data is stored in a private database accessible only to your account",
-          "Passwords are stored using bcrypt hashing — we cannot read your password",
+          "Your data is stored in a private database with access rules that limit each record to your account",
+          "Passwords are stored in hashed form by our authentication provider — we cannot read your password",
+          "Data is sent between the App and our servers over encrypted (HTTPS) connections",
           "Family profiles are scoped to your account and are not visible to other users",
         ],
       },
@@ -155,23 +165,23 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     title: "4. Data Retention",
     blocks: [
       {
-        p: "Your data is retained as long as your account is active. You may delete your account at any time from the profile page, which will permanently remove your account and all associated data from our systems.",
+        p: "Your data is retained as long as your account is active. You may delete your account at any time from the Profile page of the website, which will permanently remove your account and all associated data from our systems. You can also remove a family member at any time, which permanently deletes that person's medications, dose history, and logs. Account deletion is available in the website; the mobile app uses the same account.",
       },
     ],
   },
   {
-    title: "5. Push Notifications",
+    title: "5. Reminders and Push Notifications",
     blocks: [
       {
-        p: "If you enable browser push notifications, your browser generates a push subscription endpoint that is stored on our server to deliver reminders. You can disable notifications at any time from the Settings page or your browser's notification settings, which will remove your subscription.",
+        p: "The mobile app schedules medication reminders locally on your device, using the notification permission you grant it; those reminders can be turned off in the app's settings or your device's notification settings. If you register a device for push notifications, we store its device name and notification token to deliver reminders, and you can remove registered devices from the Settings page of the website. The website's dose alarm (sound and vibration) only runs while RxTracker is open in your browser and is controlled by on-device settings.",
       },
     ],
   },
   {
-    title: "6. Cookies and Sessions",
+    title: "6. Cookies, Sessions and Local Storage",
     blocks: [
       {
-        p: 'We use session cookies to keep you signed in. If you choose "Remember me," a long-lived session token is stored in a cookie for up to 30 days. We do not use tracking cookies or third-party analytics cookies.',
+        p: "On the website we use cookies to keep you signed in, and the mobile app stores your sign-in session on your device. Both the website and the app also keep a few preferences on your device, such as which profile you are viewing and your alarm sound and vibration settings. We do not use tracking cookies, advertising cookies, or third-party analytics.",
       },
     ],
   },
@@ -181,8 +191,11 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       { p: "RxTracker may use the following third-party services:" },
       {
         ul: [
-          "**Font Awesome (CDN):** used to deliver icons — subject to its own privacy policy",
-          "**Email provider (password resets):** your email address is passed to an email delivery service solely to send password reset messages",
+          "**Supabase:** provides our sign-in, database, and file storage. Your account, medication data, and profile photos are stored with Supabase on our behalf",
+          "**Google (optional):** if you choose \"Continue with Google,\" Google signs you in and shares your name and email address with us, subject to Google's privacy policy",
+          "**DailyMed and openFDA (U.S. National Library of Medicine and FDA):** when you search for a medication or open its details, the medication name or identifier you searched is sent to these public drug databases to look up label information. The website sends these requests through our server; the mobile app sends them directly from your device. We do not send your account details with them",
+          "**Email delivery:** your email address is passed to an email delivery service solely to send sign-up confirmation and password reset messages",
+          "**Font Awesome (CDN):** the website loads icons from this service, which may receive standard request information such as your IP address — subject to its own privacy policy",
         ],
       },
     ],
@@ -195,7 +208,8 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
         ul: [
           "Access all data in your account by viewing it within the App",
           "Correct inaccurate data by editing it within the App",
-          "Delete your account and all associated data from the profile page",
+          "Export your medication, adherence, and tracking history as a Doctor Visit Report (PDF) from the Export page",
+          "Delete your account and all associated data from the Profile page of the website",
         ],
       },
     ],
