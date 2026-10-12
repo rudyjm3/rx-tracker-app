@@ -171,7 +171,10 @@ export function generateDaySlots(
 }
 
 export function slotDueTime(slot: DaySlot, date: string): number {
-  return slot.postponedUntil
+  // A snooze only moves a still-pending dose. Once a member is taken/skipped
+  // its leftover postpone row must not pull it out of its group's event —
+  // otherwise one group splits into several single-medication cards.
+  return slot.postponedUntil && slot.status === "pending"
     ? new Date(slot.postponedUntil).getTime()
     : new Date(`${date}T${slot.scheduledTime}`).getTime();
 }
