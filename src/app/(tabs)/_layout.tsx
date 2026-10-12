@@ -13,8 +13,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 // Medications, Calendar, Export, More. Settings, Pain Tracking and Mood &
 // Wellbeing (plus Help, Terms and Privacy) live behind More; the Settings and
 // Pain & Mood screens stay in this group as hidden tabs so the bar remains
-// visible on them.
-const MORE_ROUTES = ['/settings', '/pain-mood'];
+// visible on them. Help and Manage Family are hidden tabs for the same reason,
+// so the bottom nav (and the global header) never disappears.
+const MORE_ROUTES = ['/settings', '/pain-mood', '/help', '/family'];
 
 function icon(name: React.ComponentProps<typeof FontAwesome6>['name']) {
   function TabIcon({ color }: { color: ColorValue }) {
@@ -65,6 +66,8 @@ export default function TabsLayout() {
         />
         <Tabs.Screen name="pain-mood" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="help" options={{ href: null }} />
+        <Tabs.Screen name="family" options={{ href: null }} />
       </Tabs>
       {moreOpen && <MoreSheet onClose={() => setMoreOpen(false)} />}
     </>

@@ -7,6 +7,7 @@ import { FormSheet } from '@/components/ui/form-sheet';
 import { LevelGrid } from '@/components/ui/level-grid';
 import { PillTabs } from '@/components/ui/pill-tabs';
 import { Text } from '@/components/ui/text';
+import { TimeField } from '@/components/ui/time-field';
 import { deleteDoseLog, editDoseLog, type CalendarLogRow } from '@/lib/dose-logs';
 import { medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import { generateDaySlots } from '@/lib/schedule';
@@ -104,7 +105,7 @@ export function EditDoseLogSheet({
     if (!medication) return;
     setFormError(null);
     if (status === 'taken' && !TIME_RE.test(time)) {
-      setFormError('Enter a valid time (HH:MM).');
+      setFormError('Enter a valid time (hour 1–12, minute 00–59).');
       return;
     }
     setSaving(true);
@@ -194,7 +195,7 @@ export function EditDoseLogSheet({
 
       {status === 'taken' ? (
         <>
-          <Field label="Time taken" value={time} onChangeText={setTime} placeholder="HH:MM" />
+          <TimeField label="Time taken" value={time} onChange={setTime} />
 
           {trackPain ? <LevelBlock label="Pain level" metric="pain" value={painLevel} onChange={setPainLevel} /> : null}
           {trackMood ? <LevelBlock label="Mood level" metric="mood" value={moodLevel} onChange={setMoodLevel} /> : null}

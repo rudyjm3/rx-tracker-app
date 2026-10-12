@@ -32,7 +32,6 @@ export default function FamilyListScreen() {
 
   return (
     <Screen
-      edges={['left', 'right', 'bottom']}
       contentClassName="pt-4"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
       <View className="flex-row flex-wrap items-center justify-between gap-2">

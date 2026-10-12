@@ -13,6 +13,7 @@ import { TagPill } from '@/components/ui/tag-pill';
 import { Text } from '@/components/ui/text';
 import { UnitField } from '@/components/ui/unit-field';
 import { useActiveProfile } from '@/lib/active-profile';
+import { maskBirthDateInput, usDateToIso } from '@/lib/utils';
 import {
   AVATAR_COLOR_PALETTE,
   FAMILY_RELATIONSHIPS,
@@ -69,7 +70,12 @@ export default function NewFamilyMemberScreen() {
       setFormError('Enter a display name or a first name.');
       return;
     }
-    if (birthDate && birthDate > today) {
+    const birthIso = usDateToIso(birthDate);
+    if (birthDate && !birthIso) {
+      setFormError('Enter the birth date as MM-DD-YYYY.');
+      return;
+    }
+    if (birthIso && birthIso > today) {
       setFormError('Birth date cannot be in the future.');
       return;
     }
@@ -97,7 +103,7 @@ export default function NewFamilyMemberScreen() {
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
       relationship: relationship || null,
-      birth_date: birthDate || null,
+      birth_date: birthIso,
       height_value: heightNum,
       height_unit: heightUnit,
       weight_value: weightNum,
@@ -155,10 +161,12 @@ export default function NewFamilyMemberScreen() {
         </View>
 
         <Field
-          label="Birth date (YYYY-MM-DD)"
+          label="Birth date (MM-DD-YYYY)"
           value={birthDate}
-          onChangeText={setBirthDate}
-          placeholder="1990-01-15"
+          onChangeText={(v) => setBirthDate(maskBirthDateInput(v))}
+          placeholder="01-15-1990"
+          keyboardType="number-pad"
+          maxLength={10}
           autoCapitalize="none"
           autoCorrect={false}
         />

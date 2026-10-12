@@ -25,6 +25,7 @@ import {
   type FamilyProfileInput,
 } from '@/lib/family';
 import type { FamilyProfile } from '@/lib/types/profile';
+import { isoToUsDate, maskBirthDateInput, usDateToIso } from '@/lib/utils';
 
 // profile_picture/photo upload is skipped this round — no image picker is
 // installed, and it's a separate scope (see AGENTS task notes for this
@@ -140,7 +141,7 @@ function EditForm({
   const [lastName, setLastName] = useState(profile.last_name ?? '');
   const [displayName, setDisplayName] = useState(profile.display_name ?? '');
   const [relationship, setRelationship] = useState(profile.relationship ?? '');
-  const [birthDate, setBirthDate] = useState(profile.birth_date ?? '');
+  const [birthDate, setBirthDate] = useState(isoToUsDate(profile.birth_date));
   const [heightValue, setHeightValue] = useState(profile.height_value != null ? String(profile.height_value) : '');
   const [heightUnit, setHeightUnit] = useState<'in' | 'cm'>((profile.height_unit as 'in' | 'cm') ?? 'in');
   const [weightValue, setWeightValue] = useState(profile.weight_value != null ? String(profile.weight_value) : '');
@@ -177,7 +178,12 @@ function EditForm({
       setFormError('Enter a display name or a first name.');
       return;
     }
-    if (birthDate && birthDate > today) {
+    const birthIso = usDateToIso(birthDate);
+    if (birthDate && !birthIso) {
+      setFormError('Enter the birth date as MM-DD-YYYY.');
+      return;
+    }
+    if (birthIso && birthIso > today) {
       setFormError('Birth date cannot be in the future.');
       return;
     }
@@ -216,7 +222,7 @@ function EditForm({
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
       relationship: relationship || null,
-      birth_date: birthDate || null,
+      birth_date: birthIso,
       height_value: heightNum,
       height_unit: heightUnit,
       height_updated_at: heightNum === null ? null : heightChanged ? new Date().toISOString() : profile.height_updated_at,
@@ -263,10 +269,12 @@ function EditForm({
         </View>
 
         <Field
-          label="Birth date (YYYY-MM-DD)"
+          label="Birth date (MM-DD-YYYY)"
           value={birthDate}
-          onChangeText={setBirthDate}
-          placeholder="1990-01-15"
+          onChangeText={(v) => setBirthDate(maskBirthDateInput(v))}
+          placeholder="01-15-1990"
+          keyboardType="number-pad"
+          maxLength={10}
           autoCapitalize="none"
           autoCorrect={false}
         />

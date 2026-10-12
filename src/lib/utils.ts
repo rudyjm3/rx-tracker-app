@@ -248,3 +248,28 @@ export function formatEpochTime(ms: number): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return to12h(`${hh}:${mm}`);
 }
+
+// Birth dates are stored as YYYY-MM-DD but entered and shown as MM-DD-YYYY.
+// maskBirthDateInput inserts the dashes as the user types digits.
+export function maskBirthDateInput(text: string): string {
+  const digits = text.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
+}
+
+export function isoToUsDate(iso: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+  return match ? `${match[2]}-${match[3]}-${match[1]}` : "";
+}
+
+// Returns YYYY-MM-DD for a complete, real MM-DD-YYYY date, otherwise null.
+export function usDateToIso(us: string): string | null {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(us.trim());
+  if (!match) return null;
+  const [, mm, dd, yyyy] = match;
+  const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  const valid =
+    date.getFullYear() === Number(yyyy) && date.getMonth() === Number(mm) - 1 && date.getDate() === Number(dd);
+  return valid ? `${yyyy}-${mm}-${dd}` : null;
+}
