@@ -16,13 +16,13 @@ export default function GroupsStackLayout() {
         options={{
           title: 'Medication Groups',
           // First screen of this root-level stack, so there's no automatic
-          // back button — return to the Medication Plan explicitly.
+          // back button. Always return to the Medication Plan page.
           headerLeft: () => (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to Medication Plan"
               hitSlop={8}
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/medications'))}>
+              onPress={() => router.replace('/medications')}>
               <Ionicons name="chevron-back" size={24} color="#0754A8" />
             </Pressable>
           ),
