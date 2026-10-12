@@ -95,6 +95,15 @@ export async function getInactiveMedications(profileId?: string | null): Promise
   return data as Medication[];
 }
 
+/**
+ * Persists a new medication order (sort_order) through the same atomic
+ * `reorder_medications` RPC rx-tracker-web uses.
+ */
+export async function reorderMedications(orderedIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc("reorder_medications", { medication_ids: orderedIds });
+  if (error) throw error;
+}
+
 export async function getMedication(id: string): Promise<Medication> {
   const { data, error } = await supabase
     .from("medications")

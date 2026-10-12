@@ -1,7 +1,14 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, View } from 'react-native';
+import ReorderableList, {
+  reorderItems,
+  useReorderableDrag,
+  type ReorderableListReorderEvent,
+} from 'react-native-reorderable-list';
+import { Gesture } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
@@ -21,10 +28,11 @@ import {
   getGroupMembers,
   getGroups,
   getInactiveMedications,
+  reorderMedications,
 } from '@/lib/medications';
 import { cn } from '@/lib/cn';
 import type { Medication, MedicationGroup } from '@/lib/types/medications';
-import { daysUntilRunout, scheduleSummary, to12h, type GroupDoseOverride } from '@/lib/utils';
+import { daysUntilRunout, scheduleSummary, type GroupDoseOverride } from '@/lib/utils';
 
 // Date-only fields (start_date/created_at's date portion) must be parsed in
 // local time, not UTC — a UTC-midnight parse displays one day earlier for
@@ -40,6 +48,11 @@ function formatMedDate(value: string | null | undefined): string {
 }
 
 type ListTab = 'active' | 'inactive';
+
+// The drag handle starts a drag on long press; the list's pan gesture only
+// activates just after that delay so it doesn't fight RefreshControl on
+// Android (react-native-reorderable-list "Refresh Control" guidance).
+const DRAG_LONG_PRESS_MS = 250;
 
 export default function MedicationsScreen() {
   const { activeProfileId } = useActiveProfile();
@@ -87,14 +100,42 @@ export default function MedicationsScreen() {
     }
   }, [activeProfileId]);
 
-  // Memberships of deleted (inactive) groups linger, so only active groups'
-  // members count as grouped.
-  const groupedIds = new Set(
-    tab === 'active'
-      ? groupMembers.filter((m) => groups.some((g) => g.id === m.group_id)).map((m) => m.medication_id)
-      : [],
+  // Group names per medication, for the notation on each card. Memberships
+  // of deleted (inactive) groups linger, so only active groups count.
+  const groupNamesByMedication = new Map<string, string[]>();
+  for (const member of groupMembers) {
+    const group = groups.find((g) => g.id === member.group_id);
+    if (!group) continue;
+    const names = groupNamesByMedication.get(member.medication_id) ?? [];
+    names.push(group.name);
+    groupNamesByMedication.set(member.medication_id, names);
+  }
+
+  const handleReorder = useCallback(
+    ({ from, to }: ReorderableListReorderEvent) => {
+      const reordered = reorderItems(medications, from, to);
+      setMedications(reordered);
+      reorderMedications(reordered.map((m) => m.id)).catch((e) => {
+        setError(e instanceof Error ? e.message : 'Failed to save order');
+        load('active');
+      });
+    },
+    [medications, load],
   );
-  const ungroupedMedications = medications.filter((m) => !groupedIds.has(m.id));
+
+  // Android: RefreshControl animates / fights the drag gesture, so it is
+  // switched off for the duration of a drag (react-native-reorderable-list
+  // "Refresh Control" troubleshooting).
+  const panGesture = useMemo(() => Gesture.Pan().activateAfterLongPress(DRAG_LONG_PRESS_MS + 20), []);
+  const [refreshEnabled, setRefreshEnabled] = useState(true);
+  const handleDragStart = useCallback(() => {
+    'worklet';
+    if (Platform.OS === 'android') scheduleOnRN(setRefreshEnabled, false);
+  }, []);
+  const handleDragEnd = useCallback(() => {
+    'worklet';
+    if (Platform.OS === 'android') scheduleOnRN(setRefreshEnabled, true);
+  }, []);
 
   // load() (and this callback) changes identity whenever activeProfileId
   // or tab changes, and useFocusEffect re-invokes its callback on identity
@@ -107,9 +148,8 @@ export default function MedicationsScreen() {
     }, [tab, load]),
   );
 
-  return (
-    <Screen
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} />}>
+  const header = (
+    <View className="gap-4 pb-4">
       <View className="flex-row flex-wrap items-center justify-between gap-2">
         <ScreenTitle>Medication Plan</ScreenTitle>
       </View>
@@ -138,59 +178,67 @@ export default function MedicationsScreen() {
         <Text className="text-sm text-status-danger dark:text-status-danger">{error ?? supplyDismissError}</Text>
       ) : null}
 
-      {loading ? (
-        <ActivityIndicator className="mt-8" />
-      ) : (
-        <>
-          <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />
+      {loading ? null : <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />}
+    </View>
+  );
 
-          {medications.length === 0 ? (
+  // Every medication is listed here, grouped or not — groups live behind
+  // "Manage groups"; a card just notes which group(s) it belongs to. The
+  // Active list is drag-to-reorder (sort_order, shared with the web app).
+  return (
+    <Screen scroll={false} contentClassName="px-0 pt-0 gap-0">
+      <ReorderableList
+        data={loading ? [] : medications}
+        keyExtractor={(med) => med.id}
+        onReorder={handleReorder}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        dragEnabled={tab === 'active'}
+        panGesture={panGesture}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 }}
+        ItemSeparatorComponent={ItemGap}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} enabled={refreshEnabled} />
+        }
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator className="mt-8" />
+          ) : (
             <Text muted className="text-sm">
               {tab === 'active' ? 'No medications yet. Add your first one to get started.' : 'No inactive medications.'}
             </Text>
-          ) : null}
-          {/* Active medications that share a group render together in one
-              group container; inactive ones (and ungrouped) stay individual. */}
-          {tab === 'active'
-            ? groups.map((group) => {
-                const memberIds = new Set(
-                  groupMembers.filter((m) => m.group_id === group.id).map((m) => m.medication_id),
-                );
-                const members = medications.filter((m) => memberIds.has(m.id));
-                if (members.length === 0) return null;
-                return (
-                  <View
-                    key={group.id}
-                    className="gap-2 rounded-card border border-brand-border bg-brand-bg p-2 dark:border-night-border dark:bg-night-selected">
-                    <View className="flex-row items-center gap-1.5 px-1">
-                      <Ionicons name="layers-outline" size={14} color="#60708A" />
-                      <Text muted className="text-sm font-semibold">
-                        {group.name} · {to12h(group.scheduled_time.slice(0, 5))}
-                      </Text>
-                    </View>
-                    {members.map((med) => (
-                      <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
-                    ))}
-                  </View>
-                );
-              })
-            : null}
-          {ungroupedMedications.map((med) => (
-            <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
-          ))}
-        </>
-      )}
+          )
+        }
+        renderItem={({ item }) => (
+          <MedicationCard
+            medication={item}
+            groupDoseOverrides={doseOverrides.get(item.id)}
+            groupNames={groupNamesByMedication.get(item.id)}
+            draggable={tab === 'active'}
+          />
+        )}
+      />
     </Screen>
   );
+}
+
+function ItemGap() {
+  return <View className="h-4" />;
 }
 
 function MedicationCard({
   medication,
   groupDoseOverrides,
+  groupNames,
+  draggable,
 }: {
   medication: Medication;
   groupDoseOverrides?: GroupDoseOverride[];
+  groupNames?: string[];
+  draggable?: boolean;
 }) {
+  const drag = useReorderableDrag();
   const [menuOpen, setMenuOpen] = useState(false);
   const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
@@ -211,9 +259,27 @@ function MedicationCard({
       <Pressable accessibilityLabel={`${medication.name} details`} onPress={() => goToDetail()}>
         <Card className="gap-1">
           <View className="flex-row items-start justify-between gap-2">
+            {draggable ? (
+              <Pressable
+                className="-ml-2 -mt-2 h-11 w-8 items-center justify-center"
+                onLongPress={drag}
+                delayLongPress={DRAG_LONG_PRESS_MS}
+                accessibilityRole="button"
+                accessibilityLabel={`Drag to reorder ${medication.name}`}>
+                <Ionicons name="reorder-three-outline" size={22} color="#60708A" />
+              </Pressable>
+            ) : null}
             <View className="flex-1 flex-row flex-wrap items-center gap-x-2 gap-y-1">
               <MedName name={medication.name} dose={medication.dose} />
               <MedTypeBadge type={medication.medication_type} />
+              {groupNames && groupNames.length > 0 ? (
+                <View className="flex-row items-center gap-1 rounded-full bg-brand-bg px-2 py-0.5 dark:bg-night-selected">
+                  <Ionicons name="layers-outline" size={12} color="#60708A" />
+                  <Text muted className="text-xs font-medium">
+                    {groupNames.join(', ')}
+                  </Text>
+                </View>
+              ) : null}
               {isLowSupply ? (
                 <View className="rounded-full bg-status-warning/10 px-2 py-0.5">
                   <Text className="text-xs font-medium text-status-warning dark:text-status-warning">Low supply</Text>

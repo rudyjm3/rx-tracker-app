@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, router, Slot, ThemeProvider } from 'expo-route
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { AppState, useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ActiveProfileProvider } from '@/lib/active-profile';
 import {
@@ -84,12 +85,14 @@ function RootNavigation() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AuthProvider>
-        <ActiveProfileProvider>
-          <RootNavigation />
-        </ActiveProfileProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AuthProvider>
+          <ActiveProfileProvider>
+            <RootNavigation />
+          </ActiveProfileProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
