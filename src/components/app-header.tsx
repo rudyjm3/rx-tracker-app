@@ -112,14 +112,24 @@ export function AppHeader() {
             )}
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="My profile" onPress={() => setMenuOpen(true)}>
-            <ProfileAvatar label={currentLabel} color={activeProfile?.avatar_color} size={40} />
+            <ProfileAvatar
+              label={currentLabel}
+              color={activeProfile?.avatar_color}
+              pictureUrl={activeProfile ? activeProfile.profile_picture : ownerProfile?.profile_picture}
+              size={40}
+            />
           </Pressable>
         </View>
       </View>
 
       {activeProfile && (
         <View className="flex-row items-center gap-2 border-b border-[#F3E2A9] bg-[#FFFAEB] px-4 py-2 dark:border-amber-900 dark:bg-amber-950">
-          <ProfileAvatar label={activeProfile.display_name} color={activeProfile.avatar_color} size={22} />
+          <ProfileAvatar
+            label={activeProfile.display_name}
+            color={activeProfile.avatar_color}
+            pictureUrl={activeProfile.profile_picture}
+            size={22}
+          />
           <Text className="flex-1 text-sm text-[#7A3E0C] dark:text-amber-200">
             Viewing <Text className="text-sm font-semibold text-[#7A3E0C] dark:text-amber-100">{activeProfile.display_name}</Text>
             &apos;s medications
@@ -144,7 +154,7 @@ export function AppHeader() {
       {alertsOpen && (
         <AlertsSheet alerts={alerts} onDismiss={dismiss} onClose={() => setAlertsOpen(false)} />
       )}
-      {menuOpen && <ProfileMenuSheet ownerName={ownerName} onSignOut={signOut} onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <ProfileMenuSheet ownerName={ownerName} ownerPictureUrl={ownerProfile?.profile_picture ?? null} onSignOut={signOut} onClose={() => setMenuOpen(false)} />}
     </View>
   );
 }

@@ -13,10 +13,12 @@ const ROW = 'min-h-14 flex-row items-center gap-4 rounded-control px-1 active:bg
 
 export function ProfileMenuSheet({
   ownerName,
+  ownerPictureUrl,
   onSignOut,
   onClose,
 }: {
   ownerName: string;
+  ownerPictureUrl: string | null;
   onSignOut: () => void;
   onClose: () => void;
 }) {
@@ -41,7 +43,7 @@ export function ProfileMenuSheet({
           className={`${ROW} ${activeProfileId === null ? 'bg-brand-bg dark:bg-night-selected' : ''}`}
           onPress={go(() => setActiveProfileId(null))}
         >
-          <ProfileAvatar label={ownerName} size={36} />
+          <ProfileAvatar label={ownerName} pictureUrl={ownerPictureUrl} size={36} />
           <Text className="flex-1 text-base font-medium">{ownerName}</Text>
         </Pressable>
 
@@ -64,7 +66,7 @@ export function ProfileMenuSheet({
                 className={`${ROW} ${activeProfileId === fp.id ? 'bg-brand-bg dark:bg-night-selected' : ''}`}
                 onPress={go(() => setActiveProfileId(fp.id))}
               >
-                <ProfileAvatar label={fp.display_name} color={fp.avatar_color} size={36} />
+                <ProfileAvatar label={fp.display_name} color={fp.avatar_color} pictureUrl={fp.profile_picture} size={36} />
                 <Text className="flex-1 text-base font-medium">{fp.display_name}</Text>
                 {fp.relationship ? (
                   <Text muted className="text-xs">

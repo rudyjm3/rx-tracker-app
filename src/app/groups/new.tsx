@@ -10,11 +10,11 @@ import { Field } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { ScreenTitle } from '@/components/ui/screen-title';
 import { Text } from '@/components/ui/text';
+import { TimeField } from '@/components/ui/time-field';
 import { useActiveProfile } from '@/lib/active-profile';
 import { createGroup, getActiveMedications, type GroupInput, type GroupMemberInput } from '@/lib/medications';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { Medication } from '@/lib/types/medications';
-import { to12h } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
@@ -67,7 +67,7 @@ export default function NewGroupScreen() {
       return;
     }
     if (!TIME_RE.test(scheduledTime)) {
-      setFormError(`"${scheduledTime}" isn't a valid time — use HH:MM (24h).`);
+      setFormError('Enter a valid scheduled time (hour 1–12, minute 00–59).');
       return;
     }
     for (const qty of Object.values(selected)) {
@@ -111,14 +111,7 @@ export default function NewGroupScreen() {
       <Card className="gap-4 p-4">
         <Field label="Group name" value={name} onChangeText={setName} placeholder="e.g. Morning pills" />
 
-        <View className="flex-row items-end gap-2">
-          <View className="w-28">
-            <Field label="Scheduled time" value={scheduledTime} onChangeText={setScheduledTime} placeholder="HH:MM" />
-          </View>
-          <Text muted className="mb-3 text-sm">
-            {TIME_RE.test(scheduledTime) ? to12h(scheduledTime) : ''}
-          </Text>
-        </View>
+        <TimeField label="Scheduled time" value={scheduledTime} onChange={setScheduledTime} />
 
         <View className="gap-1">
           <Text className="text-sm">Members</Text>

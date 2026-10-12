@@ -19,6 +19,7 @@ import { SectionTitle } from '@/components/ui/screen-title';
 import { Sheet } from '@/components/ui/sheet';
 import { TagPill } from '@/components/ui/tag-pill';
 import { Text } from '@/components/ui/text';
+import { TimeField } from '@/components/ui/time-field';
 import { cn } from '@/lib/cn';
 import { confirmDestructive } from '@/lib/confirm';
 import type { DrugSuggestion } from '@/lib/dailymed';
@@ -775,7 +776,7 @@ function LogDoseSheet({
   async function handleSave() {
     setFormError(null);
     if (!TIME_RE.test(time)) {
-      setFormError('Enter a valid time (HH:MM).');
+      setFormError('Enter a valid time (hour 1–12, minute 00–59).');
       return;
     }
     const normalizedTime = normalizeTime(time);
@@ -892,7 +893,7 @@ function LogDoseSheet({
             </Text>
           ) : null}
 
-          <Field label="Actual time taken" value={time} onChangeText={setTime} placeholder="HH:MM" />
+          <TimeField label="Actual time taken" value={time} onChange={setTime} />
 
           {trackPain ? <LevelBlock label="Pain level" metric="pain" value={painLevel} onChange={setPainLevel} /> : null}
           {trackMood ? <LevelBlock label="Mood level" metric="mood" value={moodLevel} onChange={setMoodLevel} /> : null}
@@ -1507,7 +1508,7 @@ function EditForm({
     if (!form.asNeeded && form.scheduleMode === 'fixed_times') {
       const invalid = form.times.find((t) => !TIME_RE.test(t.time));
       if (invalid !== undefined) {
-        setFormError(`"${invalid.time}" isn't a valid time — use HH:MM (24h).`);
+        setFormError('Enter a valid reminder time (hour 1–12, minute 00–59).');
         return;
       }
     }
@@ -1520,7 +1521,7 @@ function EditForm({
       // first_dose_time is set — an empty one here would save fine but
       // silently drop the medication from every schedule/dashboard view.
       if (!form.firstDoseTime || !TIME_RE.test(form.firstDoseTime)) {
-        setFormError('First dose time is required for interval schedules — use HH:MM (24h).');
+        setFormError('First dose time is required for interval schedules.');
         return;
       }
     }
@@ -1657,14 +1658,9 @@ function EditForm({
             {form.scheduleMode === 'fixed_times' ? (
               <View className="gap-2">
                 {form.times.map((t, i) => (
-                  <View key={i} className="flex-row items-center gap-2">
-                    <View className="w-28">
-                      <Field label={`Time ${i + 1}`} value={t.time} onChangeText={(v) => updateTime(i, v)} placeholder="HH:MM" />
-                    </View>
-                    <Text muted className="mt-6 text-sm">
-                      {TIME_RE.test(t.time) ? to12h(t.time) : ''}
-                    </Text>
-                    <Pressable className="ml-auto mt-6 min-h-11 justify-center" onPress={() => removeTime(i)} hitSlop={8}>
+                  <View key={i} className="flex-row items-end gap-2">
+                    <TimeField label={`Time ${i + 1}`} value={t.time} onChange={(v) => updateTime(i, v)} />
+                    <Pressable className="ml-auto min-h-11 justify-center" onPress={() => removeTime(i)} hitSlop={8}>
                       <Text className="text-sm font-semibold text-status-danger dark:text-status-danger">Remove</Text>
                     </Pressable>
                   </View>
@@ -1677,7 +1673,7 @@ function EditForm({
                   <Field label="Every (hours)" keyboardType="numeric" value={form.intervalHours} onChangeText={(v) => update('intervalHours', v)} />
                 </View>
                 <View className="flex-1">
-                  <Field label="First dose (HH:MM)" value={form.firstDoseTime} onChangeText={(v) => update('firstDoseTime', v)} placeholder="08:00" />
+                  <TimeField label="First dose" value={form.firstDoseTime} onChange={(v) => update('firstDoseTime', v)} />
                 </View>
               </View>
             )}

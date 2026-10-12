@@ -44,7 +44,7 @@ export default function HelpScreen() {
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
 
   return (
-    <Screen edges={['left', 'right', 'bottom']} contentClassName="pt-4">
+    <Screen contentClassName="pt-4">
       <ScreenTitle>Help & FAQ</ScreenTitle>
       <Text muted className="text-sm">
         Answers to common questions about how RxTracker works. Tap a question to expand it.

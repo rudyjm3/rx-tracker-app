@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 
 import { AllergyPanel } from '@/components/AllergyPanel';
+import { AvatarPicker } from '@/components/avatar-picker';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
@@ -11,8 +12,16 @@ import { Screen } from '@/components/ui/screen';
 import { Text } from '@/components/ui/text';
 import { UnitField } from '@/components/ui/unit-field';
 import { convertHeight, convertWeight } from '@/lib/family';
-import { getUserProfile, upsertUserProfile, type UserProfileInput } from '@/lib/user-profile';
+import {
+  deleteAvatarIfManaged,
+  getUserProfile,
+  resolveAvatarChange,
+  upsertUserProfile,
+  type AvatarChange,
+  type UserProfileInput,
+} from '@/lib/user-profile';
 import type { UserProfile } from '@/lib/types/profile';
+import { isoToUsDate, maskBirthDateInput, usDateToIso } from '@/lib/utils';
 
 // Profile picture upload is skipped this round — no image picker is
 // installed, same deferral already made for family member photos.
@@ -66,11 +75,12 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
   const [firstName, setFirstName] = useState(profile?.first_name ?? '');
   const [lastName, setLastName] = useState(profile?.last_name ?? '');
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
-  const [birthDate, setBirthDate] = useState(profile?.birth_date ?? '');
+  const [birthDate, setBirthDate] = useState(isoToUsDate(profile?.birth_date));
   const [heightValue, setHeightValue] = useState(profile?.height_value != null ? String(profile.height_value) : '');
   const [heightUnit, setHeightUnit] = useState<'in' | 'cm'>((profile?.height_unit as 'in' | 'cm') ?? 'in');
   const [weightValue, setWeightValue] = useState(profile?.weight_value != null ? String(profile.weight_value) : '');
   const [weightUnit, setWeightUnit] = useState<'lb' | 'kg'>((profile?.weight_unit as 'lb' | 'kg') ?? 'lb');
+  const [avatar, setAvatar] = useState<AvatarChange>({ asset: null, remove: false });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -98,7 +108,12 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
   async function handleSave() {
     setFormError(null);
 
-    if (birthDate && birthDate > today) {
+    const birthIso = usDateToIso(birthDate);
+    if (birthDate && !birthIso) {
+      setFormError('Enter the birth date as MM-DD-YYYY.');
+      return;
+    }
+    if (birthIso && birthIso > today) {
       setFormError('Birth date cannot be in the future.');
       return;
     }
@@ -135,7 +150,7 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
-      birth_date: birthDate || null,
+      birth_date: birthIso,
       height_value: heightNum,
       height_unit: heightNum === null ? null : heightUnit,
       height_updated_at: heightNum === null ? null : heightChanged ? new Date().toISOString() : (profile?.height_updated_at ?? null),
@@ -145,10 +160,17 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
     };
 
     setSaving(true);
+    let uploaded: string | null = null;
     try {
-      await upsertUserProfile(input);
+      const { picture, stale } = await resolveAvatarChange(profile?.profile_picture ?? null, avatar);
+      if (avatar.asset) uploaded = picture;
+      await upsertUserProfile({ ...input, profile_picture: picture });
+      // Best effort: a leftover old file is harmless, a failed save is not.
+      deleteAvatarIfManaged(stale).catch(() => undefined);
       onSaved();
     } catch (e) {
+      // The new photo was uploaded but the profile wasn't saved — drop it.
+      deleteAvatarIfManaged(uploaded).catch(() => undefined);
       setFormError(e instanceof Error ? e.message : 'Failed to save changes');
     } finally {
       setSaving(false);
@@ -160,14 +182,22 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
       {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
       <Card flat className="gap-4 p-4">
+        <AvatarPicker
+          currentUrl={profile?.profile_picture ?? null}
+          label={displayName || firstName || '?'}
+          value={avatar}
+          onChange={setAvatar}
+        />
         <Field label="First name" value={firstName} onChangeText={setFirstName} maxLength={50} />
         <Field label="Last name" value={lastName} onChangeText={setLastName} maxLength={50} />
         <Field label="Display name (optional — defaults to first name)" value={displayName} onChangeText={setDisplayName} maxLength={100} />
         <Field
-          label="Birth date (YYYY-MM-DD)"
+          label="Birth date (MM-DD-YYYY)"
           value={birthDate}
-          onChangeText={setBirthDate}
-          placeholder="1990-01-15"
+          onChangeText={(v) => setBirthDate(maskBirthDateInput(v))}
+          placeholder="01-15-1990"
+          keyboardType="number-pad"
+          maxLength={10}
           autoCapitalize="none"
           autoCorrect={false}
         />

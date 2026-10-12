@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
+import { AvatarPicker } from '@/components/avatar-picker';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
@@ -13,6 +14,8 @@ import { TagPill } from '@/components/ui/tag-pill';
 import { Text } from '@/components/ui/text';
 import { UnitField } from '@/components/ui/unit-field';
 import { useActiveProfile } from '@/lib/active-profile';
+import { deleteAvatarIfManaged, resolveAvatarChange, type AvatarChange } from '@/lib/user-profile';
+import { maskBirthDateInput, usDateToIso } from '@/lib/utils';
 import {
   AVATAR_COLOR_PALETTE,
   FAMILY_RELATIONSHIPS,
@@ -22,9 +25,6 @@ import {
   type FamilyProfileInput,
 } from '@/lib/family';
 
-// profile_picture/photo upload is skipped this round — no image picker is
-// installed, and it's a separate scope (see AGENTS task notes for this
-// feature).
 export default function NewFamilyMemberScreen() {
   const { refreshFamilyProfiles, setActiveProfileId } = useActiveProfile();
 
@@ -38,6 +38,7 @@ export default function NewFamilyMemberScreen() {
   const [weightValue, setWeightValue] = useState('');
   const [weightUnit, setWeightUnit] = useState<'lb' | 'kg'>('lb');
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLOR_PALETTE[0]);
+  const [avatar, setAvatar] = useState<AvatarChange>({ asset: null, remove: false });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -69,7 +70,12 @@ export default function NewFamilyMemberScreen() {
       setFormError('Enter a display name or a first name.');
       return;
     }
-    if (birthDate && birthDate > today) {
+    const birthIso = usDateToIso(birthDate);
+    if (birthDate && !birthIso) {
+      setFormError('Enter the birth date as MM-DD-YYYY.');
+      return;
+    }
+    if (birthIso && birthIso > today) {
       setFormError('Birth date cannot be in the future.');
       return;
     }
@@ -97,7 +103,7 @@ export default function NewFamilyMemberScreen() {
       last_name: lastName.trim() || null,
       display_name: displayName.trim() || null,
       relationship: relationship || null,
-      birth_date: birthDate || null,
+      birth_date: birthIso,
       height_value: heightNum,
       height_unit: heightUnit,
       weight_value: weightNum,
@@ -106,8 +112,21 @@ export default function NewFamilyMemberScreen() {
     };
 
     setSaving(true);
+    let uploaded: string | null = null;
+    let created: Awaited<ReturnType<typeof createFamilyProfile>>;
     try {
-      const created = await createFamilyProfile(input);
+      const { picture } = await resolveAvatarChange(null, avatar);
+      uploaded = picture;
+      created = await createFamilyProfile({ ...input, profile_picture: picture });
+    } catch (e) {
+      // The photo was uploaded but the member wasn't created — drop it.
+      deleteAvatarIfManaged(uploaded).catch(() => undefined);
+      setFormError(e instanceof Error ? e.message : 'Failed to add family member');
+      setSaving(false);
+      return;
+    }
+
+    try {
       try {
         // A failed refresh here doesn't mean the create failed — the row
         // is already committed — so it must not land in the outer catch
@@ -136,6 +155,13 @@ export default function NewFamilyMemberScreen() {
       {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
       <Card className="gap-4 p-4">
+        <AvatarPicker
+          currentUrl={null}
+          label={displayName || firstName || '?'}
+          color={avatarColor}
+          value={avatar}
+          onChange={setAvatar}
+        />
         <Field label="First name" value={firstName} onChangeText={setFirstName} maxLength={50} placeholder="e.g. Sarah" />
         <Field label="Last name" value={lastName} onChangeText={setLastName} maxLength={50} placeholder="e.g. Johnson" />
         <Field label="Display name (optional — defaults to first name)" value={displayName} onChangeText={setDisplayName} maxLength={100} placeholder="e.g. Sarah" />
@@ -155,10 +181,12 @@ export default function NewFamilyMemberScreen() {
         </View>
 
         <Field
-          label="Birth date (YYYY-MM-DD)"
+          label="Birth date (MM-DD-YYYY)"
           value={birthDate}
-          onChangeText={setBirthDate}
-          placeholder="1990-01-15"
+          onChangeText={(v) => setBirthDate(maskBirthDateInput(v))}
+          placeholder="01-15-1990"
+          keyboardType="number-pad"
+          maxLength={10}
           autoCapitalize="none"
           autoCorrect={false}
         />
