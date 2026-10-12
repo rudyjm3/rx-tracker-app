@@ -7,8 +7,8 @@ import { useState } from 'react';
 import { LayoutChangeEvent, Pressable, View } from 'react-native';
 import Svg, { Circle, Line as SvgLine, Polyline, Text as SvgText } from 'react-native-svg';
 
-import { ThemedText } from '@/components/themed-text';
-import { Brand, Spacing } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
+import { Brand } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { MoodChartScheme } from '@/lib/app-settings';
 import {
@@ -87,24 +87,23 @@ export function TrendChart({ metric, points, rangeDays, moodChartScheme }: Trend
   const innerHeight = CHART_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
 
   return (
-    <View style={{ gap: Spacing.two }}>
+    <View className="gap-2">
       {rangeDays > 0 && drillDate && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two }}>
-          <ThemedText type="smallBold">Showing {showingDayLabel}</ThemedText>
-          <Pressable onPress={() => setDrillDate(null)} hitSlop={8}>
-            <ThemedText type="small" style={{ color: Brand.deepBlue, fontWeight: '600' }}>
-              ← Back to trend
-            </ThemedText>
+        // "Showing …" banner, DESIGN.md 11: radius 10, brand-bg, 1 px border.
+        <View className="flex-row items-center justify-between gap-2 rounded-control border border-brand-border bg-brand-bg px-3 py-2 dark:border-night-border dark:bg-night-selected">
+          <Text className="text-sm font-semibold">Showing {showingDayLabel}</Text>
+          <Pressable className="min-h-9 justify-center" onPress={() => setDrillDate(null)} hitSlop={8}>
+            <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">← Back to trend</Text>
           </Pressable>
         </View>
       )}
 
       <View onLayout={handleLayout} style={{ height: CHART_HEIGHT }}>
         {!hasData ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.four }}>
-            <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
-              No {metric} data recorded for this period.
-            </ThemedText>
+          <View className="flex-1 items-center justify-center px-6">
+            <Text muted className="text-center text-sm">
+              No {metric} level data recorded for this period.
+            </Text>
           </View>
         ) : width === 0 ? null : showingDay ? (
           <Svg width={width} height={CHART_HEIGHT}>
@@ -154,7 +153,7 @@ export function TrendChart({ metric, points, rangeDays, moodChartScheme }: Trend
                 .map((p) => `${PADDING_LEFT + (p.x / 1440) * innerWidth},${yToPixel(p.level, innerHeight)}`)
                 .join(' ')}
               fill="none"
-              stroke={Brand.deepBlue}
+              stroke={Brand.blue}
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -234,7 +233,7 @@ export function TrendChart({ metric, points, rangeDays, moodChartScheme }: Trend
                 })
                 .join(' ')}
               fill="none"
-              stroke={Brand.deepBlue}
+              stroke={Brand.blue}
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -282,9 +281,9 @@ export function TrendChart({ metric, points, rangeDays, moodChartScheme }: Trend
       </View>
 
       {!showingDay && hasData && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <Text muted className="text-xs">
           Tip: tap a point to see that day&apos;s {metricLabel.toLowerCase()} levels throughout the day.
-        </ThemedText>
+        </Text>
       )}
     </View>
   );

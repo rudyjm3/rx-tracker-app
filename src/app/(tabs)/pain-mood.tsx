@@ -1,23 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { TrendChart } from '@/components/TrendChart';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { SwitchRow } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/field';
+import { LevelGrid } from '@/components/ui/level-grid';
+import { PillTab, PillTabs } from '@/components/ui/pill-tabs';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle, SectionTitle } from '@/components/ui/screen-title';
+import { Sheet } from '@/components/ui/sheet';
+import { TagPill } from '@/components/ui/tag-pill';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/cn';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMoodChartScheme, type MoodChartScheme } from '@/lib/app-settings';
 import { confirmDestructive } from '@/lib/confirm';
@@ -52,14 +50,10 @@ import { localDateString } from '@/lib/utils';
 // entries only. See lib/pain-mood.ts's getHistory/getTrend doc comments.
 type MedicationFilter = string | null | undefined;
 
-const MIN_LEVEL = 1;
-const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 const DEFAULT_RANGE_DAYS: RangeDays = 7;
 
 export default function PainMoodScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
@@ -286,213 +280,127 @@ export default function PainMoodScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                load(true);
-                loadTrend();
-              }}
-            />
-          }
-        >
-          <ThemedText type="title" style={styles.title}>
-            Pain & Mood
-          </ThemedText>
+    <Screen
+      keyboardShouldPersistTaps="handled"
+      contentClassName="gap-6"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            load(true);
+            loadTrend();
+          }}
+        />
+      }>
+      <ScreenTitle>Pain & Mood</ScreenTitle>
 
-          {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+      <Card className="gap-3">
+        <SectionTitle>Log how you feel</SectionTitle>
+        {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
-          <View style={styles.switchRow}>
-            <ThemedText>Log pain</ThemedText>
-            <Switch value={trackPain} onValueChange={setTrackPain} />
-          </View>
-          {trackPain && (
-            <LevelStepper
-              label="Pain level"
-              value={painLevel}
-              onChange={setPainLevel}
-              color={levelColor('pain', painLevel)}
-            />
-          )}
+        <SwitchRow label="Log pain" value={trackPain} onValueChange={setTrackPain} />
+        {trackPain ? (
+          <LevelBlock label="Pain level" hint="(1 = minimal — 10 = severe)" metric="pain" value={painLevel} onChange={setPainLevel} />
+        ) : null}
 
-          <View style={styles.switchRow}>
-            <ThemedText>Log mood</ThemedText>
-            <Switch value={trackMood} onValueChange={setTrackMood} />
-          </View>
-          {trackMood && (
-            <>
-              <LevelStepper
-                label="Mood level"
-                value={moodLevel}
-                onChange={setMoodLevel}
-                color={levelColor('mood', moodLevel)}
-              />
-              <View style={styles.tagsHeaderRow}>
+        <SwitchRow label="Log mood" value={trackMood} onValueChange={setTrackMood} />
+        {trackMood ? (
+          <>
+            <LevelBlock label="Mood level" hint="(1 = very low — 10 = excellent)" metric="mood" value={moodLevel} onChange={setMoodLevel} />
+            <View className="gap-2">
+              <View className="flex-row items-center justify-between">
                 <FieldLabel>Tags</FieldLabel>
-                <Pressable onPress={() => setManageTagsOpen(true)}>
-                  <ThemedText type="small" style={styles.manageTagsLink}>
-                    Manage tags
-                  </ThemedText>
+                <Pressable className="min-h-11 justify-center" hitSlop={8} onPress={() => setManageTagsOpen(true)}>
+                  <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Manage tags</Text>
                 </Pressable>
               </View>
-              <View style={styles.tagList}>
-                {moodTags.map((tag) => {
-                  const selected = selectedTagIds.has(tag.id);
-                  return (
-                    <Pressable
-                      key={tag.id}
-                      style={[styles.tagChip, selected && styles.tagChipSelected]}
-                      onPress={() => toggleTag(tag.id)}
-                    >
-                      <ThemedText type="small" style={selected ? styles.tagTextSelected : styles.tagText}>
-                        {tag.name}
-                      </ThemedText>
-                    </Pressable>
-                  );
-                })}
+              <View className="flex-row flex-wrap gap-1.5">
+                {moodTags.map((tag) => (
+                  <TagPill key={tag.id} label={tag.name} selected={selectedTagIds.has(tag.id)} onPress={() => toggleTag(tag.id)} />
+                ))}
               </View>
-            </>
-          )}
+            </View>
+          </>
+        ) : null}
 
+        <View className="gap-1">
           <FieldLabel>Note (optional)</FieldLabel>
-          <TextInput
-            style={[styles.input, styles.multiline, { color: theme.text }]}
+          <Input
+            className="min-h-20 py-2"
+            style={{ textAlignVertical: 'top' }}
             value={note}
             onChangeText={setNote}
             placeholder="How are you feeling?"
-            placeholderTextColor={theme.textSecondary}
             multiline
           />
+        </View>
 
-          <Pressable
-            style={[styles.primaryButton, (saving || (!trackPain && !trackMood)) && styles.disabled]}
-            onPress={handleSave}
-            disabled={saving || (!trackPain && !trackMood)}
-          >
-            {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save entry</ThemedText>}
-          </Pressable>
-
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            Trend
-          </ThemedText>
-
-          <View style={styles.metricToggleRow}>
-            {(['pain', 'mood'] as const).map((m) => (
-              <Pressable
-                key={m}
-                style={[styles.metricChip, trendMetric === m && styles.metricChipSelected]}
-                onPress={() => setTrendMetric(m)}
-              >
-                <ThemedText
-                  type="small"
-                  style={trendMetric === m ? styles.metricChipTextSelected : undefined}
-                >
-                  {m === 'pain' ? 'Pain' : 'Mood'}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.medFilterRow}>
-            <Pressable
-              style={[styles.medFilterChip, medicationFilter === undefined && styles.medFilterChipSelected]}
-              onPress={() => setMedicationFilter(undefined)}
-            >
-              <ThemedText
-                type="small"
-                style={medicationFilter === undefined ? styles.medFilterChipTextSelected : undefined}
-              >
-                All
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              style={[styles.medFilterChip, medicationFilter === null && styles.medFilterChipSelected]}
-              onPress={() => setMedicationFilter(null)}
-            >
-              <ThemedText
-                type="small"
-                style={medicationFilter === null ? styles.medFilterChipTextSelected : undefined}
-              >
-                Independent
-              </ThemedText>
-            </Pressable>
-            {filterableMedications.map((med) => (
-              <Pressable
-                key={med.id}
-                style={[styles.medFilterChip, medicationFilter === med.id && styles.medFilterChipSelected]}
-                onPress={() => setMedicationFilter(med.id)}
-              >
-                <ThemedText
-                  type="small"
-                  style={medicationFilter === med.id ? styles.medFilterChipTextSelected : undefined}
-                >
-                  {med.name}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.rangeRow}>
-            {RANGE_OPTIONS.map((opt) => (
-              <Pressable
-                key={opt.days}
-                style={[styles.rangeChip, trendRangeDays === opt.days && styles.rangeChipSelected]}
-                onPress={() => setTrendRangeDays(opt.days)}
-              >
-                <ThemedText
-                  type="small"
-                  style={trendRangeDays === opt.days ? styles.rangeChipTextSelected : undefined}
-                >
-                  {opt.label}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          {trendError && <ThemedText style={styles.error}>{trendError}</ThemedText>}
-
-          {trendLoading ? (
-            <ActivityIndicator style={styles.historyLoading} />
-          ) : (
-            <TrendChart
-              metric={trendMetric}
-              points={trendPoints}
-              rangeDays={trendRangeDays}
-              moodChartScheme={moodChartScheme}
-            />
-          )}
-
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            Recent entries
-          </ThemedText>
-
-          {loadError && <ThemedText style={styles.error}>{loadError}</ThemedText>}
-
-          {loading ? (
-            <ActivityIndicator style={styles.historyLoading} />
-          ) : history.length === 0 ? (
-            <ThemedText themeColor="textSecondary">No entries yet. Log a pain or mood level above.</ThemedText>
-          ) : (
-            history.map((entry) => (
-              <HistoryCard key={entry.id} entry={entry} onEdit={() => setEditingEntry(entry)} />
-            ))
-          )}
-        </ScrollView>
-      </SafeAreaView>
-
-      {manageTagsOpen && (
-        <ManageTagsSheet
-          tags={moodTags}
-          onClose={() => setManageTagsOpen(false)}
-          onChanged={() => load()}
+        <Button
+          label={saving ? 'Saving…' : 'Save entry'}
+          loading={saving}
+          disabled={!trackPain && !trackMood}
+          onPress={handleSave}
+          className="w-full"
         />
-      )}
+      </Card>
 
-      {editingEntry && (
+      <View className="gap-3">
+        <SectionTitle>Trend</SectionTitle>
+
+        <PillTabs
+          tabs={[
+            { value: 'pain', label: 'Pain' },
+            { value: 'mood', label: 'Mood' },
+          ]}
+          value={trendMetric}
+          onChange={setTrendMetric}
+        />
+
+        <View className="flex-row flex-wrap gap-2">
+          <PillTab label="All" active={medicationFilter === undefined} onPress={() => setMedicationFilter(undefined)} />
+          <PillTab label="Independent" active={medicationFilter === null} onPress={() => setMedicationFilter(null)} />
+          {filterableMedications.map((med) => (
+            <PillTab key={med.id} label={med.name} active={medicationFilter === med.id} onPress={() => setMedicationFilter(med.id)} />
+          ))}
+        </View>
+
+        <PillTabs
+          variant="range"
+          tabs={RANGE_OPTIONS.map((opt) => ({ value: String(opt.days), label: opt.label }))}
+          value={String(trendRangeDays)}
+          onChange={(v) => setTrendRangeDays(Number(v) as RangeDays)}
+        />
+
+        {trendError ? <Text className="text-sm text-status-danger dark:text-status-danger">{trendError}</Text> : null}
+
+        <Card className="p-3">
+          {trendLoading ? (
+            <ActivityIndicator className="my-8" />
+          ) : (
+            <TrendChart metric={trendMetric} points={trendPoints} rangeDays={trendRangeDays} moodChartScheme={moodChartScheme} />
+          )}
+        </Card>
+      </View>
+
+      <View className="gap-3">
+        <SectionTitle>Recent entries</SectionTitle>
+
+        {loadError ? <Text className="text-sm text-status-danger dark:text-status-danger">{loadError}</Text> : null}
+
+        {loading ? (
+          <ActivityIndicator className="my-4" />
+        ) : history.length === 0 ? (
+          <Text muted className="text-sm">
+            No entries yet. Log a pain or mood level above.
+          </Text>
+        ) : (
+          history.map((entry) => <HistoryCard key={entry.id} entry={entry} onEdit={() => setEditingEntry(entry)} />)
+        )}
+      </View>
+
+      {manageTagsOpen ? <ManageTagsSheet tags={moodTags} onClose={() => setManageTagsOpen(false)} onChanged={() => load()} /> : null}
+
+      {editingEntry ? (
         <EditEntrySheet
           entry={editingEntry}
           moodTags={moodTags}
@@ -506,8 +414,8 @@ export default function PainMoodScreen() {
             await Promise.all([load(true), loadTrend()]);
           }}
         />
-      )}
-    </ThemedView>
+      ) : null}
+    </Screen>
   );
 }
 
@@ -520,8 +428,6 @@ function ManageTagsSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [localTags, setLocalTags] = useState(tags);
   const [newTagName, setNewTagName] = useState('');
   const [adding, setAdding] = useState(false);
@@ -529,7 +435,6 @@ function ManageTagsSheet({
   const [editingName, setEditingName] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   async function handleAdd() {
     const name = newTagName.trim();
     if (!name) return;
@@ -606,100 +511,69 @@ function ManageTagsSheet({
     );
   }
 
+  // Rows: radius 10, border, p-8 (DESIGN.md 9.20).
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ThemedText type="subtitle" style={styles.modalTitle}>
-                Manage tags
-              </ThemedText>
+    <Sheet onClose={onClose}>
+      <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">Manage tags</Text>
 
-              {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Text className="mb-2 text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
-              <ScrollView style={styles.manageTagsList}>
-                {localTags.map((tag) => (
-                  <View key={tag.id} style={styles.manageTagRow}>
-                    {editingId === tag.id ? (
-                      <TextInput
-                        style={[styles.input, styles.manageTagInput]}
-                        value={editingName}
-                        onChangeText={setEditingName}
-                        autoFocus
-                        onSubmitEditing={() => handleRename(tag.id)}
-                      />
-                    ) : (
-                      <Pressable style={styles.manageTagNameButton} onPress={() => startEditing(tag)}>
-                        <ThemedText>{tag.name}</ThemedText>
-                      </Pressable>
-                    )}
-
-                    <View style={styles.manageTagActions}>
-                      <View style={styles.manageTagAlwaysShow}>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Always show
-                        </ThemedText>
-                        <Switch
-                          value={tag.always_show}
-                          onValueChange={() => handleToggleAlwaysShow(tag)}
-                          disabled={busyId === tag.id}
-                        />
-                      </View>
-                      {editingId === tag.id ? (
-                        <Pressable
-                          onPress={() => handleRename(tag.id)}
-                          disabled={busyId === tag.id}
-                          hitSlop={8}
-                        >
-                          <ThemedText style={styles.manageTagSaveText}>Save</ThemedText>
-                        </Pressable>
-                      ) : (
-                        <Pressable onPress={() => confirmDelete(tag)} disabled={busyId === tag.id} hitSlop={8}>
-                          <ThemedText style={styles.deleteText}>Delete</ThemedText>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-
-              <View style={styles.addTagRow}>
-                <TextInput
-                  style={[styles.input, styles.addTagInput]}
-                  value={newTagName}
-                  onChangeText={setNewTagName}
-                  placeholder="New tag name"
-                  placeholderTextColor={theme.textSecondary}
-                  onSubmitEditing={handleAdd}
+      <ScrollView className="max-h-[360px]">
+        <View className="gap-2">
+          {localTags.length === 0 ? (
+            <Text muted className="text-sm">
+              No tags yet.
+            </Text>
+          ) : null}
+          {localTags.map((tag) => (
+            <View key={tag.id} className="flex-row items-center justify-between gap-2 rounded-control border border-brand-border p-2 dark:border-night-border">
+              {editingId === tag.id ? (
+                <Input
+                  className="flex-1 py-1"
+                  value={editingName}
+                  onChangeText={setEditingName}
+                  autoFocus
+                  onSubmitEditing={() => handleRename(tag.id)}
                 />
-                <Pressable
-                  style={[styles.primaryButton, styles.addTagButton, (adding || !newTagName.trim()) && styles.disabled]}
-                  onPress={handleAdd}
-                  disabled={adding || !newTagName.trim()}
-                >
-                  {adding ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Add</ThemedText>}
+              ) : (
+                <Pressable className="min-h-11 flex-1 justify-center" onPress={() => startEditing(tag)}>
+                  <Text className="text-sm">{tag.name}</Text>
                 </Pressable>
-              </View>
+              )}
 
-              <Pressable style={styles.closeButton} onPress={onClose}>
-                <ThemedText style={styles.closeButtonText}>Done</ThemedText>
-              </Pressable>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+              <View className="flex-row items-center gap-3">
+                <SwitchRow
+                  className="py-0"
+                  label="Always show"
+                  value={tag.always_show}
+                  onValueChange={() => handleToggleAlwaysShow(tag)}
+                  disabled={busyId === tag.id}
+                />
+                {editingId === tag.id ? (
+                  <Pressable className="min-h-11 justify-center" onPress={() => handleRename(tag.id)} disabled={busyId === tag.id} hitSlop={8}>
+                    <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Save</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable className="min-h-11 justify-center" onPress={() => confirmDelete(tag)} disabled={busyId === tag.id} hitSlop={8}>
+                    <Text className="text-sm font-semibold text-status-danger dark:text-status-danger">Delete</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      <View className="mt-3 flex-row items-center gap-2">
+        <Input className="flex-1" value={newTagName} onChangeText={setNewTagName} placeholder="New tag name" onSubmitEditing={handleAdd} />
+        <Button label="Add" loading={adding} disabled={!newTagName.trim()} onPress={handleAdd} className="min-w-[72px]" />
+      </View>
+
+      <Button label="Done" variant="ghost" className="mt-3" onPress={onClose} />
+    </Sheet>
   );
 }
 
-// Edits or deletes a standalone entry in place — port of rx-tracker-web's
-// EditLevelLogDialog, scoped to this app's merged-feed history (no
-// medication-attachment picker, since this app has no equivalent of web's
-// MedicationSelector). Only ever opened for entry.source === 'standalone'
-// (see HistoryCard) — a dose-linked entry has no matching row in
-// standalone_pain_mood_logs for updateStandaloneLog/deleteStandaloneLog to
-// touch, and is edited from the medication's own dose history instead.
 function EditEntrySheet({
   entry,
   moodTags,
@@ -713,8 +587,6 @@ function EditEntrySheet({
   onSaved: () => void;
   onDeleted: () => void;
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [trackPain, setTrackPain] = useState(entry.painLevel != null);
   const [trackMood, setTrackMood] = useState(entry.moodLevel != null);
   const [painLevel, setPainLevel] = useState(entry.painLevel ?? DEFAULT_LEVEL);
@@ -777,215 +649,140 @@ function EditEntrySheet({
   }
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ScrollView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Edit entry
-                </ThemedText>
+    <Sheet onClose={onClose} dismissible={!saving && !deleting}>
+      <ScrollView keyboardShouldPersistTaps="handled" className="max-h-[560px]">
+        <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">Edit entry</Text>
 
-                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+        {formError ? <Callout kind="danger" className="mb-3">{formError}</Callout> : null}
 
-                <View style={styles.switchRow}>
-                  <ThemedText>Log pain</ThemedText>
-                  <Switch value={trackPain} onValueChange={setTrackPain} />
+        <View className="gap-3">
+          <SwitchRow label="Log pain" value={trackPain} onValueChange={setTrackPain} />
+          {trackPain ? (
+            <LevelBlock label="Pain level" hint="(1 = minimal — 10 = severe)" metric="pain" value={painLevel} onChange={setPainLevel} />
+          ) : null}
+
+          <SwitchRow label="Log mood" value={trackMood} onValueChange={setTrackMood} />
+          {trackMood ? (
+            <>
+              <LevelBlock label="Mood level" hint="(1 = very low — 10 = excellent)" metric="mood" value={moodLevel} onChange={setMoodLevel} />
+              <View className="gap-2">
+                <FieldLabel>Tags</FieldLabel>
+                <View className="flex-row flex-wrap gap-1.5">
+                  {moodTags.map((tag) => (
+                    <TagPill key={tag.id} label={tag.name} selected={selectedTagIds.has(tag.id)} onPress={() => toggleTag(tag.id)} />
+                  ))}
                 </View>
-                {trackPain && (
-                  <LevelStepper
-                    label="Pain level"
-                    value={painLevel}
-                    onChange={setPainLevel}
-                    color={levelColor('pain', painLevel)}
-                  />
-                )}
+              </View>
+            </>
+          ) : null}
 
-                <View style={styles.switchRow}>
-                  <ThemedText>Log mood</ThemedText>
-                  <Switch value={trackMood} onValueChange={setTrackMood} />
-                </View>
-                {trackMood && (
-                  <>
-                    <LevelStepper
-                      label="Mood level"
-                      value={moodLevel}
-                      onChange={setMoodLevel}
-                      color={levelColor('mood', moodLevel)}
-                    />
-                    <FieldLabel>Tags</FieldLabel>
-                    <View style={styles.tagList}>
-                      {moodTags.map((tag) => {
-                        const selected = selectedTagIds.has(tag.id);
-                        return (
-                          <Pressable
-                            key={tag.id}
-                            style={[styles.tagChip, selected && styles.tagChipSelected]}
-                            onPress={() => toggleTag(tag.id)}
-                          >
-                            <ThemedText type="small" style={selected ? styles.tagTextSelected : styles.tagText}>
-                              {tag.name}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </>
-                )}
+          <View className="gap-1">
+            <FieldLabel>Note (optional)</FieldLabel>
+            <Input
+              className="min-h-20 py-2"
+              style={{ textAlignVertical: 'top' }}
+              value={note}
+              onChangeText={setNote}
+              placeholder="How are you feeling?"
+              multiline
+            />
+          </View>
+        </View>
 
-                <FieldLabel>Note (optional)</FieldLabel>
-                <TextInput
-                  style={[styles.input, styles.multiline]}
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="How are you feeling?"
-                  placeholderTextColor={theme.textSecondary}
-                  multiline
-                />
+        <View className="mt-4 flex-row gap-2">
+          <Button label="Cancel" variant="ghost" className="flex-1" onPress={onClose} disabled={saving || deleting} />
+          <Button
+            label={saving ? 'Saving…' : 'Save'}
+            className="flex-1"
+            loading={saving}
+            disabled={deleting || (!trackPain && !trackMood)}
+            onPress={handleSave}
+          />
+        </View>
 
-                <View style={styles.actions}>
-                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
-                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.primaryButton,
-                      { flex: 1, marginTop: 0 },
-                      (saving || (!trackPain && !trackMood)) && styles.disabled,
-                    ]}
-                    onPress={handleSave}
-                    disabled={saving || deleting || (!trackPain && !trackMood)}
-                  >
-                    {saving ? (
-                      <ActivityIndicator color="#ffffff" />
-                    ) : (
-                      <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
-                    )}
-                  </Pressable>
-                </View>
-
-                <Pressable onPress={handleDelete} disabled={saving || deleting} style={styles.deleteButton}>
-                  <ThemedText style={styles.deleteButtonText}>
-                    {deleting ? 'Deleting…' : 'Delete entry'}
-                  </ThemedText>
-                </Pressable>
-              </ScrollView>
-            </SafeAreaView>
-          </ThemedView>
+        <Pressable onPress={handleDelete} disabled={saving || deleting} className="mt-2 min-h-11 items-center justify-center">
+          <Text className="text-sm font-semibold text-status-danger dark:text-status-danger">{deleting ? 'Deleting…' : 'Delete entry'}</Text>
         </Pressable>
-      </Pressable>
-    </Modal>
+      </ScrollView>
+    </Sheet>
   );
 }
 
-function LevelStepper({
+// Level picker block: label, hint and the 1–10 grid (DESIGN.md 6.3 / 9.1).
+function LevelBlock({
   label,
+  hint,
+  metric,
   value,
   onChange,
-  color,
 }: {
   label: string;
+  hint: string;
+  metric: WellbeingMetric;
   value: number;
   onChange: (value: number) => void;
-  color: string;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={styles.stepperBlock}>
-      <FieldLabel>{label}</FieldLabel>
-      <View style={styles.stepperRow}>
-        <Pressable
-          style={styles.stepperButton}
-          onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
-          disabled={value <= MIN_LEVEL}
-          hitSlop={8}
-        >
-          <ThemedText style={styles.stepperButtonText}>−</ThemedText>
-        </Pressable>
-        <View style={[styles.stepperValue, { borderColor: color }]}>
-          <ThemedText type="smallBold" style={{ color }}>
-            {value}
-          </ThemedText>
-        </View>
-        <Pressable
-          style={styles.stepperButton}
-          onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
-          disabled={value >= MAX_LEVEL}
-          hitSlop={8}
-        >
-          <ThemedText style={styles.stepperButtonText}>+</ThemedText>
-        </Pressable>
-        <ThemedText type="small" themeColor="textSecondary">
-          out of {MAX_LEVEL}
-        </ThemedText>
-      </View>
+    <View className="gap-1.5">
+      <Text className="text-sm font-medium">
+        {label}{' '}
+        <Text muted className="text-xs font-normal">
+          {hint}
+        </Text>
+      </Text>
+      <LevelGrid metric={metric} value={value} onChange={onChange} />
+    </View>
+  );
+}
+
+// Outlined score pill in the tier color, e.g. "Pain 7/10" (DESIGN.md 8.9).
+function LevelBadge({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <View className="rounded-full border px-2 py-0.5" style={{ borderColor: color }}>
+      <Text className="text-xs font-semibold" style={{ color }}>
+        {label} {value}/10
+      </Text>
     </View>
   );
 }
 
 function HistoryCard({ entry, onEdit }: { entry: StandaloneHistoryEntry; onEdit: () => void }) {
-  const styles = getStyles(useTheme());
   return (
-    <ThemedView type="backgroundElement" style={styles.historyCard}>
-      <View style={styles.historyHeaderRow}>
-        <ThemedText type="small" themeColor="textSecondary">
+    <Card className="gap-1.5 p-3">
+      <View className="flex-row items-center justify-between gap-2">
+        <Text muted className="text-xs font-semibold">
           {formatLoggedAt(entry.loggedAt)}
-        </ThemedText>
-        <View style={styles.historyBadges}>
-          {entry.painLevel != null && (
-            <LevelBadge label="Pain" value={entry.painLevel} color={levelColor('pain', entry.painLevel)} />
-          )}
-          {entry.moodLevel != null && (
-            <LevelBadge label="Mood" value={entry.moodLevel} color={levelColor('mood', entry.moodLevel)} />
-          )}
+        </Text>
+        <View className="flex-row gap-1">
+          {entry.painLevel != null ? <LevelBadge label="Pain" value={entry.painLevel} color={levelColor('pain', entry.painLevel)} /> : null}
+          {entry.moodLevel != null ? <LevelBadge label="Mood" value={entry.moodLevel} color={levelColor('mood', entry.moodLevel)} /> : null}
         </View>
       </View>
-      {entry.note ? <ThemedText style={styles.historyNote}>{entry.note}</ThemedText> : null}
-      {entry.tags.length > 0 && (
-        <View style={styles.tagList}>
+      {entry.note ? <Text className="text-sm italic">{entry.note}</Text> : null}
+      {entry.tags.length > 0 ? (
+        <View className="flex-row flex-wrap gap-1">
           {entry.tags.map((tag) => (
-            <View key={tag} style={styles.historyTagChip}>
-              <ThemedText type="small" themeColor="textSecondary">
+            <View key={tag} className="rounded-full bg-brand-bg px-2 py-0.5 dark:bg-night-selected">
+              <Text muted className="text-xs">
                 {tag}
-              </ThemedText>
+              </Text>
             </View>
           ))}
         </View>
-      )}
+      ) : null}
       {entry.source === 'standalone' ? (
-        <Pressable onPress={onEdit} hitSlop={8} style={styles.historyEditButton}>
-          <ThemedText type="small" style={styles.manageTagsLink}>
-            Edit
-          </ThemedText>
-        </Pressable>
+        <Button label="Edit" variant="secondary" size="compact" className="self-start" onPress={onEdit} />
       ) : (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.historyEditButton}>
+        <Text muted className="text-xs">
           Logged with a dose — edit from the medication&apos;s history
-        </ThemedText>
+        </Text>
       )}
-    </ThemedView>
-  );
-}
-
-function LevelBadge({ label, value, color }: { label: string; value: number; color: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <View style={[styles.levelBadge, { backgroundColor: color }]}>
-      <ThemedText type="small" style={styles.levelBadgeText}>
-        {label} {value}
-      </ThemedText>
-    </View>
+    </Card>
   );
 }
 
 function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
-  );
+  return <Text className={cn('text-sm font-medium')}>{children}</Text>;
 }
 
 function formatLoggedAt(iso: string): string {
@@ -996,132 +793,4 @@ function formatLoggedAt(iso: string): string {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-  title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
-  error: { color: Brand.danger, marginVertical: Spacing.two },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  stepperBlock: { marginTop: Spacing.one },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  stepperButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperButtonText: { fontSize: 20, fontWeight: '600' },
-  stepperValue: {
-    width: 48,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
-  tagChip: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-  },
-  tagChipSelected: { backgroundColor: theme.accent, borderColor: theme.accent },
-  tagText: { color: theme.textSecondary },
-  tagTextSelected: { color: '#ffffff', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  primaryButton: { backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', marginTop: Spacing.four },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { fontWeight: '600' },
-  deleteButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  deleteButtonText: { color: Brand.danger, fontWeight: '600' },
-  historyEditButton: { marginTop: Spacing.one, alignSelf: 'flex-start' },
-  sectionTitle: { marginTop: Spacing.five },
-  metricToggleRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
-  metricChip: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.two,
-  },
-  metricChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  metricChipTextSelected: { fontWeight: '700', color: theme.accent },
-  medFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two },
-  medFilterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  medFilterChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  medFilterChipTextSelected: { fontWeight: '700', color: theme.accent },
-  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.two },
-  rangeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  rangeChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  rangeChipTextSelected: { fontWeight: '700', color: theme.accent },
-  historyLoading: { marginTop: Spacing.three },
-  historyCard: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one, marginTop: Spacing.two },
-  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  historyBadges: { flexDirection: 'row', gap: Spacing.one },
-  levelBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
-  levelBadgeText: { color: '#ffffff', fontWeight: '600' },
-  historyNote: { marginTop: Spacing.half },
-  historyTagChip: { borderWidth: 1, borderColor: theme.border, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
-  tagsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  manageTagsLink: { color: Brand.deepBlue, fontWeight: '600' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheetWrapper: { maxHeight: '85%' },
-  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  manageTagsList: { maxHeight: 360 },
-  manageTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  manageTagNameButton: { flex: 1 },
-  manageTagInput: { flex: 1, paddingVertical: Spacing.one },
-  manageTagActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  manageTagAlwaysShow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  manageTagSaveText: { color: Brand.deepBlue, fontWeight: '600' },
-  deleteText: { color: Brand.danger, fontWeight: '600' },
-  addTagRow: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.three, alignItems: 'center' },
-  addTagInput: { flex: 1 },
-  addTagButton: { marginTop: 0, paddingHorizontal: Spacing.four, minWidth: 72 },
-  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
-});
 }

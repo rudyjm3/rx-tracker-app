@@ -11,6 +11,21 @@ import { Text } from './text';
 // `size="auth"` is the larger sign-in / sign-up input: 1.5 px border, leading
 // icon, 15 px text, a 4 px brand-blue/10 halo on focus and (for passwords) a
 // trailing show/hide toggle.
+// Bare input with the default control styling, for rows that supply their own
+// label (e.g. "Mark dose missed after [ 60 ] minutes").
+export function Input({ className, ...props }: TextInputProps & { className?: string }) {
+  return (
+    <TextInput
+      placeholderTextColor="#60708A"
+      className={cn(
+        'min-h-[44px] rounded-control border border-brand-border bg-white px-3 py-2 text-sm text-brand-text focus:border-brand-blue dark:border-night-border dark:bg-night-card dark:text-white',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 type FieldProps = TextInputProps & {
   label: string;
   error?: string;

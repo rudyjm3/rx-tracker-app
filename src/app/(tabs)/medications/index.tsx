@@ -1,22 +1,26 @@
 import { useCallback, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { ActionSheet } from '@/components/ui/action-sheet';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { MedName } from '@/components/ui/med-name';
+import { MedTypeBadge } from '@/components/ui/med-type-badge';
+import { PillTabs } from '@/components/ui/pill-tabs';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import {
   getActiveMedications,
   getGroupDoseOverridesByMedication,
   getInactiveMedications,
 } from '@/lib/medications';
-import { MEDICATION_TYPE_COLORS, MEDICATION_TYPE_LABELS } from '@/lib/medication-ui';
+import { cn } from '@/lib/cn';
 import type { Medication } from '@/lib/types/medications';
 import { daysUntilRunout, scheduleSummary, type GroupDoseOverride } from '@/lib/utils';
 
@@ -36,8 +40,6 @@ function formatMedDate(value: string | null | undefined): string {
 type ListTab = 'active' | 'inactive';
 
 export default function MedicationsScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -89,70 +91,53 @@ export default function MedicationsScreen() {
   );
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <View style={styles.titleRow}>
-          <ThemedText type="title" style={styles.title}>
-            Medications
-          </ThemedText>
-          <View style={styles.titleActions}>
-            <Pressable style={styles.groupsButton} onPress={() => router.push('/groups')} hitSlop={8}>
-              <ThemedText type="small" style={styles.groupsButtonText}>
-                Manage groups
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              style={styles.addButton}
-              onPress={() => router.push('/medications/new')}
-              hitSlop={8}
-              accessibilityLabel="Add medication"
-            >
-              <ThemedText style={styles.addButtonText}>+</ThemedText>
-            </Pressable>
-          </View>
+    <Screen
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} />}>
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <ScreenTitle>Medication Plan</ScreenTitle>
+      </View>
+
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <PillTabs
+          tabs={[
+            { value: 'active', label: 'Active' },
+            { value: 'inactive', label: 'Inactive' },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+        <View className="flex-row items-center gap-2">
+          <Button label="Manage groups" variant="secondary" size="compact" onPress={() => router.push('/groups')} />
+          <Button
+            label="+ Add medication"
+            size="compact"
+            accessibilityLabel="Add medication"
+            onPress={() => router.push('/medications/new')}
+          />
         </View>
+      </View>
 
-        <View style={styles.segmented}>
-          <SegmentButton label="Active" active={tab === 'active'} onPress={() => setTab('active')} />
-          <SegmentButton label="Inactive" active={tab === 'inactive'} onPress={() => setTab('inactive')} />
-        </View>
+      {(error ?? supplyDismissError) ? (
+        <Text className="text-sm text-status-danger dark:text-status-danger">{error ?? supplyDismissError}</Text>
+      ) : null}
 
-        {(error ?? supplyDismissError) && (
-          <ThemedText style={styles.error}>{error ?? supplyDismissError}</ThemedText>
-        )}
+      {loading ? (
+        <ActivityIndicator className="mt-8" />
+      ) : (
+        <>
+          <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />
 
-        {loading ? (
-          <ActivityIndicator style={styles.loading} />
-        ) : (
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(tab, true)} />}
-          >
-            <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />
-
-            {medications.length === 0 && (
-              <ThemedText themeColor="textSecondary">
-                {tab === 'active' ? 'No active medications yet.' : 'No inactive medications.'}
-              </ThemedText>
-            )}
-            {medications.map((med) => (
-              <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
-            ))}
-          </ScrollView>
-        )}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-function SegmentButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const styles = getStyles(useTheme());
-  return (
-    <Pressable style={[styles.segmentButton, active && styles.segmentButtonActive]} onPress={onPress}>
-      <ThemedText type="smallBold" style={active ? styles.segmentTextActive : styles.segmentText}>
-        {label}
-      </ThemedText>
-    </Pressable>
+          {medications.length === 0 ? (
+            <Text muted className="text-sm">
+              {tab === 'active' ? 'No medications yet. Add your first one to get started.' : 'No inactive medications.'}
+            </Text>
+          ) : null}
+          {medications.map((med) => (
+            <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
+          ))}
+        </>
+      )}
+    </Screen>
   );
 }
 
@@ -163,8 +148,6 @@ function MedicationCard({
   medication: Medication;
   groupDoseOverrides?: GroupDoseOverride[];
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [menuOpen, setMenuOpen] = useState(false);
   const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
   const current = medication.current_quantity ?? 0;
@@ -178,99 +161,87 @@ function MedicationCard({
     router.push(action ? `/medications/${medication.id}?action=${action}` : `/medications/${medication.id}`);
   }
 
+  // Standard card (DESIGN.md 8.5): name -> dose -> type badge (+ low-supply
+  // pill) and the kebab on one row, then schedule, inventory and dates.
   return (
-    <Pressable onPress={() => goToDetail()}>
-      <ThemedView type="backgroundElement" style={styles.card}>
-      <View style={styles.cardHeader}>
-        <ThemedText type="smallBold" style={styles.medName}>
-          {medication.name}
-          {medication.dose ? ` — ${medication.dose}` : ''}
-        </ThemedText>
-        <View style={styles.badgeGroup}>
-          {isLowSupply && (
-            <View style={[styles.typeBadge, { backgroundColor: Brand.warning + '22' }]}>
-              <ThemedText type="small" style={{ color: Brand.warning, fontWeight: '700' }}>
-                Low supply
-              </ThemedText>
+    <>
+      <Pressable accessibilityLabel={`${medication.name} details`} onPress={() => goToDetail()}>
+        <Card className="gap-1">
+          <View className="flex-row items-start justify-between gap-2">
+            <View className="flex-1 flex-row flex-wrap items-center gap-x-2 gap-y-1">
+              <MedName name={medication.name} dose={medication.dose} />
+              <MedTypeBadge type={medication.medication_type} />
+              {isLowSupply ? (
+                <View className="rounded-full bg-status-warning/10 px-2 py-0.5">
+                  <Text className="text-xs font-medium text-status-warning dark:text-status-warning">Low supply</Text>
+                </View>
+              ) : null}
             </View>
-          )}
-          <View style={[styles.typeBadge, { backgroundColor: MEDICATION_TYPE_COLORS[medication.medication_type] + '22' }]}>
-            <ThemedText type="small" style={{ color: MEDICATION_TYPE_COLORS[medication.medication_type], fontWeight: '700' }}>
-              {MEDICATION_TYPE_LABELS[medication.medication_type]}
-            </ThemedText>
+            <Pressable
+              className="-mr-2 -mt-2 h-11 w-11 items-center justify-center"
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`${medication.name} actions`}>
+              <Ionicons name="ellipsis-vertical" size={18} color="#60708A" />
+            </Pressable>
           </View>
-          <Pressable
-            style={styles.menuButton}
-            onPress={() => setMenuOpen(true)}
-            hitSlop={8}
-            accessibilityLabel={`${medication.name} actions`}
-          >
-            <Ionicons name="ellipsis-vertical" size={16} color={theme.textSecondary} />
-          </Pressable>
-        </View>
-      </View>
 
-      <ThemedText type="small" themeColor="textSecondary">
-        {scheduleSummary(medication)}
-      </ThemedText>
+          <Text muted className="text-sm">
+            {scheduleSummary(medication)}
+          </Text>
 
-      {medication.instructions ? (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.instructions}>
-          {medication.instructions}
-        </ThemedText>
+          {medication.instructions ? (
+            <Text muted className="mt-0.5 text-sm">
+              {medication.instructions}
+            </Text>
+          ) : null}
+
+          {hasInventory ? (
+            <View className="mt-2 gap-1">
+              <View className="h-1.5 max-w-xs overflow-hidden rounded-full bg-brand-bg dark:bg-night-selected">
+                <View
+                  className={cn('h-full rounded-full', isLowSupply ? 'bg-status-danger' : fraction <= 0.5 ? 'bg-status-warning' : 'bg-status-success')}
+                  style={{ width: `${fraction * 100}%` }}
+                />
+              </View>
+              <Text muted={!isLowSupply} className={cn('text-xs', isLowSupply && 'font-semibold text-status-danger dark:text-status-danger')}>
+                {current} {medication.inventory_unit} left
+                {daysLeft != null ? ` · ~${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left` : ''}
+                {isLowSupply ? ' · Low supply' : ''}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text muted className="mt-1 text-xs">
+            Started: {formatMedDate(medication.start_date ?? medication.created_at)}
+            {medication.end_date ? ` · Ended: ${formatMedDate(medication.end_date)}` : ''}
+          </Text>
+        </Card>
+      </Pressable>
+
+      {menuOpen ? (
+        <MedicationActionsMenu
+          medication={medication}
+          hasInventory={hasInventory}
+          onClose={() => setMenuOpen(false)}
+          onAction={goToDetail}
+        />
       ) : null}
-
-      {hasInventory && (
-        <View style={styles.inventorySection}>
-          <View style={styles.inventoryBarTrack}>
-            <View
-              style={[
-                styles.inventoryBarFill,
-                { width: `${fraction * 100}%`, backgroundColor: isLowSupply ? Brand.danger : Brand.success },
-              ]}
-            />
-          </View>
-          <ThemedText type="small" themeColor={isLowSupply ? undefined : 'textSecondary'} style={isLowSupply ? styles.lowSupplyText : undefined}>
-            {current} {medication.inventory_unit} left
-            {daysLeft != null ? ` · ~${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left` : ''}
-            {isLowSupply ? ' · Low supply' : ''}
-          </ThemedText>
-        </View>
-      )}
-
-      <ThemedText type="small" themeColor="textSecondary" style={styles.datesText}>
-        Started: {formatMedDate(medication.start_date ?? medication.created_at)}
-        {medication.end_date ? ` · Ended: ${formatMedDate(medication.end_date)}` : ''}
-      </ThemedText>
-      </ThemedView>
-
-      <MedicationActionsMenu
-        visible={menuOpen}
-        medication={medication}
-        hasInventory={hasInventory}
-        onClose={() => setMenuOpen(false)}
-        onAction={goToDetail}
-      />
-    </Pressable>
+    </>
   );
 }
 
 function MedicationActionsMenu({
-  visible,
   medication,
   hasInventory,
   onClose,
   onAction,
 }: {
-  visible: boolean;
   medication: Medication;
   hasInventory: boolean;
   onClose: () => void;
   onAction: (action?: string) => void;
 }) {
-  const styles = getStyles(useTheme());
-  if (!visible) return null;
-
   const items: { label: string; action?: string; destructive?: boolean }[] = medication.active
     ? [
         { label: 'Edit', action: 'edit' },
@@ -288,99 +259,14 @@ function MedicationActionsMenu({
     : [{ label: 'Reactivate', action: 'resume' }];
 
   return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <Pressable style={styles.menuBackdrop} onPress={onClose}>
-        <Pressable style={styles.menuSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.menuSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ThemedText type="smallBold" style={styles.menuTitle}>
-                {medication.name}
-              </ThemedText>
-              {items.map((item) => (
-                <Pressable key={item.label} style={styles.menuRow} onPress={() => onAction(item.action)}>
-                  <ThemedText style={item.destructive ? styles.menuRowDestructive : undefined}>
-                    {item.label}
-                  </ThemedText>
-                </Pressable>
-              ))}
-              <Pressable style={styles.menuCancel} onPress={onClose}>
-                <ThemedText style={styles.menuCancelText}>Cancel</ThemedText>
-              </Pressable>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <ActionSheet
+      title={medication.name}
+      onClose={onClose}
+      items={items.map((item) => ({
+        label: item.label,
+        destructive: item.destructive,
+        onPress: () => onAction(item.action),
+      }))}
+    />
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  // flexWrap lets the "Manage groups" + add-medication controls drop to
-  // their own row instead of clipping/overlapping the title on narrow
-  // screens or with larger accessibility text sizes — three items
-  // (title, groups button, add button) don't reliably fit one row at
-  // 320pt width the way Calendar's title + single button do.
-  titleRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Spacing.two, alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
-  title: { fontSize: 28, lineHeight: 34 },
-  titleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  groupsButton: {
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  groupsButtonText: { color: Brand.deepBlue, fontWeight: '600' },
-  addButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Brand.deepBlue,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: { color: '#ffffff', fontSize: 22, lineHeight: 24, fontWeight: '600' },
-  segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2, marginBottom: Spacing.three },
-  segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: theme.backgroundElement },
-  segmentText: { color: theme.textSecondary },
-  segmentTextActive: { color: theme.text },
-  error: { color: Brand.danger, marginBottom: Spacing.two },
-  loading: { marginTop: Spacing.five },
-  scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
-  card: {
-    borderRadius: BorderRadius.md,
-    padding: Spacing.three,
-    gap: Spacing.one,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
-  medName: { flex: 1 },
-  badgeGroup: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  typeBadge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
-  menuButton: { padding: 2 },
-  instructions: { marginTop: Spacing.half },
-  inventorySection: { marginTop: Spacing.two, gap: Spacing.one },
-  inventoryBarTrack: { height: 6, borderRadius: 3, backgroundColor: theme.border, overflow: 'hidden' },
-  inventoryBarFill: { height: '100%', borderRadius: 3 },
-  lowSupplyText: { color: Brand.danger, fontWeight: '600' },
-  datesText: { marginTop: Spacing.one },
-  menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  menuSheetWrapper: { maxHeight: '70%' },
-  menuSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  menuTitle: { marginBottom: Spacing.two },
-  menuRow: { paddingVertical: Spacing.three, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-  menuRowDestructive: { color: Brand.danger },
-  menuCancel: { marginTop: Spacing.two, alignItems: 'center', paddingVertical: Spacing.two },
-  menuCancelText: { fontWeight: '600', color: Brand.deepBlue },
-});
 }
