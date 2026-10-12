@@ -80,7 +80,8 @@ export default function OnboardingScreen() {
     setFinishing(true);
     try {
       await completeOnboarding(activeProfileId);
-      router.replace('/(tabs)');
+      // The dashboard shows its one-time "You're all set" banner for this param.
+      router.replace({ pathname: '/(tabs)', params: { setup: 'complete' } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't finish setup");
       setFinishing(false);

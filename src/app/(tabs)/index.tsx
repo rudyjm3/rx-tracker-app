@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { router, useFocusEffect } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { DueNowOverlay } from '@/components/DueNowOverlay';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
 import { NextDoseHero } from '@/components/dashboard/next-dose-hero';
-import { SlotActions } from '@/components/dashboard/slot-actions';
+import { DoseListSheet } from '@/components/dashboard/dose-list-sheet';
+import { DoseRow } from '@/components/dashboard/dose-row';
+import { GroupDoseCard } from '@/components/dashboard/group-dose-card';
+import { MedsOverviewPanel } from '@/components/dashboard/meds-overview-panel';
+import { QuickActionsPanel } from '@/components/dashboard/quick-actions-panel';
+import { SetupCompleteBanner } from '@/components/dashboard/setup-complete-banner';
+import { TodayHistoryPanel } from '@/components/dashboard/today-history-panel';
+import { ZeroPillSheet } from '@/components/dashboard/zero-pill-sheet';
 import { Button } from '@/components/ui/button';
-import { MedTypeBadge } from '@/components/ui/med-type-badge';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
+import { LevelGrid } from '@/components/ui/level-grid';
+import { MedName } from '@/components/ui/med-name';
 import { SafeArea } from '@/components/ui/safe-area';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
@@ -27,7 +36,7 @@ import {
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/lib/notifications';
-import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
+import { medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
   generateAdHocPrnSlots,
@@ -37,11 +46,9 @@ import {
   type DaySlot,
   type NextDoseEvent,
 } from '@/lib/schedule';
-import type { Medication } from '@/lib/types/medications';
-import { formatClockTime, formatEpochTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
+import type { Medication, MedicationGroup } from '@/lib/types/medications';
+import { formatEpochTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
 
-const MIN_LEVEL = 1;
-const MAX_LEVEL = 10;
 const DEFAULT_LEVEL = 5;
 
 export default function DashboardScreen() {
@@ -64,6 +71,12 @@ export default function DashboardScreen() {
     required: [],
     nonRequired: [],
   });
+  // Active groups and their members, kept for the Today's history panel's
+  // dose-entry editor (it resolves historical quantities from them).
+  const [groupList, setGroupList] = useState<MedicationGroup[]>([]);
+  const [groupMemberList, setGroupMemberList] = useState<
+    { group_id: string; medication_id: string; quantity_per_dose: number | null }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actingKey, setActingKey] = useState<string | null>(null);
@@ -96,6 +109,19 @@ export default function DashboardScreen() {
   } | null>(null);
   // A pending slot the user tapped Snooze on — opens the duration picker.
   const [snoozeSlot, setSnoozeSlot] = useState<DaySlot | null>(null);
+  // A group card's Snooze: the same duration picker, applied to every
+  // pending member of that group dose.
+  const [snoozeEvent, setSnoozeEvent] = useState<NextDoseEvent | null>(null);
+  // Take on a medication whose tracked inventory is at zero asks first
+  // (zero-pill dialog) before falling through to handleAction.
+  const [zeroPillSlot, setZeroPillSlot] = useState<DaySlot | null>(null);
+  const [doseList, setDoseList] = useState<'required' | 'non-required' | null>(null);
+  // ?setup=complete is passed once, right after onboarding. Captured into
+  // state so the banner stays up after the param is stripped below.
+  const { setup } = useLocalSearchParams<{ setup?: string }>();
+  const [showSetupBanner, setShowSetupBanner] = useState(setup === 'complete');
+  // The param can arrive a render after mount; once seen, the banner stays.
+  if (setup === 'complete' && !showSetupBanner) setShowSetupBanner(true);
   const [defaultSnoozeMinutes, setDefaultSnoozeMinutes] = useState<number | null>(null);
   // Re-evaluated on a timer (not just on reload) so the due-now overlay
   // appears and clears itself as the grace window is entered/exited while
@@ -131,6 +157,8 @@ export default function DashboardScreen() {
         ]);
       if (requestIdRef.current !== requestId) return;
       setMedications(activeMedications);
+      setGroupList(groups);
+      setGroupMemberList(groupMembers);
       // Ungrouped as_needed medications never get a schedule slot, so
       // surface them separately with a Log dose action.
       // Only memberships of active groups count — `groups` excludes
@@ -210,6 +238,11 @@ export default function DashboardScreen() {
     return () => clearInterval(interval);
   }, [scheduleDate, load]);
 
+  // Strip ?setup=complete so a refresh doesn't re-show the one-time banner.
+  useEffect(() => {
+    if (setup) router.setParams({ setup: undefined });
+  }, [setup]);
+
   // load() (and this callback) changes identity whenever activeProfileId
   // changes, and useFocusEffect re-invokes its callback on identity
   // changes while the screen is already focused (not just on focus
@@ -250,6 +283,15 @@ export default function DashboardScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to record dose');
     }
+  }
+
+  // Take from a schedule row: a zero-count tracked medication asks first.
+  function handleTake(slot: DaySlot) {
+    if (slot.medication.inventory_enabled && (slot.medication.current_quantity ?? 0) <= 0) {
+      setZeroPillSlot(slot);
+      return;
+    }
+    handleAction(slot, 'taken');
   }
 
   async function handleSnooze(slot: DaySlot, minutes: number) {
@@ -341,6 +383,7 @@ export default function DashboardScreen() {
     for (const slot of eventSlots(event)) {
       if (slot.status === 'pending') await handleSnooze(slot, minutes);
     }
+    setSnoozeEvent(null);
   }
 
   // Separate from `events` (which drives "Today's schedule" and includes
@@ -435,55 +478,96 @@ export default function DashboardScreen() {
   const nextEvent = pendingEvents[0] ?? null;
   const upcomingEvent = nextEvent ? (pendingEvents.find((e) => e.time > nextEvent.time) ?? null) : null;
 
+  const todayLabel = new Date(`${scheduleDate}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const dosesTaken = slots.filter((s) => s.status === 'taken').length;
+  const dosesMissed = slots.filter((s) => s.status === 'missed').length;
+
   return (
     <View className="flex-1 bg-brand-bg dark:bg-night-bg">
       <SafeArea edges={['left', 'right']} className="flex-1">
         <ScrollView
-          contentContainerClassName="gap-4 px-4 pb-16 pt-6"
+          contentContainerClassName="gap-6 px-4 pb-16 pt-6"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
         >
           {(error ?? supplyDismissError) && (
             <Text className="text-status-danger dark:text-status-danger">{error ?? supplyDismissError}</Text>
           )}
 
+          {showSetupBanner ? <SetupCompleteBanner /> : null}
+
           <NextDoseHero next={nextEvent} upcoming={upcomingEvent} adherence={adherenceStats} />
 
           <LowSupplyBanner alerts={supplyAlerts} onDismiss={handleDismissSupply} />
 
-          <Text className="mt-2 text-lg font-bold text-brand-navy dark:text-white">Today&apos;s schedule</Text>
+          <Card className="gap-3">
+            <View className="flex-row flex-wrap items-center justify-between gap-2">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-lg font-bold text-brand-navy dark:text-white">Today&apos;s schedule</Text>
+                <View className="rounded-full bg-brand-bg px-2 py-0.5 dark:bg-night-selected">
+                  <Text muted className="text-xs">
+                    {todayLabel}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="link"
+                className="min-h-11 flex-row items-center gap-1"
+                onPress={() => router.navigate('/calendar')}>
+                <Ionicons name="calendar-outline" size={14} color="#0754A8" />
+                <Text className="text-sm font-medium text-brand-deep-blue dark:text-brand-cyan">View calendar</Text>
+              </Pressable>
+            </View>
 
-          {events.length === 0 && (
-            <Text muted className="text-sm">
-              No scheduled doses today. Add a medication to get started.
-            </Text>
-          )}
+            {events.length === 0 ? (
+              <Text muted className="text-sm">
+                Nothing scheduled today.
+              </Text>
+            ) : (
+              <View className="gap-2">
+                {events.map((event) =>
+                  event.kind === 'single' ? (
+                    <DoseRow
+                      key={`${event.slot.medicationId}|${event.slot.scheduledTime}`}
+                      slot={event.slot}
+                      date={scheduleDate}
+                      graceMinutes={graceMinutes}
+                      actingKey={actingKey}
+                      onTake={handleTake}
+                      onSkip={(slot) => handleAction(slot, 'skipped')}
+                      onSnooze={setSnoozeSlot}
+                    />
+                  ) : (
+                    <GroupDoseCard
+                      key={`${event.groupId}|${event.time}`}
+                      event={event}
+                      date={scheduleDate}
+                      graceMinutes={graceMinutes}
+                      actingKey={actingKey}
+                      takeAllCount={takeAllSlots(event).length}
+                      onTakeAll={handleGroupTakeAll}
+                      onSnoozeAll={setSnoozeEvent}
+                      onSkipAll={handleSkipAllForEvent}
+                      onTake={handleTake}
+                      onSkip={(slot) => handleAction(slot, 'skipped')}
+                      onSnooze={setSnoozeSlot}
+                    />
+                  ),
+                )}
+              </View>
+            )}
 
-          {events.map((event) => (
-            <Card
-              key={event.kind === 'group' ? `${event.groupId}|${event.time}` : `${event.slot.medicationId}|${event.slot.scheduledTime}`}
-              className="gap-1"
-            >
-              <EventRow
-                event={event}
-                actingKey={actingKey}
-                onAction={handleAction}
-                onSnooze={setSnoozeSlot}
-                onTakeAll={handleGroupTakeAll}
-                takeAllCount={takeAllSlots(event).length}
-              />
-            </Card>
-          ))}
-
-          {asNeededMeds.length > 0 && (
-            <>
-              <Text className="mt-2 text-lg font-bold text-brand-navy dark:text-white">As needed</Text>
-              {asNeededMeds.map((med) => (
-                <Card key={med.id} className="gap-1">
-                  <View className="flex-row items-center justify-between gap-2">
-                    <Text className="flex-1 text-sm font-bold">
-                      {med.name}
-                      {med.dose ? ` ${med.dose}` : ''}
-                    </Text>
+            {asNeededMeds.length > 0 ? (
+              <View className="gap-2 border-t border-brand-border pt-3 dark:border-night-border">
+                <Text className="text-sm font-semibold text-brand-navy dark:text-white">As needed</Text>
+                {asNeededMeds.map((med) => (
+                  <View
+                    key={med.id}
+                    className="flex-row items-center justify-between gap-2 rounded-control bg-brand-bg px-3 py-2 dark:bg-night-selected">
+                    <MedName className="flex-1 text-sm font-semibold" name={med.name} dose={med.dose} />
                     <Button
                       label="Log dose"
                       variant="secondary"
@@ -491,21 +575,74 @@ export default function DashboardScreen() {
                       onPress={() => router.push(`/medications/${med.id}?action=logDose`)}
                     />
                   </View>
-                </Card>
-              ))}
-            </>
-          )}
+                ))}
+              </View>
+            ) : null}
+
+            <Pressable accessibilityRole="link" className="min-h-11 items-center justify-center" onPress={() => router.navigate('/calendar')}>
+              <Text className="text-sm font-medium text-brand-deep-blue dark:text-brand-cyan">View full schedule</Text>
+            </Pressable>
+          </Card>
+
+          <QuickActionsPanel />
+
+          <MedsOverviewPanel
+            activeCount={medications.length}
+            todaysDosesCount={slots.length}
+            dosesTaken={dosesTaken}
+            dosesMissed={dosesMissed}
+            onViewRequiredDoses={() => setDoseList('required')}
+            onViewNonRequiredDoses={() => setDoseList('non-required')}
+          />
+
+          <TodayHistoryPanel
+            date={scheduleDate}
+            medications={medications}
+            groups={groupList}
+            groupMembers={groupMemberList}
+            refreshKey={slots}
+          />
         </ScrollView>
       </SafeArea>
 
-      {snoozeSlot && (
+      {doseList ? (
+        <DoseListSheet
+          title={doseList === 'required' ? 'Required doses today' : 'Non-required doses today'}
+          emptyText={doseList === 'required' ? 'No required doses scheduled today.' : 'No non-required doses scheduled today.'}
+          slots={doseList === 'required' ? adherenceSlots.required : adherenceSlots.nonRequired}
+          onClose={() => setDoseList(null)}
+        />
+      ) : null}
+
+      {zeroPillSlot ? (
+        <ZeroPillSheet
+          // Remount per slot so the corrected count starts from zero.
+          key={`${zeroPillSlot.medicationId}|${zeroPillSlot.scheduledTime}`}
+          slot={zeroPillSlot}
+          onClose={() => setZeroPillSlot(null)}
+          onCancelDose={() => setZeroPillSlot(null)}
+          onTakeAnyway={() => {
+            const slot = zeroPillSlot;
+            setZeroPillSlot(null);
+            handleAction(slot, 'taken');
+          }}
+        />
+      ) : null}
+
+      {snoozeSlot || snoozeEvent ? (
         <SnoozeSheet
           defaultMinutes={defaultSnoozeMinutes}
-          busy={actingKey === `${snoozeSlot.medicationId}|${snoozeSlot.scheduledTime}`}
-          onClose={() => setSnoozeSlot(null)}
-          onSelect={(minutes) => handleSnooze(snoozeSlot, minutes)}
+          busy={actingKey !== null}
+          onClose={() => {
+            setSnoozeSlot(null);
+            setSnoozeEvent(null);
+          }}
+          onSelect={(minutes) => {
+            if (snoozeEvent) handleSnoozeAllForEvent(snoozeEvent, minutes);
+            else if (snoozeSlot) handleSnooze(snoozeSlot, minutes);
+          }}
         />
-      )}
+      ) : null}
 
       {feedbackSlot && (
         <FeedbackSheet
@@ -612,38 +749,69 @@ function FeedbackSheet({
   // the catch above updates only this now-unmounted component's state, so
   // the dashboard would show no error and the user could believe the dose
   // was recorded when it wasn't. Block dismissal until the request settles.
+  // "Take without logging" records the dose with no pain/mood/note (DESIGN.md
+  // 9.1); Cancel still means "don't take this one".
+  async function handleSkipFeedback() {
+    setFormError(null);
+    setSaving(true);
+    try {
+      await onSubmit(undefined);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "Couldn't record dose");
+      setSaving(false);
+    }
+  }
+
   return (
     <Sheet onClose={onClose} dismissible={!saving}>
-      <ScrollView>
-        <Text className="mb-0.5 text-lg font-bold text-brand-navy dark:text-white">Take {medication.name}</Text>
-        {medication.dose ? (
-          <Text muted className="mb-2 text-sm">
-            {medication.dose}
-          </Text>
-        ) : null}
+      <ScrollView keyboardShouldPersistTaps="handled" className="max-h-[560px]">
+        <Text accessibilityRole="header" className="text-lg font-bold text-brand-navy dark:text-white">
+          How are you feeling?
+        </Text>
+        <MedName className="mt-0.5 text-sm font-normal" doseClassName="font-normal" name={medication.name} dose={medication.dose} />
 
-        {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
+        {formError ? <Text className="mt-2 text-sm text-status-danger dark:text-status-danger">{formError}</Text> : null}
 
-        {trackPain && (
-          <LevelStepper label="Pain level" value={painLevel} onChange={setPainLevel} color={levelColor('pain', painLevel)} />
-        )}
-        {trackMood && (
-          <LevelStepper label="Mood level" value={moodLevel} onChange={setMoodLevel} color={levelColor('mood', moodLevel)} />
-        )}
+        <View className="mt-4 gap-4">
+          {trackPain ? (
+            <View className="gap-1.5">
+              <Text className="text-sm font-medium">
+                Pain level{' '}
+                <Text muted className="text-xs font-normal">
+                  (1 = minimal — 10 = severe)
+                </Text>
+              </Text>
+              <LevelGrid metric="pain" value={painLevel} onChange={setPainLevel} />
+            </View>
+          ) : null}
+          {trackMood ? (
+            <View className="gap-1.5">
+              <Text className="text-sm font-medium">
+                Mood level{' '}
+                <Text muted className="text-xs font-normal">
+                  (1 = very low — 10 = excellent)
+                </Text>
+              </Text>
+              <LevelGrid metric="mood" value={moodLevel} onChange={setMoodLevel} />
+            </View>
+          ) : null}
 
-        <Field
-          label="Note (optional)"
-          className="min-h-20 py-2"
-          style={{ textAlignVertical: 'top' }}
-          value={note}
-          onChangeText={setNote}
-          placeholder="How are you feeling?"
-          multiline
-        />
+          <Field
+            label="Notes (optional)"
+            className="min-h-20 py-2"
+            style={{ textAlignVertical: 'top' }}
+            value={note}
+            onChangeText={setNote}
+            placeholder="Any notes about this dose…"
+            maxLength={255}
+            multiline
+          />
+        </View>
 
-        <View className="mt-6 flex-row gap-2">
-          <Button label="Cancel" variant="secondary" className="flex-1" onPress={onClose} disabled={saving} />
-          <Button label="Save & take" className="flex-1" onPress={handleSubmit} loading={saving} />
+        <View className="mt-5 gap-2">
+          <Button label="Save & take" onPress={handleSubmit} loading={saving} />
+          <Button label="Take without logging" variant="secondary" onPress={handleSkipFeedback} disabled={saving} />
+          <Button label="Cancel" variant="ghost" onPress={onClose} disabled={saving} />
         </View>
       </ScrollView>
     </Sheet>
@@ -716,118 +884,6 @@ function TimeEntrySheet({
         <Button label="Submit" className="flex-1" onPress={handleSubmit} loading={saving} />
       </View>
     </Sheet>
-  );
-}
-
-function LevelStepper({
-  label,
-  value,
-  onChange,
-  color,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  color: string;
-}) {
-  return (
-    <View className="mt-3 gap-1">
-      <Text muted className="text-sm font-medium">
-        {label}
-      </Text>
-      <View className="flex-row items-center gap-2">
-        <Pressable
-          className="h-11 w-11 items-center justify-center rounded-control border border-brand-border dark:border-night-border"
-          onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
-          disabled={value <= MIN_LEVEL}
-          hitSlop={8}
-          accessibilityLabel={`Decrease ${label}`}
-        >
-          <Text className="text-xl font-semibold">−</Text>
-        </Pressable>
-        <View className="h-11 w-12 items-center justify-center rounded-control border-2" style={{ borderColor: color }}>
-          <Text className="text-sm font-bold" style={{ color }}>
-            {value}
-          </Text>
-        </View>
-        <Pressable
-          className="h-11 w-11 items-center justify-center rounded-control border border-brand-border dark:border-night-border"
-          onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
-          disabled={value >= MAX_LEVEL}
-          hitSlop={8}
-          accessibilityLabel={`Increase ${label}`}
-        >
-          <Text className="text-xl font-semibold">+</Text>
-        </Pressable>
-        <Text muted className="text-sm">
-          out of {MAX_LEVEL}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function EventRow({
-  event,
-  actingKey,
-  onAction,
-  onSnooze,
-  onTakeAll,
-  takeAllCount = 0,
-}: {
-  event: NextDoseEvent;
-  actingKey: string | null;
-  onAction: (slot: DaySlot, status: 'taken' | 'skipped') => void;
-  onSnooze: (slot: DaySlot) => void;
-  onTakeAll?: (event: NextDoseEvent) => void;
-  takeAllCount?: number;
-}) {
-  const slots = event.kind === 'group' ? event.members : [event.slot];
-  const heading = event.kind === 'group' ? event.groupName : event.slot.medicationName;
-  // event.time is the slot's effective due time (postponedUntil when
-  // snoozed, else its scheduledTime) — use it rather than the slot's own
-  // scheduledTime, which stays the original time even after a snooze.
-  const displayTime = formatEpochTime(event.time);
-
-  return (
-    <View className="gap-1">
-      <Text className="text-base font-semibold">
-        {displayTime}
-      </Text>
-      <View className="flex-row items-center justify-between gap-2">
-        <Text className="text-sm font-bold">{heading}</Text>
-        {event.kind === 'group' && onTakeAll && takeAllCount > 0 && (
-          <Button label="Take All" size="compact" onPress={() => onTakeAll(event)} loading={actingKey !== null} />
-        )}
-      </View>
-      {slots.map((slot) => {
-        const key = `${slot.medicationId}|${slot.scheduledTime}`;
-        return (
-          <View key={key} className="flex-row items-center justify-between gap-2">
-            <View className="flex-1 gap-0.5">
-              <View className="flex-row flex-wrap items-center gap-2">
-                <Text className="text-sm font-medium">
-                  {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-                </Text>
-                <MedTypeBadge type={slot.medication.medication_type} />
-              </View>
-              {slot.status === 'pending' && slot.postponedUntil && (
-                <Text muted className="text-sm">
-                  {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
-                </Text>
-              )}
-            </View>
-            {slot.status === 'pending' ? (
-              <SlotActions slot={slot} actingKey={actingKey} onAction={onAction} onSnooze={onSnooze} />
-            ) : (
-              <Text muted className="text-sm font-medium capitalize">
-                {slot.status}
-              </Text>
-            )}
-          </View>
-        );
-      })}
-    </View>
   );
 }
 
