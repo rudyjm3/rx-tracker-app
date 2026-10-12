@@ -736,20 +736,27 @@ No page transitions, skeleton shimmers or parallax.
 
 ## 17. Mobile (React Native) translation guide
 
-The app is Expo SDK 57 / React Native 0.86 with Expo Router (`src/app`). Existing tabs: Dashboard, Medications, Calendar, Pain & Mood, Settings; stack screens exist for auth, onboarding, groups, export, family, history, profile and help.
+The app is Expo SDK 57 / React Native 0.86 with Expo Router (`src/app`). Tabs: Dashboard, Medications, Calendar, Export and More (Settings and Pain & Mood are hidden tabs reached from More); stack screens exist for auth, onboarding, groups, family, history, profile and help.
 
 ### 17.0 Styling: NativeWind
 
 The app styles with **NativeWind 4.2.7** (Tailwind CSS v3). Web uses Tailwind v4, so tokens are defined twice — `@theme` in `rx-tracker-web/app/globals.css` and `tailwind.config.js` in the app — but **class names are shared** (`bg-brand-bg`, `text-status-danger`, `rounded-card`, `shadow-card`, `border-brand-border`, …). Keep the two files in sync with section 2 and 4.
 
-- Prefer `className` over `StyleSheet.create` in new code. Base components live in `src/components/ui/`: `Button` (primary / secondary / ghost / danger, default / compact), `Card` (`flat` drops the shadow), `Badge` (status), `MedTypeBadge` (Rx / OTC / Supplement, `onDark` variant), `Field`. Dashboard pieces live in `src/components/dashboard/`: `NextDoseHero` (gradient panel with the Next dose and Today's adherence glass cards), `AdherenceRing` (SVG, `react-native-svg`), `DoseFormIcon`, `SlotActions`.
-- `Button` has an `onDark` prop (white primary, translucent secondary) for gradient / navy surfaces such as the Next dose hero.
+- **All screens and components use `className`; `StyleSheet.create`, `ThemedText` and `ThemedView` are gone** (the last two were deleted). They set colors through inline `style`, which overrides `className` colors, so never reintroduce them. Use `Text` from `src/components/ui/text.tsx` (has a `muted` prop; color comes from classes) and plain `View` with classes. Merge classes with `cn()` from `src/lib/cn.ts` (tailwind-merge) so a caller's `className` wins.
+- Shared building blocks live in `src/components/ui/`:
+  - Surfaces and text: `Card` (`flat` drops the shadow), `Screen` (page frame: background, 16 px gutter, `edges`; tab screens leave the top inset to the global header, stack screens keep their own header and use `edges={['left','right','bottom']}`), `ScreenTitle` / `SectionTitle` / `PanelTitle`, `MedName` (name then dose at 0.875em, bold, muted), `Callout` (error / success / warning / danger / info, 10.4), `SafeArea` (`cssInterop` wrapper for `react-native-safe-area-context`).
+  - Buttons and badges: `Button` (primary / secondary / ghost / danger, default / compact, `onDark`, `labelClassName`), `Badge` (status), `MedTypeBadge` (`onDark`), `ScoreBadge` (outlined pain / mood score), `GradientFill` (absolute `expo-linear-gradient` behind a container).
+  - Forms: `Field` (label + input + error; `size="auth"` for the sign-in inputs), `Input`, `UnitField` (number + unit toggle), `Checkbox` / `CheckboxRow` / `SwitchRow`, `PillTabs` / `PillTab` (segmented tabs and range pills, active = brand gradient), `TagPill`, `LevelGrid` (1–10 picker, tier colors from 2.4), `ColorSwatches`, `Collapsible` (accordion).
+  - Overlays: `Sheet` (bottom sheet), `FormSheet` (title, subtitle, error, body, footer buttons), `ActionSheet` (kebab menu rows).
+- Dashboard pieces live in `src/components/dashboard/`: `NextDoseHero`, `AdherenceCard`, `AdherenceRing`, `DoseFormIcon`, `DoseRow`, `GroupDoseCard`, `SlotStatusBadge`, `QuickActionsPanel`, `MedsOverviewPanel`, `TodayHistoryPanel`, `DoseListSheet`, `ZeroPillSheet`, `SetupCompleteBanner`.
+- `Button` has an `onDark` prop (white primary, translucent secondary) for gradient / navy surfaces such as the Next dose hero and the dose-due overlay.
+- Third-party components that need `className` are wrapped with `cssInterop`, as `SafeArea` does. Dark mode uses `dark:` with the `night-*` surface tokens; brand and status hues never change.
 - Not expressible as classes: gradients (use `expo-linear-gradient`, see `Button`), hover states (use `active:`), `backdrop-blur`, web grid layouts.
 - Opacity tints work as on web: `bg-status-success/10`.
 
 ### 17.1 Tokens
 
-Reuse `Brand`, `BorderRadius` (10 / 18 / 28) and `Spacing` from `src/constants/theme.ts`. Add what is missing:
+`src/constants/theme.ts` keeps only what classes can't express: `Brand` (icon, chart and tab-bar colors), `Colors` (light / dark surfaces for the tab bar) and `Gradient` (stops used by `GradientFill`). Radii (10 / 18 / 28), spacing and shadows are NativeWind classes (`rounded-control`, `rounded-card`, `rounded-hero`, `shadow-card`). The snippet below is the full token set for reference:
 
 ```ts
 export const Status = {
@@ -771,7 +778,7 @@ export const Gradient = {
 } as const;
 ```
 
-- Spacing: the mobile scale (`one`=4, `two`=8, `three`=16, `four`=24, `five`=32) covers the web scale; add 6 and 12 for the `gap-1.5` / `gap-3` cases.
+- Spacing: use the Tailwind scale directly (`gap-1.5`, `gap-3`, `p-4`, …).
 - Tint helper: `withAlpha(color, 0.1)` for `bg-status-*/10`.
 - Gradients: `expo-linear-gradient` with `start={{x:0,y:0}} end={{x:1,y:1}}` (≈135°); auth hero ≈160° → `start={{x:0.3,y:0}} end={{x:0.7,y:1}}`.
 - Dark mode: keep brand and status hues; swap surfaces only (`backgroundElement #212225`, text white). Web has no dark mode.
