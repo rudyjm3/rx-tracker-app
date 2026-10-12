@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, View } from 'react-native';
 
 import { DrugNameAutocomplete } from '@/components/DrugNameAutocomplete';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { SwitchRow } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
+import { PillTabs } from '@/components/ui/pill-tabs';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import type { DrugSuggestion } from '@/lib/dailymed';
 import { createMedication, type MedicationInput, type ScheduleTimeInput } from '@/lib/medications';
@@ -64,8 +68,6 @@ const initialState: NewMedicationFormState = {
 };
 
 export default function NewMedicationScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const { fromOnboarding } = useLocalSearchParams<{ fromOnboarding?: string }>();
   const [form, setForm] = useState<NewMedicationFormState>(initialState);
@@ -196,17 +198,16 @@ export default function NewMedicationScreen() {
     }
   }
 
+  // Stack screen with its own header: keep the bottom inset only.
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <ThemedText type="title" style={styles.title}>
-            New medication
-          </ThemedText>
+    <Screen edges={['left', 'right', 'bottom']} keyboardShouldPersistTaps="handled">
+      <ScreenTitle>New medication</ScreenTitle>
 
-          {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+      {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
-          <FieldLabel>Name</FieldLabel>
+      <Card className="gap-4 p-4">
+        <View className="gap-1">
+          <Text className="text-sm">Name</Text>
           <DrugNameAutocomplete
             value={form.name}
             // Typing a different name drops the match picked for the old one.
@@ -214,228 +215,148 @@ export default function NewMedicationScreen() {
             onSelect={applySuggestion}
             placeholder="e.g. Lisinopril"
           />
+        </View>
 
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <FieldLabel>Dose amount</FieldLabel>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={form.doseAmount}
-                onChangeText={(v) => setForm((prev) => ({ ...prev, doseAmount: v, dailymedSetId: '' }))}
+        <View className="flex-row gap-2">
+          <View className="flex-1">
+            <Field
+              label="Dose amount"
+              keyboardType="numeric"
+              value={form.doseAmount}
+              onChangeText={(v) => setForm((prev) => ({ ...prev, doseAmount: v, dailymedSetId: '' }))}
+            />
+          </View>
+          <View className="flex-1">
+            <Field
+              label="Dose unit"
+              value={form.doseUnit}
+              onChangeText={(v) => setForm((prev) => ({ ...prev, doseUnit: v, dailymedSetId: '' }))}
+              placeholder="mg"
+            />
+          </View>
+        </View>
+
+        <Field label="Dose form" value={form.doseForm} onChangeText={(v) => update('doseForm', v)} placeholder="tablet" />
+
+        <View className="gap-1">
+          <Text className="text-sm">Type</Text>
+          <PillTabs
+            tabs={MEDICATION_TYPE_OPTIONS.map((type) => ({ value: type, label: MEDICATION_TYPE_LABELS[type] }))}
+            value={form.medicationType}
+            onChange={(type) => update('medicationType', type)}
+          />
+        </View>
+
+        <Field
+          label="Instructions"
+          className="min-h-20"
+          style={{ textAlignVertical: 'top' }}
+          value={form.instructions}
+          onChangeText={(v) => update('instructions', v)}
+          multiline
+        />
+
+        <SwitchRow label="As needed (PRN)" value={form.asNeeded} onValueChange={(v) => update('asNeeded', v)} />
+
+        {!form.asNeeded ? (
+          <View className="gap-3">
+            <View className="gap-1">
+              <Text className="text-sm">Schedule</Text>
+              <PillTabs
+                tabs={[
+                  { value: 'fixed_times', label: 'Fixed times' },
+                  { value: 'interval', label: 'Interval' },
+                ]}
+                value={form.scheduleMode}
+                onChange={(mode) => update('scheduleMode', mode)}
               />
             </View>
-            <View style={styles.rowItem}>
-              <FieldLabel>Dose unit</FieldLabel>
-              <TextInput style={styles.input} value={form.doseUnit} onChangeText={(v) => setForm((prev) => ({ ...prev, doseUnit: v, dailymedSetId: '' }))} placeholder="mg" placeholderTextColor={theme.textSecondary} />
-            </View>
-          </View>
 
-          <FieldLabel>Dose form</FieldLabel>
-          <TextInput style={styles.input} value={form.doseForm} onChangeText={(v) => update('doseForm', v)} placeholder="tablet" placeholderTextColor={theme.textSecondary} />
-
-          <FieldLabel>Type</FieldLabel>
-          <View style={styles.segmented}>
-            {MEDICATION_TYPE_OPTIONS.map((type) => (
-              <Pressable
-                key={type}
-                style={[styles.segmentButton, form.medicationType === type && styles.segmentButtonActive]}
-                onPress={() => update('medicationType', type)}
-              >
-                <ThemedText type="small" style={form.medicationType === type ? styles.segmentTextActive : styles.segmentText}>
-                  {MEDICATION_TYPE_LABELS[type]}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          <FieldLabel>Instructions</FieldLabel>
-          <TextInput
-            style={[styles.input, styles.multiline]}
-            value={form.instructions}
-            onChangeText={(v) => update('instructions', v)}
-            multiline
-          />
-
-          <View style={styles.switchRow}>
-            <ThemedText>As needed (PRN)</ThemedText>
-            <Switch value={form.asNeeded} onValueChange={(v) => update('asNeeded', v)} />
-          </View>
-
-          {!form.asNeeded && (
-            <>
-              <FieldLabel>Schedule</FieldLabel>
-              <View style={styles.segmented}>
-                <Pressable
-                  style={[styles.segmentButton, form.scheduleMode === 'fixed_times' && styles.segmentButtonActive]}
-                  onPress={() => update('scheduleMode', 'fixed_times')}
-                >
-                  <ThemedText type="small" style={form.scheduleMode === 'fixed_times' ? styles.segmentTextActive : styles.segmentText}>
-                    Fixed times
-                  </ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[styles.segmentButton, form.scheduleMode === 'interval' && styles.segmentButtonActive]}
-                  onPress={() => update('scheduleMode', 'interval')}
-                >
-                  <ThemedText type="small" style={form.scheduleMode === 'interval' ? styles.segmentTextActive : styles.segmentText}>
-                    Interval
-                  </ThemedText>
-                </Pressable>
-              </View>
-
-              {form.scheduleMode === 'fixed_times' ? (
-                <View style={styles.timesList}>
-                  {form.times.map((t, i) => (
-                    <View key={i} style={styles.timeRow}>
-                      <TextInput
-                        style={[styles.input, styles.timeInput]}
-                        value={t.time}
-                        onChangeText={(v) => updateTime(i, v)}
-                        placeholder="HH:MM"
-                        placeholderTextColor={theme.textSecondary}
-                      />
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {TIME_RE.test(t.time) ? to12h(t.time) : ''}
-                      </ThemedText>
-                      <Pressable onPress={() => removeTime(i)} hitSlop={8}>
-                        <ThemedText style={styles.removeTime}>Remove</ThemedText>
-                      </Pressable>
+            {form.scheduleMode === 'fixed_times' ? (
+              <View className="gap-2">
+                {form.times.map((t, i) => (
+                  <View key={i} className="flex-row items-center gap-2">
+                    <View className="w-28">
+                      <Field label={`Time ${i + 1}`} value={t.time} onChangeText={(v) => updateTime(i, v)} placeholder="HH:MM" />
                     </View>
-                  ))}
-                  <Pressable onPress={addTime}>
-                    <ThemedText style={styles.addTime}>+ Add time</ThemedText>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.row}>
-                  <View style={styles.rowItem}>
-                    <FieldLabel>Every (hours)</FieldLabel>
-                    <TextInput
-                      style={styles.input}
-                      keyboardType="numeric"
-                      value={form.intervalHours}
-                      onChangeText={(v) => update('intervalHours', v)}
-                    />
+                    <Text muted className="mt-6 text-sm">
+                      {TIME_RE.test(t.time) ? to12h(t.time) : ''}
+                    </Text>
+                    <Pressable className="ml-auto mt-6 min-h-11 justify-center" onPress={() => removeTime(i)} hitSlop={8}>
+                      <Text className="text-sm font-semibold text-status-danger dark:text-status-danger">Remove</Text>
+                    </Pressable>
                   </View>
-                  <View style={styles.rowItem}>
-                    <FieldLabel>First dose (HH:MM)</FieldLabel>
-                    <TextInput
-                      style={styles.input}
-                      value={form.firstDoseTime}
-                      onChangeText={(v) => update('firstDoseTime', v)}
-                      placeholder="08:00"
-                      placeholderTextColor={theme.textSecondary}
-                    />
-                  </View>
-                </View>
-              )}
-            </>
-          )}
-
-          <FieldLabel>Dose quantity per intake</FieldLabel>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            value={form.quantityPerDose}
-            onChangeText={(v) => update('quantityPerDose', v)}
-          />
-
-          <FieldLabel>End date (optional)</FieldLabel>
-          <TextInput
-            style={styles.input}
-            value={form.endDate}
-            onChangeText={(v) => update('endDate', v)}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={theme.textSecondary}
-          />
-          <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-            The regimen stops generating doses after this date. Leave blank for an ongoing medication.
-          </ThemedText>
-
-          <View style={styles.switchRow}>
-            <ThemedText>Track inventory</ThemedText>
-            <Switch value={form.inventoryEnabled} onValueChange={(v) => update('inventoryEnabled', v)} />
-          </View>
-
-          {form.inventoryEnabled && (
-            <>
-              <View style={styles.row}>
-                <View style={styles.rowItem}>
-                  <FieldLabel>Starting quantity</FieldLabel>
-                  <TextInput
-                    style={styles.input}
+                ))}
+                <Button label="+ Add time" variant="secondary" size="compact" className="self-start" onPress={addTime} />
+              </View>
+            ) : (
+              <View className="flex-row gap-2">
+                <View className="flex-1">
+                  <Field
+                    label="Every (hours)"
                     keyboardType="numeric"
-                    value={form.startingQuantity}
-                    onChangeText={(v) => update('startingQuantity', v)}
+                    value={form.intervalHours}
+                    onChangeText={(v) => update('intervalHours', v)}
                   />
                 </View>
-                <View style={styles.rowItem}>
-                  <FieldLabel>Unit</FieldLabel>
-                  <TextInput style={styles.input} value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" placeholderTextColor={theme.textSecondary} />
+                <View className="flex-1">
+                  <Field
+                    label="First dose (HH:MM)"
+                    value={form.firstDoseTime}
+                    onChangeText={(v) => update('firstDoseTime', v)}
+                    placeholder="08:00"
+                  />
                 </View>
               </View>
-              <FieldLabel>Low supply threshold</FieldLabel>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={form.lowSupplyThreshold}
-                onChangeText={(v) => update('lowSupplyThreshold', v)}
-              />
-            </>
-          )}
-
-          <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
-              <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleCreate} disabled={saving}>
-              {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Create</ThemedText>}
-            </Pressable>
+            )}
           </View>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
+        ) : null}
 
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
-  );
-}
+        <Field
+          label="Dose quantity per intake"
+          keyboardType="numeric"
+          value={form.quantityPerDose}
+          onChangeText={(v) => update('quantityPerDose', v)}
+        />
 
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-  title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
-  error: { color: Brand.danger, marginVertical: Spacing.two },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  row: { flexDirection: 'row', gap: Spacing.two },
-  rowItem: { flex: 1 },
-  segmented: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
-  segmentButton: { flex: 1, paddingVertical: Spacing.two, alignItems: 'center', borderRadius: Spacing.one },
-  segmentButtonActive: { backgroundColor: theme.backgroundElement },
-  segmentText: { color: theme.textSecondary },
-  segmentTextActive: { color: theme.text },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.three },
-  timesList: { gap: Spacing.two, marginTop: Spacing.one },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  timeInput: { width: 100 },
-  removeTime: { color: Brand.danger, marginLeft: 'auto' },
-  addTime: { color: Brand.deepBlue, fontWeight: '600', marginTop: Spacing.one },
-});
+        <View className="gap-1">
+          <Field label="End date (optional)" value={form.endDate} onChangeText={(v) => update('endDate', v)} placeholder="YYYY-MM-DD" />
+          <Text muted className="text-xs">
+            The regimen stops generating doses after this date. Leave blank for an ongoing medication.
+          </Text>
+        </View>
+
+        <SwitchRow label="Track inventory" value={form.inventoryEnabled} onValueChange={(v) => update('inventoryEnabled', v)} />
+
+        {form.inventoryEnabled ? (
+          <View className="gap-4">
+            <View className="flex-row gap-2">
+              <View className="flex-1">
+                <Field
+                  label="Starting quantity"
+                  keyboardType="numeric"
+                  value={form.startingQuantity}
+                  onChangeText={(v) => update('startingQuantity', v)}
+                />
+              </View>
+              <View className="flex-1">
+                <Field label="Unit" value={form.inventoryUnit} onChangeText={(v) => update('inventoryUnit', v)} placeholder="pills" />
+              </View>
+            </View>
+            <Field
+              label="Low supply threshold"
+              keyboardType="numeric"
+              value={form.lowSupplyThreshold}
+              onChangeText={(v) => update('lowSupplyThreshold', v)}
+            />
+          </View>
+        ) : null}
+      </Card>
+
+      <View className="flex-row gap-2">
+        <Button label="Cancel" variant="ghost" className="flex-1" onPress={() => router.back()} disabled={saving} />
+        <Button label={saving ? 'Saving…' : 'Create'} className="flex-1" loading={saving} onPress={handleCreate} />
+      </View>
+    </Screen>
+  );
 }

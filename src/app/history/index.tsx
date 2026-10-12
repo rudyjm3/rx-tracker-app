@@ -1,46 +1,25 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { EditDoseLogSheet } from '@/components/edit-dose-log-sheet';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { MedName } from '@/components/ui/med-name';
+import { PillTabs } from '@/components/ui/pill-tabs';
+import { Screen } from '@/components/ui/screen';
+import { Sheet } from '@/components/ui/sheet';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/cn';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
-import {
-  deleteDoseLog,
-  editDoseLog,
-  getCalendarLogs,
-  type CalendarLogRow,
-} from '@/lib/dose-logs';
+import { getCalendarLogs, type CalendarLogRow } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
-import { levelColor, medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
-import { generateDaySlots } from '@/lib/schedule';
-import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
+import type { Medication, MedicationGroup } from '@/lib/types/medications';
 import { formatLate, localDateString, minutesLate, to12h } from '@/lib/utils';
 
 const ALL_MEDICATIONS = 'all';
-const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
-const MIN_LEVEL = 1;
-const MAX_LEVEL = 10;
-
-const STATUS_OPTIONS: { value: DoseLogStatus; label: string }[] = [
-  { value: 'taken', label: 'Taken' },
-  { value: 'skipped', label: 'Skipped' },
-  { value: 'missed', label: 'Missed' },
-];
 
 const RANGE_PRESETS = [
   { key: '7', label: '7 days', days: 7 },
@@ -66,19 +45,17 @@ function medicationLabel(med: Medication): string {
   return `${med.name}${dose}${inactive}`;
 }
 
-function statusBadge(row: CalendarLogRow, graceMinutes: number): { label: string; color: string } {
+function statusBadge(row: CalendarLogRow, graceMinutes: number): { variant: BadgeVariant; label: string } {
   if (row.status === 'taken') {
     const lateMin = minutesLate(row, graceMinutes);
-    if (lateMin !== null) return { label: `Taken (${formatLate(lateMin)})`, color: Brand.warning };
-    return { label: 'Taken', color: Brand.success };
+    if (lateMin !== null) return { variant: 'late', label: `Taken (${formatLate(lateMin)})` };
+    return { variant: 'taken', label: 'Taken' };
   }
-  if (row.status === 'skipped') return { label: 'Skipped', color: Brand.warning };
-  return { label: 'Missed', color: Brand.danger };
+  if (row.status === 'skipped') return { variant: 'skipped', label: 'Skipped' };
+  return { variant: 'missed', label: 'Missed' };
 }
 
 export default function HistoryScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [medications, setMedications] = useState<Medication[]>([]);
   const [selectedMedicationId, setSelectedMedicationId] = useState<string>(ALL_MEDICATIONS);
@@ -165,120 +142,94 @@ export default function HistoryScreen() {
   const selectedLabel = selectedMedication ? medicationLabel(selectedMedication) : 'All medications';
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <Pressable style={styles.filterField} onPress={() => setPickerOpen(true)}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Medication
-          </ThemedText>
-          <ThemedText style={styles.filterValue}>{selectedLabel}</ThemedText>
-        </Pressable>
+    <Screen edges={['left', 'right', 'bottom']} scroll={false} contentClassName="pt-4">
+      <Pressable
+        accessibilityRole="button"
+        className="min-h-12 rounded-card border border-brand-border bg-white px-4 py-3 dark:border-night-border dark:bg-night-card"
+        onPress={() => setPickerOpen(true)}>
+        <Text muted className="text-xs">
+          Medication
+        </Text>
+        <Text className="text-sm font-semibold">{selectedLabel}</Text>
+      </Pressable>
 
-        <View style={styles.rangeRow}>
-          {RANGE_PRESETS.map((preset) => (
-            <Pressable
-              key={preset.key}
-              style={[styles.rangeChip, rangeKey === preset.key && styles.rangeChipSelected]}
-              onPress={() => setRangeKey(preset.key)}
-            >
-              <ThemedText
-                type="small"
-                style={rangeKey === preset.key ? styles.rangeChipTextSelected : undefined}
-              >
-                Last {preset.label}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
+      <PillTabs
+        variant="range"
+        tabs={RANGE_PRESETS.map((p) => ({ value: p.key, label: `Last ${p.label}` }))}
+        value={rangeKey}
+        onChange={setRangeKey}
+      />
 
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
-        {loading ? (
-          <ActivityIndicator style={styles.loading} />
-        ) : (
-          <FlatList
-            data={logs}
-            keyExtractor={(row) => row.id}
-            ListEmptyComponent={
-              <ThemedText themeColor="textSecondary">No dose history for this filter.</ThemedText>
-            }
-            contentContainerStyle={styles.scrollContent}
-            renderItem={({ item: row }) => {
-              const badge = statusBadge(row, graceMinutes);
-              return (
-                <Pressable onPress={() => setEditingLog(row)}>
-                  <ThemedView type="backgroundElement" style={styles.row}>
-                    <View style={styles.rowMain}>
-                      <ThemedText type="smallBold">
-                        {row.medications.name}
-                        {row.medications.dose ? ` — ${row.medications.dose}` : ''}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {row.scheduled_for_date} · {to12h(row.scheduled_time.slice(0, 5))}
-                      </ThemedText>
-                      {row.note ? (
-                        <ThemedText type="small" themeColor="textSecondary" style={styles.historyNote}>
-                          {row.note}
-                        </ThemedText>
-                      ) : null}
-                    </View>
-                    <View style={[styles.badge, { backgroundColor: badge.color + '22' }]}>
-                      <ThemedText type="small" style={{ color: badge.color, fontWeight: '700' }}>
-                        {badge.label}
-                      </ThemedText>
-                    </View>
-                  </ThemedView>
-                </Pressable>
-              );
-            }}
-          />
-        )}
-      </SafeAreaView>
+      {loading ? (
+        <ActivityIndicator className="mt-8" />
+      ) : (
+        <FlatList
+          data={logs}
+          keyExtractor={(row) => row.id}
+          ListEmptyComponent={
+            <Text muted className="text-sm">
+              No dose history for this filter.
+            </Text>
+          }
+          contentContainerClassName="gap-2 pb-10"
+          renderItem={({ item: row }) => {
+            const badge = statusBadge(row, graceMinutes);
+            return (
+              <Pressable accessibilityRole="button" onPress={() => setEditingLog(row)}>
+                <Card flat className="flex-row items-center justify-between gap-2 p-3">
+                  <View className="flex-1 gap-0.5">
+                    <MedName className="text-sm font-semibold" name={row.medications.name} dose={row.medications.dose} />
+                    <Text muted className="text-xs">
+                      {row.scheduled_for_date} · {to12h(row.scheduled_time.slice(0, 5))}
+                    </Text>
+                    {row.note ? (
+                      <Text muted className="text-sm italic">
+                        {row.note}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View className="items-end gap-1">
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <Text className="text-xs font-medium text-brand-deep-blue dark:text-brand-cyan">Edit</Text>
+                  </View>
+                </Card>
+              </Pressable>
+            );
+          }}
+        />
+      )}
 
-      <Modal
-        visible={pickerOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setPickerOpen(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
-          <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-            <ThemedView style={styles.modalSheet}>
-              <SafeAreaView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Medication
-                </ThemedText>
-                <ScrollView style={styles.modalList}>
-                  <PickerRow
-                    label="All medications"
-                    selected={selectedMedicationId === ALL_MEDICATIONS}
-                    onPress={() => {
-                      setSelectedMedicationId(ALL_MEDICATIONS);
-                      setPickerOpen(false);
-                    }}
-                  />
-                  {medications.map((med) => (
-                    <PickerRow
-                      key={med.id}
-                      label={medicationLabel(med)}
-                      selected={selectedMedicationId === med.id}
-                      onPress={() => {
-                        setSelectedMedicationId(med.id);
-                        setPickerOpen(false);
-                      }}
-                    />
-                  ))}
-                </ScrollView>
-                <Pressable style={styles.closeButton} onPress={() => setPickerOpen(false)}>
-                  <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-                </Pressable>
-              </SafeAreaView>
-            </ThemedView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {pickerOpen ? (
+        <Sheet onClose={() => setPickerOpen(false)}>
+          <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">Medication</Text>
+          <ScrollView className="max-h-80">
+            <PickerRow
+              label="All medications"
+              selected={selectedMedicationId === ALL_MEDICATIONS}
+              onPress={() => {
+                setSelectedMedicationId(ALL_MEDICATIONS);
+                setPickerOpen(false);
+              }}
+            />
+            {medications.map((med) => (
+              <PickerRow
+                key={med.id}
+                label={medicationLabel(med)}
+                selected={selectedMedicationId === med.id}
+                onPress={() => {
+                  setSelectedMedicationId(med.id);
+                  setPickerOpen(false);
+                }}
+              />
+            ))}
+          </ScrollView>
+          <Button label="Close" variant="ghost" className="mt-3" onPress={() => setPickerOpen(false)} />
+        </Sheet>
+      ) : null}
 
-      {editingLog && (
+      {editingLog ? (
         <EditDoseLogSheet
           key={editingLog.id}
           log={editingLog}
@@ -295,437 +246,18 @@ export default function HistoryScreen() {
             load();
           }}
         />
-      )}
-    </ThemedView>
+      ) : null}
+    </Screen>
   );
 }
 
 function PickerRow({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const styles = getStyles(useTheme());
   return (
-    <Pressable style={styles.pickerRow} onPress={onPress}>
-      <ThemedText style={selected ? styles.pickerRowSelected : undefined}>{label}</ThemedText>
+    <Pressable
+      accessibilityRole="button"
+      className="min-h-12 justify-center border-b border-brand-border dark:border-night-border"
+      onPress={onPress}>
+      <Text className={cn('text-base', selected && 'font-bold text-brand-deep-blue dark:text-brand-cyan')}>{label}</Text>
     </Pressable>
   );
-}
-
-function timeFromIso(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function nowTime(): string {
-  return timeFromIso(new Date().toISOString())!;
-}
-
-// Pads a single-digit hour ("9:05") to the two-digit form ("09:05") the
-// ECMAScript date-time string format requires — TIME_RE (shared with the
-// medication schedule-time form, which stores the string as-is rather
-// than parsing it) accepts a single-digit hour, but passing one straight
-// into `new Date(...)` yields an Invalid Date whose toISOString() throws.
-function normalizeTime(time: string): string {
-  const [hours, minutes] = time.split(':');
-  return `${hours.padStart(2, '0')}:${minutes}`;
-}
-
-type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_dose: number | null };
-
-// The medication's own quantity_per_dose is only the right fallback for a
-// slot with no group or per-schedule-time override — resolve the actual
-// configured amount for this log's own (medication, scheduled_time) via
-// the same generateDaySlots the dashboard's Take flow uses, so correcting
-// a skipped/missed entry to Taken deducts the same amount the normal Take
-// button would have.
-function resolveHistoricalQuantityPerDose(
-  log: CalendarLogRow,
-  medication: Medication,
-  groups: MedicationGroup[],
-  groupMembers: GroupMemberRow[],
-): number {
-  const slots = generateDaySlots(
-    log.scheduled_for_date,
-    [medication],
-    groups,
-    groupMembers,
-    [],
-    [],
-    { ignoreDashboardVisibility: true },
-  );
-  const slot = slots.find((s) => s.scheduledTime === log.scheduled_time.slice(0, 5));
-  return slot?.quantityPerDose ?? medication.quantity_per_dose;
-}
-
-function EditDoseLogSheet({
-  log,
-  medication,
-  groups,
-  groupMembers,
-  onClose,
-  onSaved,
-  onDeleted,
-}: {
-  log: CalendarLogRow;
-  medication: Medication | null;
-  groups: MedicationGroup[];
-  groupMembers: GroupMemberRow[];
-  onClose: () => void;
-  onSaved: () => void;
-  onDeleted: () => void;
-}) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
-  const [status, setStatus] = useState<DoseLogStatus>(log.status);
-  const [time, setTime] = useState(() => timeFromIso(log.taken_at) ?? nowTime());
-  const [painLevel, setPainLevel] = useState<number>(log.pain_level ?? 5);
-  const [moodLevel, setMoodLevel] = useState<number>(log.mood_level ?? 5);
-  const [note, setNote] = useState(log.note ?? '');
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const trackPain = medication ? medicationTracksPain(medication) : false;
-  const trackMood = medication ? medicationTracksMood(medication) : false;
-
-  async function handleSave() {
-    if (!medication) return;
-    setFormError(null);
-    if (status === 'taken' && !TIME_RE.test(time)) {
-      setFormError('Enter a valid time (HH:MM).');
-      return;
-    }
-    setSaving(true);
-    try {
-      // Local calendar date, not the UTC slice a raw taken_at ISO string
-      // would give — timeFromIso already displays the local time, so the
-      // date it's combined with here has to match in the same local frame
-      // or the reconstructed timestamp silently drifts a day for anyone
-      // not on UTC.
-      const baseDate = log.taken_at ? localDateString(new Date(log.taken_at)) : log.scheduled_for_date;
-      // Was already 'taken' and staying 'taken' (editing note/time/levels
-      // only): reuse the exact amount originally deducted for this slot,
-      // which may differ from the medication's default quantity_per_dose
-      // (a group or per-schedule-time override) — otherwise the RPC's
-      // restore-then-deduct cycle would silently shift inventory by the
-      // difference even though nothing about the dose amount changed. A
-      // transition INTO 'taken' from skipped/missed has no original amount
-      // to preserve, so it falls back to the medication default.
-      const quantityPerDose =
-        status === 'taken' && log.status === 'taken' && log.deducted_quantity !== null
-          ? log.deducted_quantity
-          : resolveHistoricalQuantityPerDose(log, medication, groups, groupMembers);
-      await editDoseLog(log.id, {
-        status,
-        takenAt: status === 'taken' ? new Date(`${baseDate}T${normalizeTime(time)}:00`).toISOString() : null,
-        // A metric the medication no longer tracks (feedback_type changed
-        // since this entry was logged) has no input shown to edit it —
-        // preserve the log's own historical value rather than let it fall
-        // through to editDoseLog's `undefined` -> null default and get
-        // silently erased by an edit that never touched it.
-        painLevel: status === 'taken' ? (trackPain ? painLevel : (log.pain_level ?? undefined)) : undefined,
-        moodLevel: status === 'taken' ? (trackMood ? moodLevel : (log.mood_level ?? undefined)) : undefined,
-        note: status === 'taken' ? note.trim() : '',
-        quantityPerDose,
-        inventoryEnabled: medication.inventory_enabled,
-      });
-      onSaved();
-    } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Couldn't save changes");
-      setSaving(false);
-    }
-  }
-
-  function confirmDelete() {
-    Alert.alert('Delete this entry?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setDeleting(true);
-          setFormError(null);
-          try {
-            await deleteDoseLog(log.id);
-            onDeleted();
-          } catch (e) {
-            setFormError(e instanceof Error ? e.message : "Couldn't delete this entry");
-            setDeleting(false);
-          }
-        },
-      },
-    ]);
-  }
-
-  return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.editSheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-              <ScrollView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Edit dose entry
-                </ThemedText>
-                {medication && (
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.editSubtitle}>
-                    {medication.name}
-                    {medication.dose ? ` — ${medication.dose}` : ''}
-                  </ThemedText>
-                )}
-
-                {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
-
-                <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-                  Status
-                </ThemedText>
-                <View style={styles.statusRow}>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <Pressable
-                      key={opt.value}
-                      style={[styles.statusChip, status === opt.value && styles.statusChipSelected]}
-                      onPress={() => setStatus(opt.value)}
-                    >
-                      <ThemedText
-                        type="small"
-                        style={status === opt.value ? styles.statusChipTextSelected : undefined}
-                      >
-                        {opt.label}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
-                </View>
-
-                {status === 'taken' && (
-                  <>
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-                      Time taken
-                    </ThemedText>
-                    <TextInput
-                      style={styles.input}
-                      value={time}
-                      onChangeText={setTime}
-                      placeholder="HH:MM"
-                      placeholderTextColor={theme.textSecondary}
-                    />
-
-                    {trackPain && (
-                      <LevelStepper
-                        label="Pain level"
-                        value={painLevel}
-                        onChange={setPainLevel}
-                        color={levelColor('pain', painLevel)}
-                      />
-                    )}
-                    {trackMood && (
-                      <LevelStepper
-                        label="Mood level"
-                        value={moodLevel}
-                        onChange={setMoodLevel}
-                        color={levelColor('mood', moodLevel)}
-                      />
-                    )}
-
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-                      Notes (optional)
-                    </ThemedText>
-                    <TextInput
-                      style={[styles.input, styles.multiline]}
-                      value={note}
-                      onChangeText={setNote}
-                      multiline
-                      maxLength={255}
-                    />
-                  </>
-                )}
-
-                <View style={styles.actions}>
-                  <Pressable style={styles.secondaryButton} onPress={onClose} disabled={saving || deleting}>
-                    <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.primaryButton, (saving || !medication) && styles.disabled]}
-                    onPress={handleSave}
-                    disabled={saving || deleting || !medication}
-                  >
-                    {saving ? (
-                      <ActivityIndicator color="#ffffff" />
-                    ) : (
-                      <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
-                    )}
-                  </Pressable>
-                </View>
-
-                <Pressable onPress={confirmDelete} disabled={deleting} style={styles.deleteButton}>
-                  <ThemedText style={styles.deleteButtonText}>
-                    {deleting ? 'Deleting…' : 'Delete entry'}
-                  </ThemedText>
-                </Pressable>
-              </ScrollView>
-            </SafeAreaView>
-          </ThemedView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function LevelStepper({
-  label,
-  value,
-  onChange,
-  color,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  color: string;
-}) {
-  const styles = getStyles(useTheme());
-  return (
-    <View style={styles.stepperBlock}>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-        {label}
-      </ThemedText>
-      <View style={styles.stepperRow}>
-        <Pressable
-          style={styles.stepperButton}
-          onPress={() => onChange(Math.max(MIN_LEVEL, value - 1))}
-          disabled={value <= MIN_LEVEL}
-          hitSlop={8}
-        >
-          <ThemedText style={styles.stepperButtonText}>−</ThemedText>
-        </Pressable>
-        <View style={[styles.stepperValue, { borderColor: color }]}>
-          <ThemedText type="smallBold" style={{ color }}>
-            {value}
-          </ThemedText>
-        </View>
-        <Pressable
-          style={styles.stepperButton}
-          onPress={() => onChange(Math.min(MAX_LEVEL, value + 1))}
-          disabled={value >= MAX_LEVEL}
-          hitSlop={8}
-        >
-          <ThemedText style={styles.stepperButtonText}>+</ThemedText>
-        </Pressable>
-        <ThemedText type="small" themeColor="textSecondary">
-          out of {MAX_LEVEL}
-        </ThemedText>
-      </View>
-    </View>
-  );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  filterField: {
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: Spacing.three,
-    marginBottom: Spacing.three,
-  },
-  filterValue: { marginTop: Spacing.half, fontWeight: '600' },
-  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginBottom: Spacing.three },
-  rangeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  rangeChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  rangeChipTextSelected: { fontWeight: '700', color: theme.accent },
-  error: { color: Brand.danger, marginBottom: Spacing.two },
-  loading: { marginTop: Spacing.five },
-  scrollContent: { gap: Spacing.two, paddingBottom: Spacing.six },
-  historyNote: { fontStyle: 'italic' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.three,
-  },
-  rowMain: { flex: 1, gap: 2 },
-  badge: { borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheetWrapper: { maxHeight: '70%' },
-  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  modalList: { maxHeight: 320 },
-  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-  pickerRowSelected: { fontWeight: '700', color: theme.accent },
-  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
-  editSheetWrapper: { maxHeight: '85%' },
-  editSubtitle: { marginTop: -Spacing.two, marginBottom: Spacing.two },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  statusRow: { flexDirection: 'row', gap: Spacing.two },
-  statusChip: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.two,
-  },
-  statusChipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  statusChipTextSelected: { fontWeight: '700', color: theme.accent },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    color: theme.text,
-    backgroundColor: theme.backgroundElement,
-  },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  stepperBlock: { marginTop: Spacing.one },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  stepperButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperButtonText: { fontSize: 20, fontWeight: '600' },
-  stepperValue: {
-    width: 48,
-    height: 40,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: Brand.deepBlue,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-  deleteButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  deleteButtonText: { color: Brand.danger, fontWeight: '600' },
-});
 }

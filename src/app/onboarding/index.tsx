@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { MedName } from '@/components/ui/med-name';
+import { Screen } from '@/components/ui/screen';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getActiveMedications } from '@/lib/medications';
 import { completeOnboarding, skipOnboarding, startOnboarding } from '@/lib/onboarding';
@@ -17,8 +18,6 @@ import type { Medication } from '@/lib/types/medications';
 // back to itself after each medication add, rather than a port of web's
 // 6-step draft-based wizard.
 export default function OnboardingScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId, activeProfile } = useActiveProfile();
 
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -81,7 +80,8 @@ export default function OnboardingScreen() {
     setFinishing(true);
     try {
       await completeOnboarding(activeProfileId);
-      router.replace('/(tabs)');
+      // The dashboard shows its one-time "You're all set" banner for this param.
+      router.replace({ pathname: '/(tabs)', params: { setup: 'complete' } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't finish setup");
       setFinishing(false);
@@ -92,105 +92,56 @@ export default function OnboardingScreen() {
   const busy = finishing || skipping;
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.headerRow}>
-            <ThemedText type="title" style={styles.title}>
-              Set up {activeProfile ? `${profileName}'s` : 'your'} medications
-            </ThemedText>
-            <Pressable onPress={handleSkip} disabled={busy} hitSlop={8}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Skip setup
-              </ThemedText>
-            </Pressable>
-          </View>
+    <Screen edges={['left', 'right', 'bottom']} contentClassName="pt-4">
+      <View className="flex-row items-start justify-between gap-2">
+        <Text accessibilityRole="header" className="flex-1 text-xl font-bold text-brand-navy dark:text-white">
+          Set up {activeProfile ? `${profileName}'s` : 'your'} medications
+        </Text>
+        <Pressable className="min-h-11 justify-center" onPress={handleSkip} disabled={busy} hitSlop={8}>
+          <Text muted className="text-sm">
+            Skip setup
+          </Text>
+        </Pressable>
+      </View>
 
-          <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
-            Add each medication or supplement {activeProfile ? `${profileName} takes` : 'you take'} — dose,
-            schedule, and reminders. You can add more, or finish and come back anytime.
-          </ThemedText>
+      <Text muted className="text-sm">
+        Add each medication or supplement {activeProfile ? `${profileName} takes` : 'you take'} — dose, schedule, and
+        reminders. You can add more, or finish and come back anytime.
+      </Text>
 
-          {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Callout kind="danger">{error}</Callout> : null}
 
-          {loading ? (
-            <ActivityIndicator style={styles.loading} />
-          ) : medications.length === 0 ? (
-            <ThemedView type="backgroundElement" style={styles.emptyCard}>
-              <ThemedText type="small" themeColor="textSecondary">
-                No medications added yet.
-              </ThemedText>
-            </ThemedView>
-          ) : (
-            <View style={styles.medList}>
-              {medications.map((med) => (
-                <ThemedView key={med.id} type="backgroundElement" style={styles.medRow}>
-                  <ThemedText type="smallBold">{med.name}</ThemedText>
-                  {med.dose ? (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {med.dose}
-                    </ThemedText>
-                  ) : null}
-                </ThemedView>
-              ))}
-            </View>
-          )}
+      {loading ? (
+        <ActivityIndicator className="mt-4" />
+      ) : medications.length === 0 ? (
+        <Card flat className="p-3">
+          <Text muted className="text-sm">
+            No medications added yet.
+          </Text>
+        </Card>
+      ) : (
+        <View className="gap-2">
+          {medications.map((med) => (
+            <Card key={med.id} flat className="p-3">
+              <MedName className="text-sm font-semibold" name={med.name} dose={med.dose} />
+            </Card>
+          ))}
+        </View>
+      )}
 
-          <Pressable
-            style={styles.addButton}
-            onPress={() => router.push('/medications/new?fromOnboarding=1')}
-            disabled={busy}
-          >
-            <ThemedText style={styles.addButtonText}>+ Add a medication</ThemedText>
-          </Pressable>
+      <Button
+        label="+ Add a medication"
+        variant="secondary"
+        onPress={() => router.push('/medications/new?fromOnboarding=1')}
+        disabled={busy}
+      />
 
-          <Pressable
-            style={[styles.primaryButton, (medications.length === 0 || busy) && styles.disabled]}
-            onPress={handleFinish}
-            disabled={medications.length === 0 || busy}
-          >
-            {finishing ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <ThemedText style={styles.primaryButtonText}>Finish setup</ThemedText>
-            )}
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <Button
+        label={finishing ? 'Finishing…' : 'Finish setup'}
+        loading={finishing}
+        disabled={medications.length === 0 || busy}
+        onPress={handleFinish}
+      />
+    </Screen>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    container: { flex: 1 },
-    safeArea: { flex: 1 },
-    scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-    headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
-    title: { fontSize: 22, lineHeight: 28, flex: 1 },
-    intro: { marginTop: Spacing.two, marginBottom: Spacing.one },
-    error: { color: Brand.danger, marginVertical: Spacing.two },
-    loading: { marginTop: Spacing.four },
-    emptyCard: { borderRadius: BorderRadius.md, padding: Spacing.three, marginTop: Spacing.three },
-    medList: { gap: Spacing.two, marginTop: Spacing.three },
-    medRow: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: 2 },
-    addButton: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      paddingVertical: Spacing.three,
-      alignItems: 'center',
-      marginTop: Spacing.four,
-    },
-    addButtonText: { color: Brand.deepBlue, fontWeight: '600' },
-    primaryButton: {
-      backgroundColor: Brand.deepBlue,
-      borderRadius: BorderRadius.sm,
-      paddingVertical: Spacing.three,
-      alignItems: 'center',
-      marginTop: Spacing.two,
-    },
-    primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-    disabled: { opacity: 0.6 },
-  });
 }

@@ -8,10 +8,10 @@
 // someone to "finish" setup that's already finished in substance.
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Pressable } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { Text } from '@/components/ui/text';
 import { getActiveMedications } from '@/lib/medications';
 import { getOnboardingProgress } from '@/lib/onboarding';
 
@@ -57,33 +57,17 @@ export function ResumeSetupBanner({
 
   if (checked.completed || hasMedications) return null;
 
+  // Warning callout, DESIGN.md 7.2: status-warning/10 with a ClipboardList icon.
   return (
-    <Pressable style={styles.banner} onPress={() => router.push('/onboarding')}>
-      <View style={styles.textCol}>
-        <ThemedText type="smallBold" style={styles.title}>
-          Finish setting up {profileName === 'your' ? 'your' : `${profileName}'s`} medications
-        </ThemedText>
-      </View>
-      <ThemedText type="small" style={styles.link}>
-        Resume setup
-      </ThemedText>
+    <Pressable
+      accessibilityRole="link"
+      className="min-h-11 flex-row items-center gap-2 rounded-card border border-status-warning/40 bg-status-warning/10 px-4 py-2"
+      onPress={() => router.push('/onboarding')}>
+      <Ionicons name="clipboard-outline" size={18} color="#F5A524" />
+      <Text className="flex-1 text-sm font-semibold">
+        Finish setting up {profileName === 'your' ? 'your' : `${profileName}'s`} medications
+      </Text>
+      <Text className="text-sm font-medium text-brand-deep-blue dark:text-brand-cyan">Resume setup</Text>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Brand.warning + '66',
-    backgroundColor: Brand.warning + '1A',
-    padding: Spacing.three,
-  },
-  textCol: { flex: 1 },
-  title: { color: Brand.warning },
-  link: { color: Brand.deepBlue, fontWeight: '600' },
-});

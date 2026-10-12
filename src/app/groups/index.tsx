@@ -1,11 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import { getGroupMembers, getGroups } from '@/lib/medications';
 import type { MedicationGroup } from '@/lib/types/medications';
@@ -55,71 +57,51 @@ export default function GroupsListScreen() {
   );
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <View style={styles.titleRow}>
-          <ThemedText type="title" style={styles.title}>
-            Groups
-          </ThemedText>
-          <Pressable style={styles.addButton} onPress={() => router.push('/groups/new')} hitSlop={8}>
-            <ThemedText style={styles.addButtonText}>+ Add Group</ThemedText>
-          </Pressable>
-        </View>
+    <Screen
+      edges={['left', 'right', 'bottom']}
+      contentClassName="pt-4"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}>
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <ScreenTitle>Groups</ScreenTitle>
+        <Button label="+ Add Group" size="compact" onPress={() => router.push('/groups/new')} />
+      </View>
 
-        <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
-          Combine medications taken together at the same time into one dashboard event.
-        </ThemedText>
+      <Text muted className="text-sm">
+        Combine medications taken together at the same time into one dashboard event.
+      </Text>
 
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
-        {loading && !refreshing ? (
-          <ActivityIndicator style={styles.loading} />
-        ) : (
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}
-          >
-            {groups.length === 0 && (
-              <ThemedText themeColor="textSecondary">
-                No groups yet. Tap &ldquo;Add Group&rdquo; to combine medications taken at the same time.
-              </ThemedText>
-            )}
-            {groups.map((group) => (
-              <GroupCard key={group.id} group={group} memberCount={memberCounts[group.id] ?? 0} />
-            ))}
-          </ScrollView>
-        )}
-      </SafeAreaView>
-    </ThemedView>
+      {loading && !refreshing ? (
+        <ActivityIndicator className="mt-8" />
+      ) : (
+        <>
+          {groups.length === 0 ? (
+            <Text muted className="text-sm">
+              No groups yet. Tap &ldquo;Add Group&rdquo; to combine medications taken at the same time.
+            </Text>
+          ) : null}
+          {groups.map((group) => (
+            <GroupCard key={group.id} group={group} memberCount={memberCounts[group.id] ?? 0} />
+          ))}
+        </>
+      )}
+    </Screen>
   );
 }
 
 function GroupCard({ group, memberCount }: { group: MedicationGroup; memberCount: number }) {
   return (
-    <Pressable onPress={() => router.push(`/groups/${group.id}`)}>
-      <ThemedView type="backgroundElement" style={styles.card}>
-        <View style={styles.cardText}>
-          <ThemedText type="smallBold">{group.name}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+    <Pressable accessibilityRole="link" onPress={() => router.push(`/groups/${group.id}`)}>
+      <Card flat className="flex-row items-center gap-3">
+        <Ionicons name="layers-outline" size={20} color="#0754A8" />
+        <View className="flex-1 gap-0.5">
+          <Text className="text-sm font-semibold text-brand-navy dark:text-white">{group.name}</Text>
+          <Text muted className="text-xs">
             {to12h(group.scheduled_time.slice(0, 5))} · {memberCount} {memberCount === 1 ? 'medication' : 'medications'}
-          </ThemedText>
+          </Text>
         </View>
-      </ThemedView>
+      </Card>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, marginBottom: Spacing.one },
-  title: { fontSize: 28, lineHeight: 34 },
-  addButton: { paddingVertical: Spacing.one },
-  addButtonText: { color: Brand.deepBlue, fontWeight: '600' },
-  subtitle: { marginBottom: Spacing.three },
-  error: { color: Brand.danger, marginBottom: Spacing.two },
-  loading: { marginTop: Spacing.five },
-  scrollContent: { gap: Spacing.two, paddingBottom: Spacing.six },
-  card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: 2 },
-  cardText: { gap: 2 },
-});

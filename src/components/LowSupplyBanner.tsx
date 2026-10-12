@@ -5,10 +5,10 @@
 import { useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, PanResponder, Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { GradientFill } from '@/components/ui/gradient-fill';
+import { Text } from '@/components/ui/text';
 import { SUPPLY_SEVERITY_LABELS, type SupplyAlert } from '@/lib/medication-ui';
 
 const DISMISS_DISTANCE = 100;
@@ -23,7 +23,7 @@ export function LowSupplyBanner({
   if (alerts.length === 0) return null;
 
   return (
-    <View style={styles.stack}>
+    <View className="gap-2">
       {alerts.map((alert) => (
         <ReminderCard key={alert.medication.id} alert={alert} onDismiss={onDismiss} />
       ))}
@@ -31,6 +31,8 @@ export function LowSupplyBanner({
   );
 }
 
+// Gradient refill reminder, DESIGN.md 10.2: 44 px icon disc, eyebrow, title,
+// body, "Refill ›" pill link and a dismiss ×.
 function ReminderCard({
   alert,
   onDismiss,
@@ -66,86 +68,45 @@ function ReminderCard({
   );
 
   return (
-    <Animated.View style={[styles.card, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
-      <View style={styles.iconCircle}>
-        <Ionicons name="medkit-outline" size={22} color="#FFFFFF" />
-      </View>
-      <View style={styles.body}>
-        <View style={styles.headerRow}>
-          <ThemedText type="small" style={styles.eyebrow}>
-            Reminder · {SUPPLY_SEVERITY_LABELS[severity]}
-          </ThemedText>
-          <ThemedText type="small" style={styles.swipeHint}>
-            Swipe to dismiss
-          </ThemedText>
+    <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
+      <View className="flex-row gap-3 overflow-hidden rounded-hero p-5 shadow-card">
+        <GradientFill name="hero" />
+        <View className="h-11 w-11 items-center justify-center rounded-full bg-white/20">
+          <Ionicons name="medkit-outline" size={22} color="#FFFFFF" />
         </View>
-        <ThemedText type="smallBold" style={styles.title}>
-          Refill: {medication.name}
-          {medication.dose ? ` ${medication.dose}` : ''}
-        </ThemedText>
-        <ThemedText type="small" style={styles.subtitle}>
-          Pills Left: {medication.current_quantity} {medication.inventory_unit}
-        </ThemedText>
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.refillButton}
-            accessibilityRole="button"
-            accessibilityLabel={`Refill ${medication.name}`}
-            onPress={() => router.push(`/medications/${medication.id}?action=refill`)}
-          >
-            <ThemedText type="smallBold" style={styles.refillText}>
-              Refill
-            </ThemedText>
-            <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-          </Pressable>
-          <Pressable
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={`Dismiss refill reminder for ${medication.name}`}
-            onPress={() => onDismiss(medication.id)}
-          >
-            <Ionicons name="close" size={20} color="rgba(255,255,255,0.85)" />
-          </Pressable>
+        <View className="flex-1 gap-0.5">
+          <View className="flex-row items-start justify-between gap-2">
+            <Text className="flex-1 text-xs font-semibold uppercase tracking-[2px] text-white/70 dark:text-white/70">
+              Reminder · {SUPPLY_SEVERITY_LABELS[severity]}
+            </Text>
+            <Pressable
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={`Dismiss refill reminder for ${medication.name}`}
+              onPress={() => onDismiss(medication.id)}>
+              <Ionicons name="close" size={20} color="rgba(255,255,255,0.85)" />
+            </Pressable>
+          </View>
+          <Text className="text-lg font-bold text-white dark:text-white">
+            Refill: {medication.name}
+            {medication.dose ? ` ${medication.dose}` : ''}
+          </Text>
+          <Text className="text-sm text-white/80 dark:text-white/80">
+            Pills Left: {medication.current_quantity} {medication.inventory_unit}
+          </Text>
+          <View className="mt-2 flex-row items-center">
+            <Pressable
+              className="min-h-11 flex-row items-center gap-1 self-start rounded-full border border-white/30 bg-white/15 px-4 active:bg-white/25"
+              accessibilityRole="button"
+              accessibilityLabel={`Refill ${medication.name}`}
+              onPress={() => router.push(`/medications/${medication.id}?action=refill`)}>
+              <Text className="text-sm font-bold text-white dark:text-white">Refill</Text>
+              <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+            </Pressable>
+            <Text className="ml-3 text-[11px] font-semibold uppercase text-white/60 dark:text-white/60">Swipe to dismiss</Text>
+          </View>
         </View>
       </View>
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  stack: { gap: Spacing.two },
-  card: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Brand.deepBlue,
-  },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  body: { flex: 1, gap: 2 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.two },
-  eyebrow: { color: 'rgba(255,255,255,0.75)', fontWeight: '700', textTransform: 'uppercase', fontSize: 11 },
-  swipeHint: { color: 'rgba(255,255,255,0.75)', fontWeight: '700', textTransform: 'uppercase', fontSize: 11 },
-  title: { color: '#FFFFFF', fontSize: 17 },
-  subtitle: { color: 'rgba(255,255,255,0.85)' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, marginTop: Spacing.two },
-  refillButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  refillText: { color: '#FFFFFF' },
-});

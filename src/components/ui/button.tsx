@@ -17,7 +17,7 @@ const VARIANT: Record<Variant, string> = {
 const TEXT: Record<Variant, string> = {
   primary: 'text-white',
   secondary: 'text-brand-navy dark:text-white',
-  ghost: 'text-brand-deep-blue',
+  ghost: 'text-brand-deep-blue dark:text-brand-cyan',
   danger: 'text-white',
 };
 const PADDING: Record<Size, string> = {

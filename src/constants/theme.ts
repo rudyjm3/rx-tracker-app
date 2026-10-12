@@ -1,11 +1,10 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Palette values that can't be expressed as NativeWind classes: icon and
+ * tab-bar colors, SVG fills and gradient stops. Everything else is styled
+ * with `className` (tokens live in tailwind.config.js and mirror this file).
  */
 
 import '@/global.css';
-
-import { Platform } from 'react-native';
 
 // RxTracker brand tokens — single source of truth for the palette, ported
 // from the reference PHP app's assets/css/rxtracker-brand-tokens.css.
@@ -28,10 +27,12 @@ export const Brand = {
   gradientHero: ['#071D3D', '#0754A8', '#0A8AC8', '#14CFE0'] as const,
 } as const;
 
-export const BorderRadius = {
-  sm: 10,
-  md: 18,
-  lg: 28,
+// Gradient stops, DESIGN.md 2.3 / 17.1. Used through <GradientFill />.
+export const Gradient = {
+  brand: ['#14CFE0', '#0A8AC8', '#0754A8'],
+  brandDark: ['#102B57', '#0754A8', '#14CFE0'],
+  hero: ['#18D0DC', '#0A8AC8', '#0754A8', '#071D3D'],
+  auth: ['#071D3D', '#0754A8', '#0A8AC8', '#14CFE0'],
 } as const;
 
 export const Colors = {
@@ -62,43 +63,3 @@ export const Colors = {
     accent: Brand.cyan,
   },
 } as const;
-
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
-
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
-
-export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
-} as const;
-
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;

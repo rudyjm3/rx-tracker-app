@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { GroupMemberRow } from '@/components/group-member-row';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import { createGroup, getActiveMedications, type GroupInput, type GroupMemberInput } from '@/lib/medications';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
@@ -16,8 +19,6 @@ import { to12h } from '@/lib/utils';
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
 export default function NewGroupScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
 
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -102,47 +103,33 @@ export default function NewGroupScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="title" style={styles.title}>
-            New group
-          </ThemedText>
+    <Screen edges={['left', 'right', 'bottom']} keyboardShouldPersistTaps="handled" contentClassName="pt-4">
+      <ScreenTitle>New group</ScreenTitle>
 
-          {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+      {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
-          <FieldLabel>Group name</FieldLabel>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. Morning pills"
-            placeholderTextColor={theme.textSecondary}
-          />
+      <Card className="gap-4 p-4">
+        <Field label="Group name" value={name} onChangeText={setName} placeholder="e.g. Morning pills" />
 
-          <FieldLabel>Scheduled time</FieldLabel>
-          <View style={styles.timeRow}>
-            <TextInput
-              style={[styles.input, styles.timeInput]}
-              value={scheduledTime}
-              onChangeText={setScheduledTime}
-              placeholder="HH:MM"
-              placeholderTextColor={theme.textSecondary}
-            />
-            <ThemedText type="small" themeColor="textSecondary">
-              {TIME_RE.test(scheduledTime) ? to12h(scheduledTime) : ''}
-            </ThemedText>
+        <View className="flex-row items-end gap-2">
+          <View className="w-28">
+            <Field label="Scheduled time" value={scheduledTime} onChangeText={setScheduledTime} placeholder="HH:MM" />
           </View>
+          <Text muted className="mb-3 text-sm">
+            {TIME_RE.test(scheduledTime) ? to12h(scheduledTime) : ''}
+          </Text>
+        </View>
 
-          <FieldLabel>Members</FieldLabel>
+        <View className="gap-1">
+          <Text className="text-sm">Members</Text>
           {loadingMedications ? (
-            <ActivityIndicator style={styles.loading} />
+            <ActivityIndicator />
           ) : medications.length === 0 ? (
-            <ThemedText themeColor="textSecondary">No active medications to add yet.</ThemedText>
+            <Text muted className="text-sm">No active medications to add yet.</Text>
           ) : (
-            <View style={styles.memberList}>
+            <View className="gap-1">
               {medications.map((med) => (
-                <MemberRow
+                <GroupMemberRow
                   key={med.id}
                   medication={med}
                   selectedValue={selected[med.id]}
@@ -152,106 +139,13 @@ export default function NewGroupScreen() {
               ))}
             </View>
           )}
-
-          <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
-              <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleCreate} disabled={saving}>
-              {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Create</ThemedText>}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-function MemberRow({
-  medication,
-  selectedValue,
-  onToggle,
-  onChangeQuantity,
-}: {
-  medication: Medication;
-  selectedValue: string | undefined;
-  onToggle: () => void;
-  onChangeQuantity: (value: string) => void;
-}) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
-  const isSelected = selectedValue !== undefined;
-  return (
-    <View style={styles.memberRow}>
-      <Pressable style={styles.memberRowMain} onPress={onToggle} hitSlop={4}>
-        <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-          {isSelected && <ThemedText style={styles.checkboxMark}>✓</ThemedText>}
         </View>
-        <ThemedText type="small" style={styles.memberName}>
-          {medication.name}
-          {medication.dose ? ` — ${medication.dose}` : ''}
-        </ThemedText>
-      </Pressable>
-      {isSelected && (
-        <TextInput
-          style={[styles.input, styles.qtyInput]}
-          value={selectedValue}
-          onChangeText={onChangeQuantity}
-          keyboardType="numeric"
-          placeholder="Qty override"
-          placeholderTextColor={theme.textSecondary}
-        />
-      )}
-    </View>
-  );
-}
+      </Card>
 
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
+      <View className="flex-row gap-2">
+        <Button label="Cancel" variant="ghost" className="flex-1" onPress={() => router.back()} disabled={saving} />
+        <Button label={saving ? 'Creating…' : 'Create'} className="flex-1" loading={saving} onPress={handleCreate} />
+      </View>
+    </Screen>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-  title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
-  error: { color: Brand.danger, marginVertical: Spacing.two },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  timeInput: { width: 100 },
-  loading: { marginTop: Spacing.three },
-  // No maxHeight here — this list flows in the screen's outer ScrollView,
-  // so a long list scrolls with the rest of the form instead of being
-  // clipped in its own fixed-height box and colliding with the buttons
-  // below it.
-  memberList: { gap: Spacing.two, marginTop: Spacing.one },
-  memberRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  memberRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: { backgroundColor: Brand.deepBlue, borderColor: Brand.deepBlue },
-  checkboxMark: { color: '#ffffff', fontSize: 14, lineHeight: 16, fontWeight: '700' },
-  memberName: { flex: 1 },
-  qtyInput: { width: 110 },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-});
 }

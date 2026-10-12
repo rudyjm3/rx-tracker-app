@@ -1,65 +1,40 @@
-import { SymbolView } from 'expo-symbols';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { PropsWithChildren, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { cn } from '@/lib/cn';
 
-export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const theme = useTheme();
+import { Text } from './text';
+
+// Accordion item (DESIGN.md 6.6): radius 10, border, padding 12, 14 px
+// semibold navy summary with a chevron; the open state uses `brand-bg`.
+// Uncontrolled by default; pass `open` + `onToggle` to control it (e.g. so
+// only one FAQ is open at a time).
+export function Collapsible({
+  children,
+  title,
+  open,
+  onToggle,
+  defaultOpen = false,
+}: PropsWithChildren & { title: string; open?: boolean; onToggle?: () => void; defaultOpen?: boolean }) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isOpen = open ?? internalOpen;
 
   return (
-    <ThemedView>
+    <View
+      className={cn(
+        'rounded-control border border-brand-border p-3 dark:border-night-border',
+        isOpen && 'bg-brand-bg dark:bg-night-selected',
+      )}>
       <Pressable
-        style={({ pressed }) => [styles.heading, pressed && styles.pressedHeading]}
-        onPress={() => setIsOpen((value) => !value)}>
-        <ThemedView type="backgroundElement" style={styles.button}>
-          <SymbolView
-            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-            size={14}
-            weight="bold"
-            tintColor={theme.text}
-            style={{ transform: [{ rotate: isOpen ? '-90deg' : '90deg' }] }}
-          />
-        </ThemedView>
-
-        <ThemedText type="small">{title}</ThemedText>
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isOpen }}
+        className="min-h-9 flex-row items-center justify-between gap-2"
+        onPress={onToggle ?? (() => setInternalOpen((v) => !v))}>
+        <Text className="flex-1 text-sm font-semibold text-brand-navy dark:text-white">{title}</Text>
+        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#60708A" />
       </Pressable>
-      {isOpen && (
-        <Animated.View entering={FadeIn.duration(200)}>
-          <ThemedView type="backgroundElement" style={styles.content}>
-            {children}
-          </ThemedView>
-        </Animated.View>
-      )}
-    </ThemedView>
+      {isOpen ? <View className="mt-2">{children}</View> : null}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  heading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  pressedHeading: {
-    opacity: 0.7,
-  },
-  button: {
-    width: Spacing.four,
-    height: Spacing.four,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    marginTop: Spacing.three,
-    borderRadius: Spacing.three,
-    marginLeft: Spacing.four,
-    padding: Spacing.four,
-  },
-});

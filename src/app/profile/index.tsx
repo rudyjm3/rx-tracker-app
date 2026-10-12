@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, View } from 'react-native';
 
 import { AllergyPanel } from '@/components/AllergyPanel';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Screen } from '@/components/ui/screen';
+import { Text } from '@/components/ui/text';
+import { UnitField } from '@/components/ui/unit-field';
 import { convertHeight, convertWeight } from '@/lib/family';
 import { getUserProfile, upsertUserProfile, type UserProfileInput } from '@/lib/user-profile';
 import type { UserProfile } from '@/lib/types/profile';
@@ -15,7 +17,6 @@ import type { UserProfile } from '@/lib/types/profile';
 // Profile picture upload is skipped this round — no image picker is
 // installed, same deferral already made for family member photos.
 export default function MyProfileScreen() {
-  const styles = getStyles(useTheme());
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,21 +45,17 @@ export default function MyProfileScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.centered}>
-          <ActivityIndicator />
-        </SafeAreaView>
-      </ThemedView>
+      <Screen edges={['left', 'right', 'bottom']} scroll={false} contentClassName="items-center justify-center">
+        <ActivityIndicator />
+      </Screen>
     );
   }
 
   if (loadError) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.centered}>
-          <ThemedText style={styles.error}>{loadError}</ThemedText>
-        </SafeAreaView>
-      </ThemedView>
+      <Screen edges={['left', 'right', 'bottom']} scroll={false} contentClassName="items-center justify-center">
+        <Text className="text-sm text-status-danger dark:text-status-danger">{loadError}</Text>
+      </Screen>
     );
   }
 
@@ -66,9 +63,6 @@ export default function MyProfileScreen() {
 }
 
 function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: () => void }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
-  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const [firstName, setFirstName] = useState(profile?.first_name ?? '');
   const [lastName, setLastName] = useState(profile?.last_name ?? '');
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
@@ -162,141 +156,49 @@ function EditForm({ profile, onSaved }: { profile: UserProfile | null; onSaved: 
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+    <Screen edges={['left', 'right', 'bottom']} keyboardShouldPersistTaps="handled" contentClassName="pt-4">
+      {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
-          <FieldLabel>First name</FieldLabel>
-          <TextInput
-            style={[styles.input, inputThemeStyle]}
-            placeholderTextColor={theme.textSecondary}
-            value={firstName}
-            onChangeText={setFirstName}
-            maxLength={50}
-          />
+      <Card flat className="gap-4 p-4">
+        <Field label="First name" value={firstName} onChangeText={setFirstName} maxLength={50} />
+        <Field label="Last name" value={lastName} onChangeText={setLastName} maxLength={50} />
+        <Field label="Display name (optional — defaults to first name)" value={displayName} onChangeText={setDisplayName} maxLength={100} />
+        <Field
+          label="Birth date (YYYY-MM-DD)"
+          value={birthDate}
+          onChangeText={setBirthDate}
+          placeholder="1990-01-15"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <UnitField
+          label="Height"
+          value={heightValue}
+          onChangeText={setHeightValue}
+          placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
+          units={['in', 'cm'] as const}
+          unit={heightUnit}
+          onUnitChange={handleHeightUnitChange}
+        />
+        <UnitField
+          label="Weight"
+          value={weightValue}
+          onChangeText={setWeightValue}
+          placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
+          units={['lb', 'kg'] as const}
+          unit={weightUnit}
+          onUnitChange={handleWeightUnitChange}
+        />
+      </Card>
 
-          <FieldLabel>Last name</FieldLabel>
-          <TextInput
-            style={[styles.input, inputThemeStyle]}
-            placeholderTextColor={theme.textSecondary}
-            value={lastName}
-            onChangeText={setLastName}
-            maxLength={50}
-          />
+      <Card flat className="p-4">
+        <AllergyPanel profileId={null} />
+      </Card>
 
-          <FieldLabel>Display name (optional — defaults to first name)</FieldLabel>
-          <TextInput
-            style={[styles.input, inputThemeStyle]}
-            placeholderTextColor={theme.textSecondary}
-            value={displayName}
-            onChangeText={setDisplayName}
-            maxLength={100}
-          />
-
-          <FieldLabel>Birth date (YYYY-MM-DD)</FieldLabel>
-          <TextInput
-            style={[styles.input, inputThemeStyle]}
-            placeholderTextColor={theme.textSecondary}
-            value={birthDate}
-            onChangeText={setBirthDate}
-            placeholder="1990-01-15"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <FieldLabel>Height</FieldLabel>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.rowInput, inputThemeStyle]}
-              placeholderTextColor={theme.textSecondary}
-              value={heightValue}
-              onChangeText={setHeightValue}
-              keyboardType="numeric"
-              placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
-            />
-            <View style={styles.unitToggle}>
-              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => handleHeightUnitChange('in')} />
-              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => handleHeightUnitChange('cm')} />
-            </View>
-          </View>
-
-          <FieldLabel>Weight</FieldLabel>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.rowInput, inputThemeStyle]}
-              placeholderTextColor={theme.textSecondary}
-              value={weightValue}
-              onChangeText={setWeightValue}
-              keyboardType="numeric"
-              placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
-            />
-            <View style={styles.unitToggle}>
-              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => handleWeightUnitChange('lb')} />
-              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => handleWeightUnitChange('kg')} />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <AllergyPanel profileId={null} />
-          </View>
-
-          <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
-              <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save</ThemedText>}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <View className="flex-row gap-2">
+        <Button label="Cancel" variant="ghost" className="flex-1" onPress={() => router.back()} disabled={saving} />
+        <Button label={saving ? 'Saving…' : 'Save'} className="flex-1" loading={saving} onPress={handleSave} />
+      </View>
+    </Screen>
   );
-}
-
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
-  );
-}
-
-function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const styles = getStyles(useTheme());
-  return (
-    <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
-      <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-  error: { color: Brand.danger, marginVertical: Spacing.two },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
-  row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
-  rowInput: { flex: 1 },
-  unitToggle: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
-  unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
-  unitButtonActive: { backgroundColor: theme.backgroundElement },
-  unitText: { color: theme.textSecondary },
-  unitTextActive: { color: theme.text, fontWeight: '700' },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  section: { marginTop: Spacing.five, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
-  primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-});
 }

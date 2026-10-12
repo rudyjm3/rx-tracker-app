@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Input } from '@/components/ui/field';
+import { Text } from '@/components/ui/text';
 import { searchDrugSuggestions, type DrugSuggestion } from '@/lib/dailymed';
 
 const MIN_CHARS = 3;
@@ -23,8 +22,6 @@ interface DrugNameAutocompleteProps {
 // shortcut: typing never requires a pick, a lookup failure just shows no
 // suggestions, and the caller decides which other fields a pick fills in.
 export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholder }: DrugNameAutocompleteProps) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   // Results are tagged with the term they were fetched for, so a list for
   // an earlier term is never shown (or tappable) while the next one loads.
   const [results, setResults] = useState<{ term: string; items: DrugSuggestion[] }>({ term: '', items: [] });
@@ -65,8 +62,7 @@ export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholde
 
   return (
     <View>
-      <TextInput
-        style={styles.input}
+      <Input
         value={value}
         onChangeText={(v) => {
           setTyped(true);
@@ -84,25 +80,26 @@ export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholde
           blurTimer.current = setTimeout(() => setFocused(false), 200);
         }}
         placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
         autoCorrect={false}
       />
       {active && (!current || current.items.length > 0) && (
-        <View style={styles.list}>
+        // Suggestion list: radius 10, border, shadow-card (DESIGN.md 6.3).
+        <View className="mt-1 max-h-56 overflow-hidden rounded-control border border-brand-border bg-white shadow-card dark:border-night-border dark:bg-night-card">
           {!current ? (
-            <ActivityIndicator style={styles.loading} />
+            <ActivityIndicator className="p-4" />
           ) : (
             current.items.map((suggestion) => (
               <Pressable
                 key={`${suggestion.label}|${suggestion.setId ?? ''}`}
-                style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+                accessibilityRole="button"
+                className="min-h-11 justify-center px-3 py-2 active:bg-brand-bg dark:active:bg-night-selected"
                 onPress={() => {
                   setTyped(false);
                   setResults({ term: '', items: [] });
                   onSelect(suggestion);
                 }}
               >
-                <ThemedText>{suggestion.label}</ThemedText>
+                <Text className="text-sm">{suggestion.label}</Text>
               </Pressable>
             ))
           )}
@@ -110,30 +107,4 @@ export function DrugNameAutocomplete({ value, onChangeText, onSelect, placeholde
       )}
     </View>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      paddingHorizontal: Spacing.three,
-      paddingVertical: Spacing.two,
-      fontSize: 16,
-      color: theme.text,
-      backgroundColor: theme.backgroundElement,
-    },
-    list: {
-      marginTop: Spacing.one,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      backgroundColor: theme.backgroundElement,
-    },
-    loading: { padding: Spacing.three },
-    item: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
-    itemPressed: { backgroundColor: theme.backgroundSelected },
-  });
 }

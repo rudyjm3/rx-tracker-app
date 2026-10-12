@@ -1,26 +1,17 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 
+import { AuthShell } from '@/components/auth-shell';
 import { LegalLinks } from '@/components/legal-links';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Field } from '@/components/ui/field';
+import { Text } from '@/components/ui/text';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SignupScreen() {
   const { signUp } = useAuth();
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -44,109 +35,69 @@ export default function SignupScreen() {
 
   if (submitted) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
-          <ThemedText type="subtitle" style={styles.confirmTitle}>
-            Check your email
-          </ThemedText>
-          <ThemedText style={styles.confirmBody}>
-            We sent a confirmation link to {email}. Confirm your address, then sign in.
-          </ThemedText>
-          <Link href="/(auth)/login" style={styles.link}>
-            <ThemedText type="linkPrimary">Back to sign in</ThemedText>
+      <AuthShell>
+        <Text className="text-center text-[26.4px] font-extrabold text-brand-navy dark:text-white">Check your email</Text>
+        <Text muted className="mb-6 mt-2 text-center text-sm">
+          We sent a confirmation link to {email}. Confirm your address, then{' '}
+          <Link href="/(auth)/login" className="font-bold text-brand-blue">
+            sign in
           </Link>
-        </SafeAreaView>
-      </ThemedView>
+          .
+        </Text>
+        <Link href="/(auth)/login" className="text-center text-sm font-bold text-brand-blue">
+          Back to sign in
+        </Link>
+      </AuthShell>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.form}
-        >
-          <ThemedText type="title" style={styles.title}>
-            RxTracker
-          </ThemedText>
-          <ThemedText type="subtitle" style={styles.subtitle}>
-            Create an account
-          </ThemedText>
+    <AuthShell>
+      <Text className="text-center text-[26.4px] font-extrabold text-brand-navy dark:text-white">Create your account</Text>
+      <Text muted className="mb-8 mt-2 text-center text-sm">
+        Start tracking your medications in minutes.
+      </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={theme.textSecondary}
-            secureTextEntry
-            autoComplete="password-new"
-            value={password}
-            onChangeText={setPassword}
-          />
+      {error ? <Callout kind="error" className="mb-4">{error}</Callout> : null}
 
-          {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      <View className="gap-4">
+        <Field
+          size="auth"
+          label="Email"
+          icon="mail-outline"
+          placeholder="you@example.com"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <Field
+          size="auth"
+          label="Password"
+          icon="lock-closed-outline"
+          placeholder="Create a password"
+          secureTextEntry
+          autoComplete="password-new"
+          value={password}
+          onChangeText={setPassword}
+        />
+        <Button
+          label={submitting ? 'Creating account…' : 'Create account'}
+          loading={submitting}
+          disabled={!email || !password}
+          onPress={handleSubmit}
+          className="mt-2 w-full"
+        />
+      </View>
 
-          <Pressable
-            style={[styles.button, submitting && styles.buttonDisabled]}
-            onPress={handleSubmit}
-            disabled={submitting || !email || !password}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <ThemedText style={styles.buttonText}>Sign up</ThemedText>
-            )}
-          </Pressable>
-
-          <Link href="/(auth)/login" style={styles.link}>
-            <ThemedText type="linkPrimary">Already have an account? Sign in</ThemedText>
-          </Link>
-          <LegalLinks />
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </ThemedView>
+      <Text muted className="mt-6 text-center text-sm">
+        Already have an account?{' '}
+        <Link href="/(auth)/login" className="font-bold text-brand-blue">
+          Sign in
+        </Link>
+      </Text>
+      <LegalLinks />
+    </AuthShell>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    container: { flex: 1 },
-    safeArea: { flex: 1, justifyContent: 'center', paddingHorizontal: Spacing.four, gap: Spacing.two },
-    form: { gap: Spacing.two },
-    title: { fontSize: 32, lineHeight: 38, marginBottom: Spacing.one },
-    subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-    confirmTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.two },
-    confirmBody: { marginBottom: Spacing.three },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      paddingHorizontal: Spacing.three,
-      paddingVertical: Spacing.two,
-      fontSize: 16,
-      color: theme.text,
-      backgroundColor: theme.backgroundElement,
-    },
-    error: { color: Brand.danger },
-    button: {
-      backgroundColor: Brand.deepBlue,
-      borderRadius: BorderRadius.sm,
-      paddingVertical: Spacing.three,
-      alignItems: 'center',
-      marginTop: Spacing.two,
-    },
-    buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: '#ffffff', fontWeight: '600' },
-    link: { marginTop: Spacing.three, alignSelf: 'center' },
-  });
 }

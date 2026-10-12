@@ -2,13 +2,17 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { Checkbox, SwitchRow } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
+import { MedName } from '@/components/ui/med-name';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle, SectionTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import { buildReportData, renderReportHtml } from '@/lib/export';
 import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
@@ -35,8 +39,6 @@ async function resolvePatientName(
 }
 
 export default function ExportScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const { session } = useAuth();
   const { activeProfileId, activeProfile } = useActiveProfile();
 
@@ -133,189 +135,105 @@ export default function ExportScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
-            Compiles your medications, adherence, dose changes, side effects, allergies, and
-            (optionally) pain/mood trends into one PDF you can share or print for a doctor visit.
-          </ThemedText>
+    <Screen keyboardShouldPersistTaps="handled" contentClassName="gap-6">
+      <ScreenTitle>Export</ScreenTitle>
 
-          {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Callout kind="danger">{error}</Callout> : null}
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Reporting period</ThemedText>
-            <View style={styles.dateRow}>
-              <View style={styles.dateField}>
-                <FieldLabel>From</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={theme.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              <View style={styles.dateField}>
-                <FieldLabel>To</FieldLabel>
-                <TextInput
-                  style={styles.input}
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={theme.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
+      <Card className="gap-3 p-4">
+        <SectionTitle>Reporting Period</SectionTitle>
+        <Text muted className="text-sm">
+          Used for the report below.
+        </Text>
+        <View className="flex-row gap-2">
+          <View className="flex-1">
+            <Field
+              label="From"
+              value={startDate}
+              onChangeText={setStartDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <View className="flex-1">
+            <Field
+              label="To"
+              value={endDate}
+              onChangeText={setEndDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+        </View>
+      </Card>
+
+      <Card className="gap-3 p-4">
+        <SectionTitle>Doctor Visit Report</SectionTitle>
+        <Text muted className="text-sm">
+          Compiles your medications, adherence, dose changes, side effects, allergies, and (optionally) pain/mood trends
+          into one PDF you can share or print for a doctor visit.
+        </Text>
+
+        <View>
+          <SwitchRow label="Include Pain tracking" value={includePain} onValueChange={setIncludePain} />
+          <SwitchRow label="Include Mood & Wellbeing tracking" value={includeMood} onValueChange={setIncludeMood} />
+        </View>
+
+        <View className="gap-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-brand-navy dark:text-white">Medications to include</Text>
+            <View className="flex-row gap-4">
+              <Pressable className="min-h-11 justify-center" onPress={() => setExcludedIds(new Set())} hitSlop={8}>
+                <Text className="text-sm font-semibold text-brand-blue dark:text-brand-cyan">Select all</Text>
+              </Pressable>
+              <Pressable
+                className="min-h-11 justify-center"
+                onPress={() => setExcludedIds(new Set(medications.map((m) => m.id)))}
+                hitSlop={8}>
+                <Text className="text-sm font-semibold text-brand-blue dark:text-brand-cyan">Select none</Text>
+              </Pressable>
             </View>
-          </ThemedView>
-
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <View style={styles.switchRow}>
-              <ThemedText type="small">Include pain tracking</ThemedText>
-              <Switch
-                value={includePain}
-                onValueChange={setIncludePain}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
+          </View>
+          {loadingMedications ? (
+            <ActivityIndicator className="mt-2" />
+          ) : medications.length === 0 ? (
+            <Text muted className="text-sm">
+              No medications to include yet.
+            </Text>
+          ) : (
+            <View className="rounded-control border border-brand-border dark:border-night-border">
+              {medications.map((med, i) => {
+                const selected = !excludedIds.has(med.id);
+                return (
+                  <Pressable
+                    key={med.id}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                    className={`min-h-11 flex-row items-center gap-3 px-3 py-2 ${i > 0 ? 'border-t border-brand-border dark:border-night-border' : ''}`}
+                    onPress={() => toggleMedication(med.id)}>
+                    <Checkbox checked={selected} />
+                    <MedName
+                      className="flex-1 text-sm font-medium"
+                      name={`${med.name}`}
+                      dose={`${med.dose ?? ''}${!med.active ? ' (inactive)' : ''}`.trim()}
+                    />
+                  </Pressable>
+                );
+              })}
             </View>
-            <View style={styles.switchRow}>
-              <ThemedText type="small">Include mood tracking</ThemedText>
-              <Switch
-                value={includeMood}
-                onValueChange={setIncludeMood}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
-          </ThemedView>
+          )}
+        </View>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <View style={styles.medHeaderRow}>
-              <ThemedText type="smallBold">Medications to include</ThemedText>
-              <View style={styles.medHeaderActions}>
-                <Pressable onPress={() => setExcludedIds(new Set())} hitSlop={8}>
-                  <ThemedText type="small" style={styles.link}>
-                    Select all
-                  </ThemedText>
-                </Pressable>
-                <Pressable
-                  onPress={() => setExcludedIds(new Set(medications.map((m) => m.id)))}
-                  hitSlop={8}
-                >
-                  <ThemedText type="small" style={styles.link}>
-                    Select none
-                  </ThemedText>
-                </Pressable>
-              </View>
-            </View>
-            {loadingMedications ? (
-              <ActivityIndicator style={styles.loading} />
-            ) : medications.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">
-                No medications to include yet.
-              </ThemedText>
-            ) : (
-              <View style={styles.medList}>
-                {medications.map((med) => {
-                  const selected = !excludedIds.has(med.id);
-                  return (
-                    <Pressable
-                      key={med.id}
-                      style={styles.medRow}
-                      onPress={() => toggleMedication(med.id)}
-                      hitSlop={4}
-                    >
-                      <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
-                        {selected && <ThemedText style={styles.checkboxMark}>✓</ThemedText>}
-                      </View>
-                      <ThemedText type="small" style={styles.medName}>
-                        {med.name}
-                        {med.dose ? ` — ${med.dose}` : ''}
-                        {!med.active ? ' (inactive)' : ''}
-                      </ThemedText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </ThemedView>
-
-          <Pressable
-            style={[styles.primaryButton, generating && styles.disabled]}
-            onPress={handleGenerate}
-            disabled={generating || loadingMedications}
-          >
-            {generating ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <ThemedText style={styles.primaryButtonText}>Generate &amp; share PDF</ThemedText>
-            )}
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+        <Button
+          label={generating ? 'Generating PDF…' : 'Generate & share PDF'}
+          loading={generating}
+          disabled={loadingMedications}
+          onPress={handleGenerate}
+          className="w-full"
+        />
+      </Card>
+    </Screen>
   );
-}
-
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
-  );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    container: { flex: 1 },
-    safeArea: { flex: 1 },
-    scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.three },
-    intro: { marginBottom: Spacing.half },
-    error: { color: '#E5484D', marginBottom: Spacing.two },
-    card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.two },
-    fieldLabel: { marginBottom: Spacing.one },
-    dateRow: { flexDirection: 'row', gap: Spacing.two },
-    dateField: { flex: 1 },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      paddingHorizontal: Spacing.three,
-      paddingVertical: Spacing.two,
-      fontSize: 16,
-      color: theme.text,
-      backgroundColor: theme.backgroundElement,
-    },
-    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    medHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    medHeaderActions: { flexDirection: 'row', gap: Spacing.three },
-    link: { color: theme.accent, fontWeight: '600' },
-    loading: { marginTop: Spacing.two },
-    medList: { gap: Spacing.two },
-    medRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-    checkbox: {
-      width: 22,
-      height: 22,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: theme.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkboxChecked: { backgroundColor: theme.accent, borderColor: theme.accent },
-    checkboxMark: { color: '#ffffff', fontSize: 14, lineHeight: 16, fontWeight: '700' },
-    medName: { flex: 1 },
-    primaryButton: {
-      backgroundColor: theme.accent,
-      borderRadius: BorderRadius.sm,
-      paddingVertical: Spacing.three,
-      alignItems: 'center',
-    },
-    primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-    disabled: { opacity: 0.6 },
-  });
 }

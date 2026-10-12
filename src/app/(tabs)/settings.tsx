@@ -1,21 +1,17 @@
 import { useEffect, useState } from 'react';
-import { router } from 'expo-router';
-import {
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, type Href } from 'expo-router';
+import { Linking, Platform, Pressable, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { SwitchRow } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/field';
+import { PillTabs } from '@/components/ui/pill-tabs';
+import { Screen } from '@/components/ui/screen';
+import { PanelTitle, ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import {
   browserTimezone,
   getMissedGraceMinutes,
@@ -47,8 +43,6 @@ import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
-  const theme = useTheme();
-  const styles = getStyles(theme);
 
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [loadingSetting, setLoadingSetting] = useState(true);
@@ -219,275 +213,158 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ThemedText type="title" style={styles.title}>
-          Settings
-        </ThemedText>
+    <Screen keyboardShouldPersistTaps="handled" contentClassName="gap-6">
+      <ScreenTitle>Settings</ScreenTitle>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Signed in as
-            </ThemedText>
-            <ThemedText>{session?.user.email}</ThemedText>
-          </ThemedView>
+      <Card flat className="gap-1">
+        <Text muted className="text-xs">
+          Signed in as
+        </Text>
+        <Text className="text-sm font-medium">{session?.user.email}</Text>
+      </Card>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <View style={styles.reminderRow}>
-              <View style={styles.reminderLabel}>
-                <ThemedText type="smallBold">Enable medication reminders</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-                  Get a notification on this device at each medication&apos;s scheduled time.
-                  As-needed medications aren&apos;t reminded.
-                </ThemedText>
-              </View>
-              <Switch
-                value={remindersEnabled}
-                onValueChange={handleToggle}
-                disabled={busy || loadingSetting}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
+      <Card flat className="gap-3">
+        <PanelTitle>Reminders</PanelTitle>
+        <SwitchRow
+          label="Enable medication reminders"
+          description="Get a notification on this device at each medication's scheduled time. As-needed medications aren't reminded."
+          value={remindersEnabled}
+          onValueChange={handleToggle}
+          disabled={busy || loadingSetting}
+        />
 
-            {permissionDenied && (
-              <ThemedView type="backgroundSelected" style={styles.permissionNotice}>
-                <ThemedText type="small">
-                  Notifications are turned off for RxTracker in your device settings.
-                </ThemedText>
-                <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
-                  <ThemedText type="linkPrimary">Open Settings</ThemedText>
-                </Pressable>
-              </ThemedView>
-            )}
-
-            {error && (
-              <ThemedText type="small" style={styles.error}>
-                {error}
-              </ThemedText>
-            )}
-          </ThemedView>
-
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Alarm &amp; notification settings</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Alerts you while the dashboard is open when a dose becomes due.
-            </ThemedText>
-
-            <View style={styles.reminderRow}>
-              <View style={styles.reminderLabel}>
-                <ThemedText type="small">Alarm sound</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-                  Audible alarm when a dose is due. On by default.
-                </ThemedText>
-              </View>
-              <Switch
-                value={alarmSoundEnabled}
-                onValueChange={handleAlarmSoundToggle}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
-
-            <View style={styles.reminderRow}>
-              <View style={styles.reminderLabel}>
-                <ThemedText type="small">Vibration</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-                  Device vibration for in-app alarms. On by default.
-                </ThemedText>
-              </View>
-              <Switch
-                value={vibrationEnabled}
-                onValueChange={handleVibrationToggle}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
-
-            <Pressable style={styles.testAlarmButton} onPress={() => previewAlarm()}>
-              <ThemedText style={styles.testAlarmButtonText}>Test alarm</ThemedText>
+        {permissionDenied ? (
+          <Callout kind="warning" icon="notifications-off-outline">
+            <Text className="text-sm">Notifications are turned off for RxTracker in your device settings.</Text>
+            <Pressable accessibilityRole="link" className="min-h-11 justify-center self-start" onPress={() => Linking.openSettings()}>
+              <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Open Settings</Text>
             </Pressable>
-          </ThemedView>
+          </Callout>
+        ) : null}
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Missed dose grace period</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              How many minutes past the scheduled time before a pending dose is marked missed,
-              and after which a taken dose is flagged late.
-            </ThemedText>
-            <View style={styles.graceRow}>
-              <TextInput
-                style={styles.graceInput}
-                value={graceMinutesInput}
-                onChangeText={handleGraceMinutesChange}
-                onBlur={handleGraceMinutesBlur}
-                keyboardType="number-pad"
-                maxLength={3}
-              />
-              <ThemedText type="small" themeColor="textSecondary">
-                minutes
-              </ThemedText>
-            </View>
-            {graceError && (
-              <ThemedText type="small" style={styles.error}>
-                {graceError}
-              </ThemedText>
-            )}
-          </ThemedView>
+        {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
+      </Card>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Default snooze duration</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Pre-selected when you snooze a dose from the dashboard.
-            </ThemedText>
-            <View style={styles.chipRow}>
-              {SNOOZE_OPTIONS.map((minutes) => (
-                <Pressable
-                  key={minutes}
-                  style={[styles.chip, snoozeMinutes === minutes && styles.chipSelected]}
-                  onPress={() => handleSnoozeSelect(minutes)}
-                >
-                  <ThemedText
-                    type="small"
-                    style={snoozeMinutes === minutes ? styles.chipTextSelected : undefined}
-                  >
-                    {minutes} min
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </ThemedView>
+      <Card flat className="gap-3">
+        <PanelTitle>Alarm &amp; Notification Settings</PanelTitle>
+        <Text muted className="text-xs">
+          Alerts you while the dashboard is open when a dose becomes due.
+        </Text>
+        <View>
+          <SwitchRow
+            label="Alarm sound"
+            description="Audible alarm when a dose is due. On by default."
+            value={alarmSoundEnabled}
+            onValueChange={handleAlarmSoundToggle}
+          />
+          <SwitchRow
+            label="Vibration"
+            description="Device vibration for in-app alarms. On by default."
+            value={vibrationEnabled}
+            onValueChange={handleVibrationToggle}
+          />
+          <SwitchRow
+            label="Teal mood chart"
+            description="Use a teal gradient for the mood trend chart instead of the red-to-green scale."
+            value={moodChartScheme === 'teal'}
+            onValueChange={handleMoodChartSchemeToggle}
+          />
+        </View>
+        {moodSchemeError ? <Text className="text-sm text-status-danger dark:text-status-danger">{moodSchemeError}</Text> : null}
+        <Button label="Test alarm" variant="secondary" className="self-start" onPress={() => previewAlarm()} />
+      </Card>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Time zone</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Detected: {deviceTimezone}
-            </ThemedText>
-            <View style={styles.reminderRow}>
-              <View style={styles.reminderLabel}>
-                <ThemedText type="small">Use device time zone</ThemedText>
-              </View>
-              <Switch
-                value={useDeviceTimezone}
-                onValueChange={handleUseDeviceTimezoneToggle}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
-          </ThemedView>
+      <Card flat className="gap-4">
+        <PanelTitle>General Settings</PanelTitle>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <View style={styles.reminderRow}>
-              <View style={styles.reminderLabel}>
-                <ThemedText type="smallBold">Teal mood chart</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-                  Use a teal gradient for the mood trend chart instead of the red-to-green scale.
-                </ThemedText>
-              </View>
-              <Switch
-                value={moodChartScheme === 'teal'}
-                onValueChange={handleMoodChartSchemeToggle}
-                trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-              />
-            </View>
-            {moodSchemeError && (
-              <ThemedText type="small" style={styles.error}>
-                {moodSchemeError}
-              </ThemedText>
-            )}
-          </ThemedView>
+        <View className="gap-1">
+          <Text className="text-sm font-medium">Mark dose missed after</Text>
+          <Text muted className="text-xs">
+            How many minutes past the scheduled time before a pending dose is marked missed, and after which a taken
+            dose is flagged late.
+          </Text>
+          <View className="mt-1 flex-row items-center gap-2">
+            <Input
+              className="w-24 text-center"
+              accessibilityLabel="Mark dose missed after, in minutes"
+              value={graceMinutesInput}
+              onChangeText={handleGraceMinutesChange}
+              onBlur={handleGraceMinutesBlur}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+            <Text muted className="text-sm">
+              minutes
+            </Text>
+          </View>
+          {graceError ? <Text className="text-xs text-status-danger dark:text-status-danger">{graceError}</Text> : null}
+        </View>
 
-          <Pressable style={styles.card} onPress={() => router.push('/profile')}>
-            <ThemedText type="smallBold">My Profile</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Edit your name, birth date, height, and weight.
-            </ThemedText>
-          </Pressable>
+        <View className="gap-1">
+          <Text className="text-sm font-medium">Default snooze duration</Text>
+          <Text muted className="text-xs">
+            Pre-selected when you snooze a dose from the dashboard.
+          </Text>
+          <PillTabs
+            variant="range"
+            className="mt-1"
+            tabs={SNOOZE_OPTIONS.map((m) => ({ value: String(m), label: `${m} min` }))}
+            value={snoozeMinutes == null ? '' : String(snoozeMinutes)}
+            onChange={(v) => handleSnoozeSelect(Number(v))}
+          />
+        </View>
 
-          <Pressable style={styles.card} onPress={() => router.push('/family')}>
-            <ThemedText type="smallBold">Manage Family</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Add family members and track their medications from this account.
-            </ThemedText>
-          </Pressable>
+        <View>
+          <SwitchRow label="Use device time zone" value={useDeviceTimezone} onValueChange={handleUseDeviceTimezoneToggle} />
+          <Text muted className="text-xs">
+            Detected: {deviceTimezone}
+          </Text>
+        </View>
+      </Card>
 
-          <Pressable style={styles.card} onPress={() => router.push('/export')}>
-            <ThemedText type="smallBold">Doctor Visit Report</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Generate a PDF summary of your medications, adherence, and history to share or print.
-            </ThemedText>
-          </Pressable>
+      <Card flat className="gap-1 p-2">
+        <LinkRow
+          title="My Profile"
+          description="Edit your name, birth date, height, and weight."
+          href="/profile"
+        />
+        <LinkRow
+          title="Manage Family"
+          description="Add family members and track their medications from this account."
+          href="/family"
+        />
+        <LinkRow
+          title="Doctor Visit Report"
+          description="Generate a PDF summary of your medications, adherence, and history to share or print."
+          href="/export"
+        />
+        <LinkRow title="Help & FAQ" description="Answers to common questions about how RxTracker works." href="/help" />
+      </Card>
 
-          <Pressable style={styles.card} onPress={() => router.push('/help')}>
-            <ThemedText type="smallBold">Help &amp; FAQ</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-              Answers to common questions about how RxTracker works.
-            </ThemedText>
-          </Pressable>
-
-          <Pressable style={styles.button} onPress={signOut}>
-            <ThemedText style={styles.buttonText}>Sign out</ThemedText>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <Button
+        label="Sign out"
+        variant="secondary"
+        className="border-status-danger dark:border-status-danger"
+        labelClassName="text-status-danger dark:text-status-danger"
+        onPress={signOut}
+      />
+    </Screen>
   );
 }
 
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  title: { fontSize: 28, lineHeight: 34, marginBottom: Spacing.two },
-  scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
-  card: { borderRadius: BorderRadius.md, padding: Spacing.three, gap: Spacing.one },
-  note: { marginTop: Spacing.one },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  reminderLabel: { flex: 1 },
-  permissionNotice: {
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.two,
-    gap: Spacing.two,
-  },
-  settingsButton: { alignSelf: 'flex-start' },
-  testAlarmButton: {
-    alignSelf: 'flex-start',
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  testAlarmButtonText: { fontWeight: '600' },
-  error: { color: Brand.danger, marginTop: Spacing.one },
-  graceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.one },
-  graceInput: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    minWidth: 64,
-    textAlign: 'center',
-    color: theme.text,
-    backgroundColor: theme.backgroundElement,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { fontWeight: '700', color: theme.accent },
-  button: {
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Brand.danger,
-    marginTop: Spacing.two,
-  },
-  buttonText: { color: Brand.danger, fontWeight: '600' },
-});
+function LinkRow({ title, description, href }: { title: string; description: string; href: Href }) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      className="min-h-14 flex-row items-center gap-3 rounded-control px-2 py-2 active:bg-brand-bg dark:active:bg-night-selected"
+      onPress={() => router.push(href)}>
+      <View className="flex-1">
+        <Text className="text-sm font-semibold text-brand-navy dark:text-white">{title}</Text>
+        <Text muted className="text-xs">
+          {description}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color="#60708A" />
+    </Pressable>
+  );
 }

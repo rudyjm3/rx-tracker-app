@@ -1,13 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Sheet } from '@/components/ui/sheet';
+import { Text } from '@/components/ui/text';
 import { useTheme } from '@/hooks/use-theme';
 import { useActiveProfile } from '@/lib/active-profile';
+import { cn } from '@/lib/cn';
 import {
   buildDayDetails,
   calendarDayColor,
@@ -24,30 +29,19 @@ import { localDateString } from '@/lib/utils';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-// `text` is omitted for future/empty: both keep a 'transparent' bg, and the
-// only place this is consumed (below) reads `.text` exclusively behind an
-// `onColoredBg` check that's false whenever bg is 'transparent' — so a
-// text value here would never actually render. Leaving it out (rather than
-// wiring it to Brand.text/textMuted, which don't adapt to dark mode) means
-// those two rows fall through to ThemedText's own theme-aware default
-// instead of a color that would go invisible against a black background.
-const DAY_COLORS: Record<CalendarDayColor, { bg: string; text?: string }> = {
-  future: { bg: 'transparent' },
-  missed: { bg: Brand.danger, text: '#ffffff' },
-  skipped: { bg: Brand.warning, text: '#ffffff' },
-  taken: { bg: Brand.success, text: '#ffffff' },
-  empty: { bg: 'transparent' },
-};
-
-const COUNT_COLORS = {
-  taken: Brand.success,
-  skipped: Brand.warning,
-  missed: Brand.danger,
+// Day cell background = worst status (DESIGN.md 8.7): missed -> danger/10,
+// skipped without any taken -> warning/10, taken -> success/10, no data ->
+// white, future -> brand-bg.
+const DAY_BG: Record<CalendarDayColor, string> = {
+  future: 'bg-brand-bg dark:bg-night-selected',
+  missed: 'bg-status-danger/10',
+  skipped: 'bg-status-warning/10',
+  taken: 'bg-status-success/10',
+  empty: 'bg-white dark:bg-night-card',
 };
 
 export default function CalendarScreen() {
   const theme = useTheme();
-  const styles = getStyles(theme);
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
@@ -134,57 +128,52 @@ export default function CalendarScreen() {
   const selectedDay = selectedDate ? (dayDetails[selectedDate] ?? null) : null;
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <View style={styles.titleRow}>
-          <ThemedText type="title" style={styles.pageTitle}>
-            Calendar
-          </ThemedText>
-          <Pressable style={styles.historyButton} onPress={() => router.push('/history')} hitSlop={8}>
-            <ThemedText type="small" style={styles.historyButtonText}>
-              View history
-            </ThemedText>
+    <Screen>
+      <View className="flex-row items-center justify-between gap-2">
+        <ScreenTitle>Calendar</ScreenTitle>
+        <Button label="View history" variant="secondary" size="compact" onPress={() => router.push('/history')} />
+      </View>
+
+      <Card className="gap-4 p-4">
+        <View className="flex-row items-center justify-between">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+            className="h-11 w-11 items-center justify-center"
+            onPress={() => changeMonth(-1)}>
+            <Ionicons name="chevron-back" size={22} color={theme.accent} />
+          </Pressable>
+          <Text className="text-lg font-bold text-brand-navy dark:text-white">{bounds.label}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            className="h-11 w-11 items-center justify-center"
+            onPress={() => changeMonth(1)}>
+            <Ionicons name="chevron-forward" size={22} color={theme.accent} />
           </Pressable>
         </View>
 
-        <View style={styles.header}>
-          <Pressable onPress={() => changeMonth(-1)} hitSlop={12}>
-            <ThemedText type="subtitle" style={styles.arrow}>
-              ‹
-            </ThemedText>
-          </Pressable>
-          <ThemedText type="subtitle" style={styles.monthLabel}>
-            {bounds.label}
-          </ThemedText>
-          <Pressable onPress={() => changeMonth(1)} hitSlop={12}>
-            <ThemedText type="subtitle" style={styles.arrow}>
-              ›
-            </ThemedText>
-          </Pressable>
-        </View>
+        {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
-        {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+        <View>
+          <View className="flex-row">
+            {WEEKDAY_LABELS.map((label) => (
+              <Text key={label} muted className="w-[14.28%] text-center text-xs font-semibold">
+                {label}
+              </Text>
+            ))}
+          </View>
 
-        <View style={styles.weekdayRow}>
-          {WEEKDAY_LABELS.map((label) => (
-            <ThemedText key={label} type="small" themeColor="textSecondary" style={styles.weekdayLabel}>
-              {label}
-            </ThemedText>
-          ))}
-        </View>
-
-        {loading ? (
-          <ActivityIndicator style={styles.loading} />
-        ) : (
-          <ScrollView>
-            <View style={styles.grid}>
+          {loading ? (
+            <ActivityIndicator className="my-8" />
+          ) : (
+            <View className="mt-1 flex-row flex-wrap">
               {cells.map((cell, i) => {
-                if (!cell.date) return <View key={`blank-${i}`} style={styles.cell} />;
+                if (!cell.date) return <View key={`blank-${i}`} className="min-h-[76px] w-[14.28%]" />;
                 const detail = dayDetails[cell.date];
                 const isFuture = detail ? detail.isFuture : cell.date > today;
                 const marker = markers[cell.date];
-                const color = DAY_COLORS[calendarDayColor(isFuture, marker)];
-                const onColoredBg = color.bg !== 'transparent';
+                const dayColor = calendarDayColor(isFuture, marker);
                 const isToday = cell.date === today;
                 const hasMarkerCounts =
                   !isFuture && marker && (marker.taken > 0 || marker.skipped > 0 || marker.missed > 0);
@@ -193,109 +182,82 @@ export default function CalendarScreen() {
                 return (
                   <Pressable
                     key={cell.date}
-                    style={styles.cell}
-                    onPress={() => setSelectedDate(cell.date)}
-                  >
-                    <View style={[styles.dayBox, { backgroundColor: color.bg }, isToday && styles.todayRing]}>
-                      <ThemedText type="small" style={onColoredBg ? { color: color.text } : undefined}>
+                    accessibilityLabel={`${bounds.label.split(' ')[0]} ${cell.day}`}
+                    className="min-h-[76px] w-[14.28%] items-center p-px active:opacity-80"
+                    onPress={() => setSelectedDate(cell.date)}>
+                    <View
+                      className={cn(
+                        'min-h-[72px] w-full gap-px rounded-control p-[3px]',
+                        isToday ? 'border-2 border-brand-blue' : 'border border-brand-border/60 dark:border-night-border',
+                        DAY_BG[dayColor],
+                      )}>
+                      <Text className={cn('text-sm font-semibold', dayColor === 'future' && 'text-brand-text-muted dark:text-night-muted')}>
                         {cell.day}
-                      </ThemedText>
-                      {detail && (
-                        <ThemedText
-                          type="small"
-                          themeColor={onColoredBg ? undefined : 'textSecondary'}
-                          style={[styles.totalDosesText, onColoredBg && { color: color.text }]}
-                        >
+                      </Text>
+                      {detail ? (
+                        <Text muted className="text-[8px] leading-[10px]">
                           Req {detail.plannedRequired}/Non-req {detail.plannedNonRequired}
-                        </ThemedText>
-                      )}
-                      {hasMarkerCounts && (
-                        <View style={styles.countsRow}>
-                          {marker!.taken > 0 && (
-                            <ThemedText
-                              type="small"
-                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.taken }]}
-                            >
-                              {marker!.taken}T
-                            </ThemedText>
-                          )}
-                          {marker!.skipped > 0 && (
-                            <ThemedText
-                              type="small"
-                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.skipped }]}
-                            >
-                              {marker!.skipped}S
-                            </ThemedText>
-                          )}
-                          {marker!.missed > 0 && (
-                            <ThemedText
-                              type="small"
-                              style={[styles.countText, { color: onColoredBg ? color.text : COUNT_COLORS.missed }]}
-                            >
-                              {marker!.missed}M
-                            </ThemedText>
-                          )}
+                        </Text>
+                      ) : null}
+                      {hasMarkerCounts ? (
+                        <View className="flex-row flex-wrap gap-x-1">
+                          {marker!.taken > 0 ? (
+                            <Text className="text-[10px] font-medium text-status-success dark:text-status-success">{marker!.taken}T</Text>
+                          ) : null}
+                          {marker!.skipped > 0 ? (
+                            <Text className="text-[10px] font-medium text-status-warning dark:text-status-warning">{marker!.skipped}S</Text>
+                          ) : null}
+                          {marker!.missed > 0 ? (
+                            <Text className="text-[10px] font-medium text-status-danger dark:text-status-danger">{marker!.missed}M</Text>
+                          ) : null}
                         </View>
-                      )}
-                      {endingMedications.length > 0 && (
-                        <ThemedText
-                          type="small"
-                          numberOfLines={1}
-                          style={[styles.endingText, onColoredBg && { color: color.text }]}
-                        >
+                      ) : null}
+                      {endingMedications.length > 0 ? (
+                        <Text numberOfLines={1} className="text-[8px] font-semibold leading-[10px] text-brand-deep-blue dark:text-brand-cyan">
                           {endingMedications.length === 1
                             ? `Ends today: ${endingMedications[0].name}`
                             : `Ends today: ${endingMedications[0].name} +${endingMedications.length - 1} more`}
-                        </ThemedText>
-                      )}
+                        </Text>
+                      ) : null}
                     </View>
                   </Pressable>
                 );
               })}
             </View>
-          </ScrollView>
-        )}
-
-        <View style={styles.legend}>
-          <LegendItem color={DAY_COLORS.taken.bg} label="Taken" />
-          <LegendItem color={DAY_COLORS.skipped.bg} label="Skipped" />
-          <LegendItem color={DAY_COLORS.missed.bg} label="Missed" />
+          )}
         </View>
-      </SafeAreaView>
 
-      <Modal
-        visible={!!selectedDate}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelectedDate(null)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedDate(null)}>
-          <Pressable style={styles.modalSheetWrapper} onPress={(e) => e.stopPropagation()}>
-            <ThemedView style={styles.modalSheet}>
-              <SafeAreaView>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  {selectedDay ? `${selectedDay.dayName}, ${selectedDay.displayDate}` : selectedDate}
-                </ThemedText>
-                <ScrollView style={styles.modalList}>
-                  <DayDetailContent
-                    day={selectedDay}
-                    onLogAsNeeded={(medicationId, date) => {
-                      setSelectedDate(null);
-                      router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
-                    }}
-                  />
-                </ScrollView>
-                <Pressable style={styles.closeButton} onPress={() => setSelectedDate(null)}>
-                  <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-                </Pressable>
-              </SafeAreaView>
-            </ThemedView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </ThemedView>
+        <View className="flex-row justify-center gap-6">
+          <LegendItem className="bg-status-success" label="Taken" />
+          <LegendItem className="bg-status-warning" label="Skipped" />
+          <LegendItem className="bg-status-danger" label="Missed" />
+        </View>
+      </Card>
+
+      {selectedDate ? (
+        <Sheet onClose={() => setSelectedDate(null)}>
+          <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">
+            {selectedDay ? `${selectedDay.dayName}, ${selectedDay.displayDate}` : selectedDate}
+          </Text>
+          <ScrollView className="max-h-[420px]">
+            <DayDetailContent
+              day={selectedDay}
+              onLogAsNeeded={(medicationId, date) => {
+                setSelectedDate(null);
+                router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
+              }}
+            />
+          </ScrollView>
+          <Button label="Close" variant="ghost" className="mt-3" onPress={() => setSelectedDate(null)} />
+        </Sheet>
+      ) : null}
+    </Screen>
   );
 }
+
+// Amber callout for regimens ending today (DESIGN.md 10.4).
+const ENDING_BOX = 'rounded-control border border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-950';
+const ENDING_TEXT = 'text-amber-700 dark:text-amber-300';
 
 function DayDetailContent({
   day,
@@ -304,23 +266,22 @@ function DayDetailContent({
   day: CalendarDayDetail | null;
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
-  const styles = getStyles(useTheme());
   if (!day) {
-    return <ThemedText themeColor="textSecondary">No data for this day.</ThemedText>;
+    return <Text muted className="text-sm">No data for this day.</Text>;
   }
 
   const endingIds = new Set(day.endingMedications.map((m) => m.medicationId));
 
   const endingCallout = day.endingMedications.length > 0 && (
-    <View style={styles.endingCallout}>
-      <ThemedText type="small" style={styles.endingCalloutTitle}>
+    <View className={cn(ENDING_BOX, 'mb-3 gap-0.5 p-2')}>
+      <Text className={cn('text-sm font-bold', ENDING_TEXT)}>
         {day.endingMedications.length === 1 ? 'Regimen ending today' : 'Regimens ending today'}
-      </ThemedText>
+      </Text>
       {day.endingMedications.map((med) => (
-        <ThemedText key={med.medicationId} type="small">
+        <Text key={med.medicationId} className={cn('text-sm', ENDING_TEXT)}>
           {med.name}
           {med.dose ? ` ${med.dose}` : ''}
-        </ThemedText>
+        </Text>
       ))}
     </View>
   );
@@ -338,10 +299,10 @@ function DayDetailContent({
     ? totalPlannedMedications
     : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
   const summaryLine = (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.summaryLine}>
+    <Text muted className="mb-2 text-sm">
       Medications: {totalMedicationsForSummary} | Planned doses — Required: {day.plannedRequired} / Non-required:{' '}
       {day.plannedNonRequired}
-    </ThemedText>
+    </Text>
   );
 
   if (day.isFuture) {
@@ -351,12 +312,11 @@ function DayDetailContent({
         {summaryLine}
         {endingCallout}
         {totalPlanned === 0 ? (
-          <ThemedText themeColor="textSecondary">No doses planned for this day.</ThemedText>
+          <Text muted className="text-sm">No doses planned for this day.</Text>
         ) : (
           <>
             {day.plannedGroups.map((group) => (
-              <View key={group.groupId} style={styles.groupCard}>
-                <ThemedText style={styles.groupName}>{group.groupName}</ThemedText>
+              <GroupBox key={group.groupId} name={group.groupName}>
                 {group.medications.map((slot) => (
                   <PlannedSlotRow
                     key={`${slot.medicationId}-${slot.scheduledTime}`}
@@ -364,10 +324,10 @@ function DayDetailContent({
                     endingToday={endingIds.has(slot.medicationId)}
                   />
                 ))}
-              </View>
+              </GroupBox>
             ))}
             {day.plannedMedications.map((slot) => (
-              <View key={`${slot.medicationId}-${slot.scheduledTime}`} style={styles.medicationCard}>
+              <View key={`${slot.medicationId}-${slot.scheduledTime}`} className="mb-3 rounded-control border border-brand-border p-2 dark:border-night-border">
                 <PlannedSlotRow slot={slot} endingToday={endingIds.has(slot.medicationId)} />
               </View>
             ))}
@@ -384,12 +344,11 @@ function DayDetailContent({
       {summaryLine}
       {endingCallout}
       {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
-        <ThemedText themeColor="textSecondary">No dose data for this day.</ThemedText>
+        <Text muted className="text-sm">No dose data for this day.</Text>
       ) : (
         <>
           {day.groups.map((group) => (
-            <View key={group.groupId} style={styles.groupCard}>
-              <ThemedText style={styles.groupName}>{group.groupName}</ThemedText>
+            <GroupBox key={group.groupId} name={group.groupName}>
               {group.medications.map((med) => (
                 <MedicationSummaryRow
                   key={med.medicationId}
@@ -398,47 +357,65 @@ function DayDetailContent({
                 />
               ))}
               {group.pendingAsNeeded.map((member) => (
-                <View key={member.medicationId} style={styles.slotRow}>
-                  <ThemedText type="smallBold" style={styles.pendingName}>
-                    {member.name}
-                    {member.dose ? ` ${member.dose}` : ''}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Not yet logged
-                  </ThemedText>
-                  <Pressable onPress={() => onLogAsNeeded(member.medicationId, day.date)} hitSlop={8}>
-                    <ThemedText style={styles.pendingAction}>Log dose</ThemedText>
+                <View key={member.medicationId} className="flex-row items-center justify-between gap-2 rounded-control bg-brand-bg px-2.5 py-2 dark:bg-night-selected">
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold">
+                      {member.name}
+                      {member.dose ? ` ${member.dose}` : ''}
+                    </Text>
+                    <Text muted className="text-xs">Not yet logged</Text>
+                  </View>
+                  <Pressable className="min-h-11 justify-center" onPress={() => onLogAsNeeded(member.medicationId, day.date)} hitSlop={8}>
+                    <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">Log dose</Text>
                   </Pressable>
                 </View>
               ))}
-            </View>
+            </GroupBox>
           ))}
           {day.medications.map((med) => (
             <View
               key={med.medicationId}
-              style={[styles.medicationCard, endingIds.has(med.medicationId) && styles.endingHighlight]}
-            >
+              className={cn(
+                'mb-3 rounded-control border p-2',
+                endingIds.has(med.medicationId) ? ENDING_BOX : 'border-brand-border dark:border-night-border',
+              )}>
               <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} />
             </View>
           ))}
           {day.pendingUngroupedAsNeeded.map((med) => (
-            <View key={med.medicationId} style={styles.medicationCard}>
-              <View style={styles.slotRow}>
-                <ThemedText type="smallBold" style={styles.pendingName}>
+            <View key={med.medicationId} className="mb-3 rounded-control border border-brand-border p-2 dark:border-night-border">
+              <View className="flex-row items-center justify-between gap-2">
+                <Text className="flex-1 text-sm font-semibold">
                   {med.name}
                   {med.dose ? ` ${med.dose}` : ''}
-                </ThemedText>
-                <Pressable onPress={() => onLogAsNeeded(med.medicationId, day.date)} hitSlop={8}>
-                  <ThemedText style={styles.pendingAction}>{med.alreadyLogged ? 'Log another dose' : 'Log dose'}</ThemedText>
+                </Text>
+                <Pressable className="min-h-11 justify-center" onPress={() => onLogAsNeeded(med.medicationId, day.date)} hitSlop={8}>
+                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
+                    {med.alreadyLogged ? 'Log another dose' : 'Log dose'}
+                  </Text>
                 </Pressable>
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
+              <Text muted className="text-xs">
                 {med.alreadyLogged ? 'As needed' : 'As needed · not yet logged'}
-              </ThemedText>
+              </Text>
             </View>
           ))}
         </>
       )}
+    </View>
+  );
+}
+
+// Group as a bordered card with a Layers title (DESIGN.md 9.6).
+function GroupBox({ name, children }: { name: string; children: React.ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View className="mb-3 gap-2 rounded-card border border-brand-border p-3 dark:border-night-border">
+      <View className="flex-row items-center gap-1.5">
+        <Ionicons name="layers-outline" size={14} color={theme.accent} />
+        <Text className="text-sm font-bold text-brand-navy dark:text-white">{name}</Text>
+      </View>
+      {children}
     </View>
   );
 }
@@ -450,35 +427,30 @@ function MedicationSummaryRow({
   med: CalendarDayDetail['medications'][number];
   endingToday: boolean;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
-      <ThemedText style={styles.medicationName}>
+    <View className="gap-1 p-0.5">
+      <Text className="text-sm font-bold">
         {med.name}
         {med.dose ? ` ${med.dose}` : ''}
-      </ThemedText>
-      {endingToday && <ThemedText type="small" style={styles.endingNote}>Today is the last day for this regimen.</ThemedText>}
-      <ThemedText type="small" themeColor="textSecondary">
+      </Text>
+      {endingToday ? <Text className={cn('text-xs font-semibold', ENDING_TEXT)}>Today is the last day for this regimen.</Text> : null}
+      <Text muted className="text-xs">
         Total doses {med.total} — Taken: {med.taken} / Late: {med.late} — Skipped: {med.skipped} — Missed: {med.missed}
-      </ThemedText>
+      </Text>
       {med.slots.map((slot) => (
-        <View key={slot.logId} style={styles.slotBlock}>
-          <View style={styles.slotRow}>
-            <ThemedText type="small">{slot.displayTime}</ThemedText>
-            <ThemedText
-              type="small"
-              style={[
-                styles.slotStatus,
-                { color: slot.status === 'taken' ? COUNT_COLORS.taken : slot.status === 'skipped' ? COUNT_COLORS.skipped : COUNT_COLORS.missed },
-              ]}
-            >
-              {slot.status === 'taken' && slot.isLate ? `Taken (${slot.lateLabel})` : slot.status}
-            </ThemedText>
+        <View key={slot.logId} className="gap-0.5 rounded-control bg-brand-bg px-2.5 py-2 dark:bg-night-selected">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">{slot.displayTime}</Text>
+            {slot.status === 'taken' ? (
+              <Badge variant={slot.isLate ? 'late' : 'taken'}>{slot.isLate ? `Taken (${slot.lateLabel})` : 'Taken'}</Badge>
+            ) : (
+              <Badge variant={slot.status === 'skipped' ? 'skipped' : 'missed'} />
+            )}
           </View>
           {slot.note ? (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.slotNote}>
+            <Text muted className="text-xs italic">
               {slot.note}
-            </ThemedText>
+            </Text>
           ) : null}
         </View>
       ))}
@@ -493,120 +465,32 @@ function PlannedSlotRow({
   slot: CalendarDayDetail['plannedMedications'][number];
   endingToday: boolean;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={[styles.medicationRow, endingToday && styles.endingHighlight]}>
-      <View style={styles.slotRow}>
-        <ThemedText style={styles.medicationName}>
+    <View className={cn('gap-0.5 p-0.5', endingToday && ENDING_BOX)}>
+      <View className="flex-row items-center justify-between gap-2">
+        <Text className="flex-1 text-sm font-bold">
           {slot.name}
           {slot.dose ? ` ${slot.dose}` : ''}
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
+        </Text>
+        <Text muted className="text-xs">
           {slot.displayTime}
-        </ThemedText>
+        </Text>
       </View>
-      {endingToday && <ThemedText type="small" style={styles.endingNote}>Today is the last day for this regimen.</ThemedText>}
-      <ThemedText type="small" themeColor="textSecondary">
+      {endingToday ? <Text className={cn('text-xs font-semibold', ENDING_TEXT)}>Today is the last day for this regimen.</Text> : null}
+      <Text muted className="text-xs">
         {slot.isPrn ? 'Planned (as needed)' : 'Scheduled'}
-      </ThemedText>
+      </Text>
     </View>
   );
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
-  const styles = getStyles(useTheme());
+function LegendItem({ className, label }: { className: string; label: string }) {
   return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <ThemedText type="small" themeColor="textSecondary">
+    <View className="flex-row items-center gap-1.5">
+      <View className={cn('h-2.5 w-2.5 rounded-full', className)} />
+      <Text muted className="text-xs">
         {label}
-      </ThemedText>
+      </Text>
     </View>
   );
-}
-
-const CELL_SIZE = '14.28%' as const;
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
-  pageTitle: { fontSize: 28, lineHeight: 34 },
-  historyButton: {
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-  },
-  historyButtonText: { color: Brand.deepBlue, fontWeight: '600' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
-  arrow: { fontSize: 28, paddingHorizontal: Spacing.two },
-  monthLabel: { fontSize: 20, lineHeight: 26 },
-  error: { color: Brand.danger, marginBottom: Spacing.two },
-  weekdayRow: { flexDirection: 'row' },
-  weekdayLabel: { width: CELL_SIZE, textAlign: 'center' },
-  loading: { marginTop: Spacing.five },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: CELL_SIZE, minHeight: 76, alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 2 },
-  dayBox: { width: '96%', minHeight: 72, borderRadius: BorderRadius.sm, alignItems: 'flex-start', justifyContent: 'flex-start', padding: 3, gap: 1 },
-  todayRing: { borderWidth: 2, borderColor: Brand.deepBlue },
-  totalDosesText: { fontSize: 8, lineHeight: 10 },
-  countsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
-  countText: { fontSize: 9, lineHeight: 11, fontWeight: '600' },
-  endingText: { fontSize: 8, lineHeight: 10, fontWeight: '700', color: Brand.deepBlue },
-  legend: { flexDirection: 'row', gap: Spacing.four, marginTop: Spacing.three, justifyContent: 'center' },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheetWrapper: { maxHeight: '80%' },
-  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  modalList: { maxHeight: 420 },
-  summaryLine: { marginBottom: Spacing.two },
-  endingCallout: {
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.two,
-    marginBottom: Spacing.three,
-    gap: 2,
-  },
-  endingCalloutTitle: { fontWeight: '700', color: '#b45309' },
-  endingHighlight: {
-    borderWidth: 1,
-    borderColor: '#f59e0b',
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-    borderRadius: BorderRadius.sm,
-  },
-  endingNote: { color: '#b45309', fontWeight: '600', marginTop: 2 },
-  groupCard: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.two,
-    marginBottom: Spacing.three,
-    gap: Spacing.two,
-  },
-  groupName: { fontWeight: '700', marginBottom: 2 },
-  medicationCard: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  medicationRow: { padding: 2, gap: 2 },
-  medicationName: { fontWeight: '700' },
-  slotBlock: { paddingVertical: 2 },
-  pendingName: { flex: 1 },
-  pendingAction: { color: Brand.deepBlue, fontWeight: '700' },
-  slotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  slotStatus: { textTransform: 'capitalize', fontWeight: '600' },
-  slotNote: { fontStyle: 'italic' },
-  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
-});
 }
