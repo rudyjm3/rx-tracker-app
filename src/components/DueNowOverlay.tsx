@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated, BackHandler, Easing, Modal, Pressable, ScrollView, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
+import { DoseFormIcon } from '@/components/dashboard/dose-form-icon';
+import { Button } from '@/components/ui/button';
 import { MedTypeBadge } from '@/components/ui/med-type-badge';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { SafeArea } from '@/components/ui/safe-area';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/cn';
 import { SNOOZE_OPTIONS, type DaySlot, type NextDoseEvent } from '@/lib/schedule';
 import { formatClockTime } from '@/lib/utils';
 
@@ -47,8 +47,6 @@ export function DueNowOverlay({
   disabled,
   error,
 }: DueNowOverlayProps) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [manageEach, setManageEach] = useState(false);
   const [snoozeTarget, setSnoozeTarget] = useState<SnoozeTarget | null>(null);
 
@@ -78,61 +76,48 @@ export function DueNowOverlay({
   const isGroup = event.kind === 'group';
   const members = isGroup ? (groupMembers ?? event.members) : [event.slot];
   const pendingMembers = members.filter((m) => m.status === 'pending');
+  const rep = isGroup ? members[0] : event.slot;
 
+  // Full-screen navy "Dose due now" overlay, DESIGN.md 10.1: pulsing ring
+  // around the dose-form icon, eyebrow, title, then Take Now -> Snooze ->
+  // Skip (-> Manage Each for groups).
   return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={() => {}}
-    >
-      <View style={styles.backdrop}>
-        <SafeAreaView style={styles.safeArea}>
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ScrollView contentContainerStyle={styles.cardContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.header}>
-                <View style={styles.badge}>
-                  <Ionicons name="medkit-outline" size={28} color="#ffffff" />
-                </View>
-                <View style={styles.headerText}>
-                  <View style={styles.headerTitleRow}>
-                    <Ionicons name="notifications-outline" size={16} color={Brand.deepBlue} />
-                    <ThemedText type="smallBold" style={{ color: Brand.deepBlue }}>
-                      Dose due now
-                    </ThemedText>
-                  </View>
-                  {isGroup ? (
-                    <>
-                      <ThemedText type="subtitle" style={styles.titleText}>
-                        {event.groupName}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {members.length} medications in group
-                      </ThemedText>
-                    </>
-                  ) : (
-                    <>
-                      <ThemedText type="subtitle" style={styles.titleText}>
-                        {event.slot.medicationName}
-                      </ThemedText>
-                      {event.slot.dose ? (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {event.slot.dose}
-                        </ThemedText>
-                      ) : null}
-                      <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
-                        <MedTypeBadge type={event.slot.medication.medication_type} />
-                      </View>
-                    </>
-                  )}
-                </View>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => {}}>
+      <View accessibilityViewIsModal accessibilityLabel="Dose due now" className="flex-1 bg-brand-dark-navy/90">
+        <SafeArea className="flex-1">
+          <ScrollView contentContainerClassName="grow items-center justify-center px-6 py-8" showsVerticalScrollIndicator={false}>
+            <View className="w-full max-w-md items-center gap-6">
+              <View className="h-24 w-24 items-center justify-center">
+                <PulseRing />
+                {rep ? <DoseFormIcon doseForm={rep.medication.dose_form} size={64} /> : null}
               </View>
 
-              {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
+              <View className="flex-row items-center gap-1.5">
+                <Ionicons name="notifications-outline" size={13} color="rgba(255,255,255,0.7)" />
+                <Text className="text-xs font-semibold uppercase tracking-[2px] text-white/70 dark:text-white/70">Dose due now</Text>
+              </View>
+
+              <View className="items-center gap-2">
+                {isGroup ? (
+                  <>
+                    <Text className="text-center text-2xl font-bold text-white dark:text-white">{event.groupName}</Text>
+                    <Text className="text-sm text-white/75 dark:text-white/75">{members.length} medications in group</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text className="text-center text-2xl font-bold text-white dark:text-white">{event.slot.medicationName}</Text>
+                    <View className="flex-row items-center gap-2">
+                      {event.slot.dose ? <DosePill dose={event.slot.dose} /> : null}
+                      <MedTypeBadge type={event.slot.medication.medication_type} onDark />
+                    </View>
+                  </>
+                )}
+              </View>
+
+              {error ? <Text className="text-center text-sm font-semibold text-red-300 dark:text-red-300">{error}</Text> : null}
 
               {manageEach && isGroup ? (
-                <View style={styles.memberList}>
+                <View className="w-full gap-3 rounded-card bg-white/10 p-3">
                   {members.map((slot) => (
                     <MemberRow
                       key={`${slot.medicationId}|${slot.scheduledTime}`}
@@ -164,53 +149,73 @@ export function DueNowOverlay({
                       onCancel={() => setSnoozeTarget(null)}
                     />
                   ) : (
-                    <View style={styles.mainActions}>
-                      <Pressable
-                        style={[styles.actionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
-                        onPress={onTakeAll}
-                        disabled={disabled}
-                      >
-                        {disabled ? (
-                          <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                          <ThemedText style={styles.primaryButtonText}>Take Now</ThemedText>
-                        )}
-                      </Pressable>
-                      <Pressable
-                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-                        onPress={() => setSnoozeTarget('all')}
-                        disabled={disabled}
-                      >
-                        <ThemedText style={styles.secondaryButtonText}>Snooze</ThemedText>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.actionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-                        onPress={onSkipAll}
-                        disabled={disabled}
-                      >
-                        {disabled ? (
-                          <ActivityIndicator size="small" color={theme.textSecondary} />
-                        ) : (
-                          <ThemedText style={styles.secondaryButtonText}>Skip</ThemedText>
-                        )}
-                      </Pressable>
+                    <View className="flex-row flex-wrap items-center justify-center gap-3">
+                      <Button label="Take Now" onDark className="min-w-36" loading={disabled} onPress={onTakeAll} />
+                      <Button label="Snooze" variant="ghost" onDark disabled={disabled} onPress={() => setSnoozeTarget('all')} />
+                      <Button label="Skip" variant="secondary" onDark loading={disabled} onPress={onSkipAll} />
+                      {isGroup && pendingMembers.length > 0 ? (
+                        <Button label="Manage Each" variant="ghost" onDark disabled={disabled} onPress={() => setManageEach(true)} />
+                      ) : null}
                     </View>
-                  )}
-
-                  {isGroup && pendingMembers.length > 0 && (
-                    <Pressable style={styles.manageEachButton} onPress={() => setManageEach(true)} disabled={disabled}>
-                      <ThemedText type="small" style={{ color: Brand.deepBlue, fontWeight: '600' }}>
-                        Manage Each
-                      </ThemedText>
-                    </Pressable>
                   )}
                 </>
               )}
-            </ScrollView>
-          </ThemedView>
-        </SafeAreaView>
+            </View>
+          </ScrollView>
+        </SafeArea>
       </View>
     </Modal>
+  );
+}
+
+// Pinging white/20 ring plus a pulsing white/10 ring behind the icon (the
+// web alarm's animate-ping / animate-pulse, DESIGN.md 14).
+function PulseRing() {
+  const [ping] = useState(() => new Animated.Value(0));
+  const [pulse] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const pingLoop = Animated.loop(
+      Animated.timing(ping, { toValue: 1, duration: 1000, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    pingLoop.start();
+    pulseLoop.start();
+    return () => {
+      pingLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [ping, pulse]);
+
+  return (
+    <>
+      <Animated.View
+        pointerEvents="none"
+        className="absolute h-24 w-24 rounded-full bg-white/20"
+        style={{
+          opacity: ping.interpolate({ inputRange: [0, 1], outputRange: [0.75, 0] }),
+          transform: [{ scale: ping.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.3] }) }],
+        }}
+      />
+      <Animated.View
+        pointerEvents="none"
+        className="absolute h-24 w-24 rounded-full bg-white/10"
+        style={{ opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] }) }}
+      />
+    </>
+  );
+}
+
+// Dose pill on dark surfaces (DESIGN.md 3): cyan-tinted, white 12 px extrabold.
+function DosePill({ dose }: { dose: string }) {
+  return (
+    <View className="rounded-full border border-cyan-300/40 bg-cyan-500/25 px-3 py-1">
+      <Text className="text-xs font-extrabold text-white dark:text-white">{dose}</Text>
+    </View>
   );
 }
 
@@ -235,64 +240,35 @@ function MemberRow({
   onSnoozeSelect: (minutes: number) => void;
   onSnoozeCancel: () => void;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={styles.memberRow}>
-      <View style={styles.memberRowTop}>
-        <View style={styles.slotNameColumn}>
-          <ThemedText type="small" style={styles.slotName}>
-            {slot.medicationName} {slot.dose ? `— ${slot.dose}` : ''}
-          </ThemedText>
-          {slot.status === 'pending' && slot.postponedUntil && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {`Snoozed until ${formatClockTime(slot.postponedUntil)}`}
-            </ThemedText>
-          )}
-        </View>
-        {slot.status === 'pending' ? (
-          <View style={styles.actions}>
-            <Pressable
-              style={[styles.smallActionButton, styles.primaryButton, disabled && styles.actionButtonDisabled]}
-              onPress={onTake}
-              disabled={disabled}
-            >
-              <ThemedText type="small" style={styles.primaryButtonText}>
-                Take
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              style={[styles.smallActionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-              onPress={onSnoozeStart}
-              disabled={disabled}
-            >
-              <ThemedText type="small" style={styles.secondaryButtonText}>
-                Snooze
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              style={[styles.smallActionButton, styles.secondaryButton, disabled && styles.actionButtonDisabled]}
-              onPress={onSkip}
-              disabled={disabled}
-            >
-              <ThemedText type="small" style={styles.secondaryButtonText}>
-                Skip
-              </ThemedText>
-            </Pressable>
+    <View className="gap-2 border-t border-white/15 pt-2 first:border-t-0 first:pt-0">
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-1 gap-1">
+          <Text className="text-sm font-semibold text-white dark:text-white">
+            {slot.medicationName}
+            {slot.dose ? <Text className="text-sm font-bold text-white/75 dark:text-white/75">{` ${slot.dose}`}</Text> : null}
+          </Text>
+          <View className="flex-row items-center gap-2">
+            <MedTypeBadge type={slot.medication.medication_type} onDark />
+            {slot.status === 'pending' && slot.postponedUntil ? (
+              <Text className="text-xs text-white/70 dark:text-white/70">{`Snoozed until ${formatClockTime(slot.postponedUntil)}`}</Text>
+            ) : null}
           </View>
-        ) : (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.statusLabel}>
-            {slot.status}
-          </ThemedText>
-        )}
+        </View>
+        {slot.status !== 'pending' ? (
+          <Text className="text-sm capitalize text-white/70 dark:text-white/70">{slot.status}</Text>
+        ) : null}
       </View>
-      {snoozing && (
-        <SnoozeChipRow
-          defaultMinutes={defaultSnoozeMinutes}
-          disabled={disabled}
-          onSelect={onSnoozeSelect}
-          onCancel={onSnoozeCancel}
-        />
-      )}
+      {slot.status === 'pending' ? (
+        <View className="flex-row gap-2">
+          <Button label="Take" size="compact" onDark disabled={disabled} onPress={onTake} />
+          <Button label="Snooze" size="compact" variant="ghost" onDark disabled={disabled} onPress={onSnoozeStart} />
+          <Button label="Skip" size="compact" variant="secondary" onDark disabled={disabled} onPress={onSkip} />
+        </View>
+      ) : null}
+      {snoozing ? (
+        <SnoozeChipRow defaultMinutes={defaultSnoozeMinutes} disabled={disabled} onSelect={onSnoozeSelect} onCancel={onSnoozeCancel} />
+      ) : null}
     </View>
   );
 }
@@ -308,101 +284,27 @@ function SnoozeChipRow({
   onSelect: (minutes: number) => void;
   onCancel: () => void;
 }) {
-  const styles = getStyles(useTheme());
   return (
-    <View style={styles.snoozePicker}>
-      <View style={styles.chipRow}>
+    <View className="items-center gap-3">
+      <View className="flex-row flex-wrap justify-center gap-2">
         {SNOOZE_OPTIONS.map((minutes) => (
           <Pressable
             key={minutes}
-            style={[styles.chip, minutes === defaultMinutes && styles.chipSelected]}
+            accessibilityRole="button"
+            className={cn(
+              'min-h-11 justify-center rounded-full border px-4 active:bg-white/20',
+              minutes === defaultMinutes ? 'border-white bg-white/25' : 'border-white/30 bg-white/10',
+              disabled && 'opacity-50',
+            )}
             onPress={() => onSelect(minutes)}
-            disabled={disabled}
-          >
-            <ThemedText type="small" style={minutes === defaultMinutes ? styles.chipTextSelected : undefined}>
-              {minutes} min
-            </ThemedText>
+            disabled={disabled}>
+            <Text className={cn('text-sm text-white dark:text-white', minutes === defaultMinutes && 'font-bold')}>{minutes} min</Text>
           </Pressable>
         ))}
       </View>
-      <Pressable onPress={onCancel} disabled={disabled} hitSlop={8}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Cancel
-        </ThemedText>
+      <Pressable onPress={onCancel} disabled={disabled} hitSlop={8} className="min-h-11 justify-center">
+        <Text className="text-sm text-white/70 dark:text-white/70">Cancel</Text>
       </Pressable>
     </View>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(7,29,61,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  safeArea: { width: '100%', maxHeight: '100%', alignItems: 'center', paddingHorizontal: Spacing.four },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    maxHeight: '90%',
-    borderRadius: BorderRadius.md,
-  },
-  cardContent: {
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  errorText: { color: Brand.danger },
-  header: { flexDirection: 'row', gap: Spacing.three, alignItems: 'flex-start' },
-  badge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Brand.deepBlue,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerText: { flex: 1, gap: Spacing.half },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  titleText: { fontSize: 22, lineHeight: 28 },
-  mainActions: { flexDirection: 'row', gap: Spacing.two },
-  actionButton: {
-    flex: 1,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  smallActionButton: {
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    alignItems: 'center',
-    minWidth: 56,
-  },
-  primaryButton: { backgroundColor: Brand.deepBlue },
-  primaryButtonText: { color: '#ffffff', fontWeight: '700' },
-  secondaryButton: { borderWidth: 1, borderColor: theme.border },
-  secondaryButtonText: { fontWeight: '600' },
-  actionButtonDisabled: { opacity: 0.6 },
-  manageEachButton: { alignSelf: 'center', marginTop: Spacing.one, padding: Spacing.one },
-  memberList: { gap: Spacing.three },
-  memberRow: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: Spacing.two },
-  memberRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-  slotNameColumn: { flex: 1, gap: Spacing.half },
-  slotName: { flex: 1 },
-  statusLabel: { textTransform: 'capitalize' },
-  actions: { flexDirection: 'row', gap: Spacing.one },
-  snoozePicker: { gap: Spacing.two },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-  },
-  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { fontWeight: '700', color: theme.accent },
-});
 }
