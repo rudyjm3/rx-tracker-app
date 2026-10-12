@@ -67,7 +67,7 @@ function FamilyMemberCard({ profile }: { profile: FamilyProfile }) {
       accessibilityRole="link"
       onPress={() => router.push({ pathname: '/family/[id]', params: { id: profile.id } })}>
       <Card flat className="flex-row items-center gap-3">
-        <ProfileAvatar label={profile.display_name} color={profile.avatar_color} size={40} />
+        <ProfileAvatar label={profile.display_name} color={profile.avatar_color} pictureUrl={profile.profile_picture} size={40} />
         <View className="flex-1 gap-0.5">
           <Text className="text-sm font-medium">{profile.display_name}</Text>
           {profile.relationship ? (

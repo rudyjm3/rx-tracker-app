@@ -39,6 +39,7 @@ export interface FamilyProfileInput {
   height_updated_at?: string | null;
   weight_updated_at?: string | null;
   avatar_color?: string | null;
+  profile_picture?: string | null;
 }
 
 const CM_PER_INCH = 2.54;
@@ -113,6 +114,7 @@ export async function createFamilyProfile(input: FamilyProfileInput): Promise<Fa
       weight_unit: input.weight_value != null ? (input.weight_unit ?? "lb") : null,
       height_updated_at: input.height_value != null ? (input.height_updated_at ?? new Date().toISOString()) : null,
       weight_updated_at: input.weight_value != null ? (input.weight_updated_at ?? new Date().toISOString()) : null,
+      profile_picture: input.profile_picture ?? null,
       avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
     })
     .select()
@@ -136,6 +138,7 @@ export async function updateFamilyProfile(id: string, input: FamilyProfileInput)
       weight_unit: input.weight_value != null ? (input.weight_unit ?? "lb") : null,
       height_updated_at: input.height_value != null ? (input.height_updated_at ?? null) : null,
       weight_updated_at: input.weight_value != null ? (input.weight_updated_at ?? null) : null,
+      profile_picture: input.profile_picture ?? null,
       avatar_color: input.avatar_color ?? AVATAR_COLOR_PALETTE[0],
     })
     .eq("id", id);

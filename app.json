@@ -45,6 +45,14 @@
           "color": "#0754A8"
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RxTracker uses your photos so you can choose a profile picture.",
+          "cameraPermission": "RxTracker uses your camera so you can take a profile picture.",
+          "microphonePermission": false
+        }
+      ],
       "expo-audio",
       "expo-sharing"
     ],

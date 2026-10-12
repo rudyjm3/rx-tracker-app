@@ -15,6 +15,7 @@ export interface UserProfile {
   weight_unit: string | null;
   height_updated_at: string | null;
   weight_updated_at: string | null;
+  profile_picture: string | null;
   updated_at: string;
 }
 
@@ -25,6 +26,7 @@ export interface FamilyProfile {
   first_name: string | null;
   last_name: string | null;
   avatar_color: string | null;
+  profile_picture: string | null;
   relationship: string | null;
   birth_date: string | null;
   height_value: number | null;

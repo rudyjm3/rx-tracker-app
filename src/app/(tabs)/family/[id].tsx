@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, View } from 'react-native';
 
 import { AllergyPanel } from '@/components/AllergyPanel';
+import { AvatarPicker } from '@/components/avatar-picker';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import {
   type FamilyProfileInput,
 } from '@/lib/family';
 import type { FamilyProfile } from '@/lib/types/profile';
+import { deleteAvatarIfManaged, resolveAvatarChange, type AvatarChange } from '@/lib/user-profile';
 import { isoToUsDate, maskBirthDateInput, usDateToIso } from '@/lib/utils';
 
 // profile_picture/photo upload is skipped this round — no image picker is
@@ -147,6 +149,7 @@ function EditForm({
   const [weightValue, setWeightValue] = useState(profile.weight_value != null ? String(profile.weight_value) : '');
   const [weightUnit, setWeightUnit] = useState<'lb' | 'kg'>((profile.weight_unit as 'lb' | 'kg') ?? 'lb');
   const [avatarColor, setAvatarColor] = useState(profile.avatar_color ?? AVATAR_COLOR_PALETTE[0]);
+  const [avatar, setAvatar] = useState<AvatarChange>({ asset: null, remove: false });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -233,10 +236,17 @@ function EditForm({
     };
 
     setSaving(true);
+    let uploaded: string | null = null;
     try {
-      await updateFamilyProfile(profile.id, input);
+      const { picture, stale } = await resolveAvatarChange(profile.profile_picture, avatar);
+      if (avatar.asset) uploaded = picture;
+      await updateFamilyProfile(profile.id, { ...input, profile_picture: picture });
+      // Best effort: a leftover old file is harmless, a failed save is not.
+      deleteAvatarIfManaged(stale).catch(() => undefined);
       onSaved();
     } catch (e) {
+      // The new photo was uploaded but the member wasn't saved — drop it.
+      deleteAvatarIfManaged(uploaded).catch(() => undefined);
       setFormError(e instanceof Error ? e.message : 'Failed to save changes');
     } finally {
       setSaving(false);
@@ -250,6 +260,13 @@ function EditForm({
       {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
       <Card className="gap-4 p-4">
+        <AvatarPicker
+          currentUrl={profile.profile_picture}
+          label={displayName || firstName || profile.display_name}
+          color={avatarColor}
+          value={avatar}
+          onChange={setAvatar}
+        />
         <Field label="First name" value={firstName} onChangeText={setFirstName} maxLength={50} />
         <Field label="Last name" value={lastName} onChangeText={setLastName} maxLength={50} />
         <Field label="Display name (optional — defaults to first name)" value={displayName} onChangeText={setDisplayName} maxLength={100} />
