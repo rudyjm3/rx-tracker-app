@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn';
 
 // Plain RN Text with the brand text color (and dark-mode equivalent) as the
 // default; pass `muted` for secondary text. Size/weight come from className.
-// Unlike ThemedText this applies color via classes, so className overrides it.
+// Color is applied via classes (not inline style), so className overrides it.
 export function Text({ className, muted, ...props }: TextProps & { className?: string; muted?: boolean }) {
   return (
     <RNText
