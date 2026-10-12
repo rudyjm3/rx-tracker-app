@@ -24,6 +24,17 @@ Do them in this order, committing after each batch:
 5. Everything else: `family/*` (index, new, [id]), `groups/*` (index, new, [id]), `history/index.tsx` (731), `profile/index.tsx` (302), `onboarding/index.tsx` (196), `help/index.tsx` (115), `AllergyPanel.tsx` (532), `ui/collapsible.tsx`.
 6. Cleanup: when nothing imports them, delete `src/components/themed-text.tsx` and `themed-view.tsx`; keep `src/constants/theme.ts` (`Brand`, `Colors`, `Spacing` are still used by the tab bar/icons — remove only what is truly unused); update `DESIGN.md` section 17.0/17.2 and mirror the change to the web repo's `DESIGN.md` so the two stay identical (open that as a separate small web change when I ask for PRs).
 
+## Dashboard parity (still open on `src/app/(tabs)/index.tsx`)
+
+The dashboard is restyled (hero, adherence card, schedule rows), but it still lacks these web-dashboard features. Read the web `components/dashboard/DashboardClient.tsx` and DESIGN.md 8.3 first, and port them as a separate batch (this one adds UI, so keep it in its own commits):
+
+- Zero-pill dialog (shown when the profile has no medications) and the setup-complete banner (`?setup=complete`).
+- Quick actions panel; Medications overview panel with the required / non-required dose-list modals.
+- Today's history panel; "View calendar" / "View full schedule" links.
+- Schedule rows: status `Badge`s and the late label ("Taken (12 min late)") in place of plain status text; group cards with "Show medications" and "Manage Individually"; group header Take All / Snooze / Skip (order Take → Snooze → Skip).
+- Dose feedback: replace the +/- stepper with a 1–10 level-grid picker like the web `LevelGrid`.
+- `LowSupplyBanner` (still `StyleSheet`) is covered in item 2 above.
+
 ## Rules and conventions
 
 - **No behavior changes.** Don't alter data fetching, state, validation, navigation, or copy except to match DESIGN.md (e.g. action order is always **Take → Snooze → Skip**; a medication is always shown as **name → dose → type badge**; use `MedTypeBadge`/`Badge` rather than ad-hoc pills).
