@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Card } from '@/components/ui/card';
+import { Collapsible } from '@/components/ui/collapsible';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 
 // Port of rx-tracker-web's app/help/page.tsx FAQ content, verbatim —
 // answers to the same questions, since the underlying features (dose
@@ -43,73 +41,36 @@ const FAQS: { question: string; answer: string }[] = [
 ];
 
 export default function HelpScreen() {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
-            Answers to common questions about how RxTracker works. Tap a question to expand it.
-          </ThemedText>
+    <Screen edges={['left', 'right', 'bottom']} contentClassName="pt-4">
+      <ScreenTitle>Help & FAQ</ScreenTitle>
+      <Text muted className="text-sm">
+        Answers to common questions about how RxTracker works. Tap a question to expand it.
+      </Text>
 
-          <View style={styles.list}>
-            {FAQS.map((faq) => {
-              const open = openQuestion === faq.question;
-              return (
-                <View key={faq.question} style={styles.item}>
-                  <Pressable
-                    style={styles.questionRow}
-                    onPress={() => setOpenQuestion(open ? null : faq.question)}
-                  >
-                    <ThemedText type="smallBold" style={styles.question}>
-                      {faq.question}
-                    </ThemedText>
-                    <Ionicons
-                      name={open ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={theme.textSecondary}
-                    />
-                  </Pressable>
-                  {open && (
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.answer}>
-                      {faq.answer}
-                    </ThemedText>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+      <Card flat className="gap-2">
+        {FAQS.map((faq) => {
+          const open = openQuestion === faq.question;
+          return (
+            <Collapsible
+              key={faq.question}
+              title={faq.question}
+              open={open}
+              onToggle={() => setOpenQuestion(open ? null : faq.question)}>
+              <Text muted className="text-sm leading-5">
+                {faq.answer}
+              </Text>
+            </Collapsible>
+          );
+        })}
+      </Card>
 
-          <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
-            Still have a question that isn&apos;t answered here? RxTracker is a tracking aid only
-            and does not provide medical advice — for anything about your treatment itself,
-            please check with your doctor or pharmacist.
-          </ThemedText>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <Text muted className="text-xs">
+        Still have a question that isn&apos;t answered here? RxTracker is a tracking aid only and does not provide
+        medical advice — for anything about your treatment itself, please check with your doctor or pharmacist.
+      </Text>
+    </Screen>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    container: { flex: 1 },
-    safeArea: { flex: 1 },
-    scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-    intro: { marginBottom: Spacing.three },
-    list: { gap: Spacing.two },
-    item: {
-      borderRadius: BorderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.border,
-      padding: Spacing.three,
-    },
-    questionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
-    question: { flex: 1 },
-    answer: { marginTop: Spacing.two, lineHeight: 20 },
-    disclaimer: { marginTop: Spacing.four },
-  });
 }

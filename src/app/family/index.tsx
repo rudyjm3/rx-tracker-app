@@ -1,11 +1,13 @@
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
+import { ProfileAvatar } from '@/components/profile-avatar';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import type { FamilyProfile } from '@/lib/types/profile';
 
@@ -29,75 +31,53 @@ export default function FamilyListScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <View style={styles.titleRow}>
-          <ThemedText type="title" style={styles.title}>
-            Family
-          </ThemedText>
-          <Pressable style={styles.addButton} onPress={() => router.push('/family/new')} hitSlop={8}>
-            <ThemedText style={styles.addButtonText}>+ Add Family Member</ThemedText>
-          </Pressable>
-        </View>
+    <Screen
+      edges={['left', 'right', 'bottom']}
+      contentClassName="pt-4"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <ScreenTitle>Manage Family</ScreenTitle>
+        <Button label="Add Family Member" size="compact" onPress={() => router.push('/family/new')} />
+      </View>
 
-        <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
-          Track medications for family members under one account.
-        </ThemedText>
+      <Text muted className="text-sm">
+        Track medications for family members under one account.
+      </Text>
 
-        {loading && !refreshing ? (
-          <ActivityIndicator style={styles.loading} />
-        ) : (
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-          >
-            {familyProfiles.length === 0 && (
-              <ThemedText themeColor="textSecondary">
-                No family members yet. Tap &ldquo;Add Family Member&rdquo; to add one.
-              </ThemedText>
-            )}
-            {familyProfiles.map((profile) => (
-              <FamilyMemberCard key={profile.id} profile={profile} />
-            ))}
-          </ScrollView>
-        )}
-      </SafeAreaView>
-    </ThemedView>
+      {loading && !refreshing ? (
+        <ActivityIndicator className="mt-8" />
+      ) : (
+        <>
+          {familyProfiles.length === 0 ? (
+            <Text muted className="text-sm">
+              No family members yet. Tap &ldquo;Add Family Member&rdquo; to add one.
+            </Text>
+          ) : null}
+          {familyProfiles.map((profile) => (
+            <FamilyMemberCard key={profile.id} profile={profile} />
+          ))}
+        </>
+      )}
+    </Screen>
   );
 }
 
 function FamilyMemberCard({ profile }: { profile: FamilyProfile }) {
   return (
-    <Pressable onPress={() => router.push({ pathname: '/family/[id]', params: { id: profile.id } })}>
-      <ThemedView type="backgroundElement" style={styles.card}>
-        <View style={[styles.avatar, { backgroundColor: profile.avatar_color ?? Brand.deepBlue }]}>
-          <ThemedText style={styles.avatarText}>{profile.display_name.charAt(0).toUpperCase()}</ThemedText>
-        </View>
-        <View style={styles.cardText}>
-          <ThemedText type="smallBold">{profile.display_name}</ThemedText>
+    <Pressable
+      accessibilityRole="link"
+      onPress={() => router.push({ pathname: '/family/[id]', params: { id: profile.id } })}>
+      <Card flat className="flex-row items-center gap-3">
+        <ProfileAvatar label={profile.display_name} color={profile.avatar_color} size={40} />
+        <View className="flex-1 gap-0.5">
+          <Text className="text-sm font-medium">{profile.display_name}</Text>
           {profile.relationship ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <Text muted className="text-xs">
               {profile.relationship}
-            </ThemedText>
+            </Text>
           ) : null}
         </View>
-      </ThemedView>
+      </Card>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, marginBottom: Spacing.one },
-  title: { fontSize: 28, lineHeight: 34 },
-  addButton: { paddingVertical: Spacing.one },
-  addButtonText: { color: Brand.deepBlue, fontWeight: '600' },
-  subtitle: { marginBottom: Spacing.three },
-  loading: { marginTop: Spacing.five },
-  scrollContent: { gap: Spacing.two, paddingBottom: Spacing.six },
-  card: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, borderRadius: BorderRadius.md, padding: Spacing.three },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  cardText: { flex: 1, gap: 2 },
-});

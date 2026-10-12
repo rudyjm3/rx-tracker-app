@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, View } from 'react-native';
 
 import { AllergyPanel } from '@/components/AllergyPanel';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Card } from '@/components/ui/card';
+import { ColorSwatches } from '@/components/ui/color-swatches';
+import { Field } from '@/components/ui/field';
+import { Screen } from '@/components/ui/screen';
+import { ScreenTitle } from '@/components/ui/screen-title';
+import { TagPill } from '@/components/ui/tag-pill';
+import { Text } from '@/components/ui/text';
+import { UnitField } from '@/components/ui/unit-field';
 import { useActiveProfile } from '@/lib/active-profile';
 import {
   AVATAR_COLOR_PALETTE,
@@ -25,7 +30,6 @@ import type { FamilyProfile } from '@/lib/types/profile';
 // installed, and it's a separate scope (see AGENTS task notes for this
 // feature).
 export default function EditFamilyMemberScreen() {
-  const styles = getStyles(useTheme());
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeProfileId, refreshFamilyProfiles, setActiveProfileId } = useActiveProfile();
 
@@ -88,21 +92,17 @@ export default function EditFamilyMemberScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.centered}>
-          <ActivityIndicator />
-        </SafeAreaView>
-      </ThemedView>
+      <Screen edges={['left', 'right', 'bottom']} scroll={false} contentClassName="items-center justify-center">
+        <ActivityIndicator />
+      </Screen>
     );
   }
 
   if (loadError || !profile) {
     return (
-      <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.centered}>
-          <ThemedText style={styles.error}>{loadError ?? 'Family member not found'}</ThemedText>
-        </SafeAreaView>
-      </ThemedView>
+      <Screen edges={['left', 'right', 'bottom']} scroll={false} contentClassName="items-center justify-center">
+        <Text className="text-sm text-status-danger dark:text-status-danger">{loadError ?? 'Family member not found'}</Text>
+      </Screen>
     );
   }
 
@@ -136,8 +136,6 @@ function EditForm({
   onSaved: () => void;
   onRemove: () => void;
 }) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [firstName, setFirstName] = useState(profile.first_name ?? '');
   const [lastName, setLastName] = useState(profile.last_name ?? '');
   const [displayName, setDisplayName] = useState(profile.display_name ?? '');
@@ -240,172 +238,82 @@ function EditForm({
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="title" style={styles.title}>
-            Edit {profile.display_name}
-          </ThemedText>
+    <Screen edges={['left', 'right', 'bottom']} keyboardShouldPersistTaps="handled" contentClassName="pt-4">
+      <ScreenTitle>{`Edit ${profile.display_name}`}</ScreenTitle>
 
-          {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
+      {formError ? <Callout kind="danger">{formError}</Callout> : null}
 
-          <FieldLabel>First name</FieldLabel>
-          <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} maxLength={50} />
+      <Card className="gap-4 p-4">
+        <Field label="First name" value={firstName} onChangeText={setFirstName} maxLength={50} />
+        <Field label="Last name" value={lastName} onChangeText={setLastName} maxLength={50} />
+        <Field label="Display name (optional — defaults to first name)" value={displayName} onChangeText={setDisplayName} maxLength={100} />
 
-          <FieldLabel>Last name</FieldLabel>
-          <TextInput style={styles.input} value={lastName} onChangeText={setLastName} maxLength={50} />
-
-          <FieldLabel>Display name (optional — defaults to first name)</FieldLabel>
-          <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} maxLength={100} />
-
-          <FieldLabel>Relationship</FieldLabel>
-          <View style={styles.chipRow}>
+        <View className="gap-1">
+          <Text className="text-sm">Relationship</Text>
+          <View className="flex-row flex-wrap gap-1.5">
             {FAMILY_RELATIONSHIPS.map((rel) => (
-              <Pressable
+              <TagPill
                 key={rel}
-                style={[styles.chip, relationship === rel && styles.chipSelected]}
+                label={rel}
+                selected={relationship === rel}
                 onPress={() => setRelationship(relationship === rel ? '' : rel)}
-              >
-                <ThemedText type="small" style={relationship === rel ? styles.chipTextSelected : undefined}>
-                  {rel}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          <FieldLabel>Birth date (YYYY-MM-DD)</FieldLabel>
-          <TextInput
-            style={styles.input}
-            value={birthDate}
-            onChangeText={setBirthDate}
-            placeholder="1990-01-15"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <FieldLabel>Height</FieldLabel>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.rowInput]}
-              value={heightValue}
-              onChangeText={setHeightValue}
-              keyboardType="numeric"
-              placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
-              placeholderTextColor={theme.textSecondary}
-            />
-            <View style={styles.unitToggle}>
-              <UnitButton label="in" active={heightUnit === 'in'} onPress={() => handleHeightUnitChange('in')} />
-              <UnitButton label="cm" active={heightUnit === 'cm'} onPress={() => handleHeightUnitChange('cm')} />
-            </View>
-          </View>
-
-          <FieldLabel>Weight</FieldLabel>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.rowInput]}
-              value={weightValue}
-              onChangeText={setWeightValue}
-              keyboardType="numeric"
-              placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
-              placeholderTextColor={theme.textSecondary}
-            />
-            <View style={styles.unitToggle}>
-              <UnitButton label="lb" active={weightUnit === 'lb'} onPress={() => handleWeightUnitChange('lb')} />
-              <UnitButton label="kg" active={weightUnit === 'kg'} onPress={() => handleWeightUnitChange('kg')} />
-            </View>
-          </View>
-
-          <FieldLabel>Avatar color</FieldLabel>
-          <View style={styles.colorRow}>
-            {AVATAR_COLOR_PALETTE.map((color) => (
-              <Pressable
-                key={color}
-                onPress={() => setAvatarColor(color)}
-                style={[
-                  styles.colorSwatch,
-                  { backgroundColor: color },
-                  avatarColor === color && styles.colorSwatchSelected,
-                ]}
-                accessibilityLabel={`Use color ${color}`}
               />
             ))}
           </View>
+        </View>
 
-          <View style={styles.section}>
-            <AllergyPanel profileId={profile.id} />
-          </View>
+        <Field
+          label="Birth date (YYYY-MM-DD)"
+          value={birthDate}
+          onChangeText={setBirthDate}
+          placeholder="1990-01-15"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
 
-          <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.back()} disabled={saving}>
-              <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable style={[styles.primaryButton, saving && styles.disabled]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.primaryButtonText}>Save</ThemedText>}
-            </Pressable>
-          </View>
+        <UnitField
+          label="Height"
+          value={heightValue}
+          onChangeText={setHeightValue}
+          placeholder={heightUnit === 'cm' ? 'e.g. 165' : 'e.g. 65'}
+          units={['in', 'cm'] as const}
+          unit={heightUnit}
+          onUnitChange={handleHeightUnitChange}
+        />
 
-          <Pressable style={styles.removeButton} onPress={onRemove} disabled={saving}>
-            <ThemedText style={styles.removeButtonText}>Remove family member</ThemedText>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+        <UnitField
+          label="Weight"
+          value={weightValue}
+          onChangeText={setWeightValue}
+          placeholder={weightUnit === 'kg' ? 'e.g. 68' : 'e.g. 150'}
+          units={['lb', 'kg'] as const}
+          unit={weightUnit}
+          onUnitChange={handleWeightUnitChange}
+        />
+
+        <View className="gap-1">
+          <Text className="text-sm">Avatar color</Text>
+          <ColorSwatches colors={AVATAR_COLOR_PALETTE} value={avatarColor} onChange={setAvatarColor} />
+        </View>
+      </Card>
+
+      <Card flat className="p-4">
+        <AllergyPanel profileId={profile.id} />
+      </Card>
+
+      <View className="flex-row gap-2">
+        <Button label="Cancel" variant="ghost" className="flex-1" onPress={() => router.back()} disabled={saving} />
+        <Button label={saving ? 'Saving…' : 'Save'} className="flex-1" loading={saving} onPress={handleSave} />
+      </View>
+
+      <Button
+        label="Remove family member"
+        variant="secondary"
+        className="border-status-danger dark:border-status-danger"
+        labelClassName="text-status-danger dark:text-status-danger"
+        onPress={onRemove}
+        disabled={saving}
+      />
+    </Screen>
   );
-}
-
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
-  );
-}
-
-function UnitButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const styles = getStyles(useTheme());
-  return (
-    <Pressable style={[styles.unitButton, active && styles.unitButtonActive]} onPress={onPress}>
-      <ThemedText type="small" style={active ? styles.unitTextActive : styles.unitText}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.six, gap: Spacing.one },
-  title: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
-  error: { color: Brand.danger, marginVertical: Spacing.two },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: { borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, fontSize: 16, color: theme.text, backgroundColor: theme.backgroundElement },
-  row: { flexDirection: 'row', gap: Spacing.two, alignItems: 'center' },
-  rowInput: { flex: 1 },
-  unitToggle: { flexDirection: 'row', backgroundColor: theme.backgroundSelected, borderRadius: BorderRadius.sm, padding: 2 },
-  unitButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: Spacing.one },
-  unitButtonActive: { backgroundColor: theme.backgroundElement },
-  unitText: { color: theme.textSecondary },
-  unitTextActive: { color: theme.text, fontWeight: '700' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one },
-  chip: { borderWidth: 1, borderColor: theme.border, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
-  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { color: theme.accent, fontWeight: '700' },
-  colorRow: { flexDirection: 'row', gap: Spacing.two },
-  colorSwatch: { width: 32, height: 32, borderRadius: 16 },
-  colorSwatchSelected: { borderWidth: 3, borderColor: Brand.navy },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  section: { marginTop: Spacing.five, paddingTop: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
-  primaryButton: { flex: 1, backgroundColor: Brand.deepBlue, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: { flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center' },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-  removeButton: { borderRadius: BorderRadius.sm, paddingVertical: Spacing.three, alignItems: 'center', borderWidth: 1, borderColor: Brand.danger, marginTop: Spacing.three },
-  removeButtonText: { color: Brand.danger, fontWeight: '600' },
-});
 }

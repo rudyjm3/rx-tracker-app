@@ -1,22 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SwitchRow } from '@/components/ui/checkbox';
+import { Field } from '@/components/ui/field';
+import { FormSheet } from '@/components/ui/form-sheet';
+import { PanelTitle } from '@/components/ui/screen-title';
+import { Sheet } from '@/components/ui/sheet';
+import { TagPill } from '@/components/ui/tag-pill';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/cn';
 import { confirmDestructive } from '@/lib/confirm';
 import {
   ALLERGY_CATEGORIES,
@@ -50,8 +45,6 @@ interface AllergyPanelProps {
 }
 
 export function AllergyPanel({ profileId }: AllergyPanelProps) {
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [catalog, setCatalog] = useState<AllergyCatalogEntry[]>([]);
   const [allergies, setAllergies] = useState<ProfileAllergyWithName[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,71 +93,57 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
     });
   }
 
+  // Panel (DESIGN.md 8.12): title + compact Add, rows radius 18 / p-12 with
+  // name, a 12 px meta line and Edit / Remove text buttons.
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <ThemedText type="smallBold">Allergies & Intolerances</ThemedText>
-        <Pressable style={styles.addButton} onPress={() => setEditing('new')}>
-          <ThemedText type="small" style={styles.addButtonText}>
-            Add
-          </ThemedText>
-        </Pressable>
+    <View className="gap-3">
+      <View className="flex-row items-center justify-between gap-2">
+        <PanelTitle>Allergies & Intolerances</PanelTitle>
+        <Button label="Add" variant="secondary" size="compact" onPress={() => setEditing('new')} />
       </View>
 
-      {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+      {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
       {loading ? (
-        <ActivityIndicator style={styles.loading} />
+        <ActivityIndicator className="my-4" />
       ) : allergies.length === 0 ? (
-        <ThemedText type="small" themeColor="textSecondary">
+        <Text muted className="text-sm">
           No allergies recorded.
-        </ThemedText>
+        </Text>
       ) : (
-        <View style={styles.list}>
+        <View className="gap-2">
           {allergies.map((a) => (
-            <ThemedView key={a.id} type="backgroundElement" style={styles.row}>
-              <View style={styles.rowMain}>
-                <ThemedText type="smallBold">
+            <Card key={a.id} flat className="flex-row items-center justify-between gap-2 p-3">
+              <View className="flex-1 gap-0.5">
+                <Text className="text-sm font-semibold">
                   {a.name}
-                  {!a.is_active && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {' '}
-                      (inactive)
-                    </ThemedText>
-                  )}
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                  {!a.is_active ? <Text muted className="text-sm font-normal">{' (inactive)'}</Text> : null}
+                </Text>
+                <Text muted className="text-xs">
                   {a.life_threatening ? (
-                    <ThemedText type="small" style={styles.danger}>
-                      Life-threatening
-                    </ThemedText>
+                    <Text className="text-xs font-semibold text-status-danger dark:text-status-danger">Life-threatening</Text>
                   ) : (
                     a.severity && ALLERGY_SEVERITY_LABELS[a.severity]
                   )}
                   {a.category && ` · ${ALLERGY_CATEGORY_LABELS[a.category]}`}
-                </ThemedText>
+                </Text>
               </View>
-              <View style={styles.rowActions}>
-                <Pressable onPress={() => setEditing(a)} hitSlop={8}>
-                  <ThemedText type="small" style={styles.editLink}>
-                    Edit
-                  </ThemedText>
+              <View className="flex-row gap-1">
+                <Pressable accessibilityRole="button" className="min-h-11 justify-center px-1" onPress={() => setEditing(a)} hitSlop={4}>
+                  <Text className="text-sm font-medium text-brand-blue dark:text-brand-cyan">Edit</Text>
                 </Pressable>
-                <Pressable onPress={() => confirmRemove(a)} hitSlop={8}>
-                  <ThemedText type="small" style={styles.danger}>
-                    Remove
-                  </ThemedText>
+                <Pressable accessibilityRole="button" className="min-h-11 justify-center px-1" onPress={() => confirmRemove(a)} hitSlop={4}>
+                  <Text className="text-sm font-medium text-status-danger dark:text-status-danger">Remove</Text>
                 </Pressable>
               </View>
-            </ThemedView>
+            </Card>
           ))}
         </View>
       )}
 
-      {editing !== null && (
+      {editing !== null ? (
         <AllergyFormSheet
           key={editing === 'new' ? 'new' : editing.id}
-          styles={styles}
           profileId={profileId}
           existing={editing === 'new' ? null : editing}
           catalog={catalog}
@@ -174,28 +153,24 @@ export function AllergyPanel({ profileId }: AllergyPanelProps) {
             load();
           }}
         />
-      )}
+      ) : null}
     </View>
   );
 }
 
 function AllergyFormSheet({
-  styles,
   profileId,
   existing,
   catalog,
   onClose,
   onSaved,
 }: {
-  styles: ReturnType<typeof getStyles>;
   profileId: string | null;
   existing: ProfileAllergyWithName | null;
   catalog: AllergyCatalogEntry[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const theme = useTheme();
-  const inputThemeStyle = { backgroundColor: theme.backgroundElement, color: theme.text };
   const initialCatalogId = existing?.allergy_catalog_id ?? null;
 
   const [catalogSelection, setCatalogSelection] = useState(initialCatalogId ?? NEW_ENTRY_VALUE);
@@ -245,288 +220,114 @@ function AllergyFormSheet({
   }
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={requestClose}>
-      <Pressable style={styles.modalBackdrop} onPress={requestClose}>
-        <Pressable style={styles.sheetWrapper} onPress={(e) => e.stopPropagation()}>
-          <ThemedView style={styles.modalSheet}>
-            <SafeAreaView edges={['bottom']}>
-            <ScrollView>
-              <ThemedText type="subtitle" style={styles.modalTitle}>
-                {existing ? 'Edit allergy' : 'Add allergy'}
-              </ThemedText>
-
-              {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
-
-              <FieldLabel>Allergy</FieldLabel>
-              <Pressable style={[styles.input, styles.selectField]} onPress={() => setPickerOpen(true)}>
-                <ThemedText>
-                  {catalogSelection === NEW_ENTRY_VALUE
-                    ? '+ Enter a new allergy…'
-                    : (selectedCatalogName ?? '+ Enter a new allergy…')}
-                </ThemedText>
-              </Pressable>
-
-              {catalogSelection === NEW_ENTRY_VALUE && (
-                <>
-                  <FieldLabel>New allergy name</FieldLabel>
-                  <TextInput
-                    style={[styles.input, inputThemeStyle]}
-                    placeholderTextColor={theme.textSecondary}
-                    value={newName}
-                    onChangeText={setNewName}
-                    maxLength={150}
-                    placeholder="e.g. Amoxicillin"
-                  />
-                </>
-              )}
-
-              <FieldLabel>Type</FieldLabel>
-              <View style={styles.chipRow}>
-                {TYPE_OPTIONS.map((opt) => (
-                  <Pressable
-                    key={opt.value}
-                    style={[styles.chip, allergyType === opt.value && styles.chipSelected]}
-                    onPress={() => setAllergyType(opt.value)}
-                  >
-                    <ThemedText
-                      type="small"
-                      style={allergyType === opt.value ? styles.chipTextSelected : undefined}
-                    >
-                      {opt.label}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
-
-              <View style={styles.switchRow}>
-                <ThemedText type="smallBold">Life-threatening</ThemedText>
-                <Switch
-                  value={lifeThreatening}
-                  onValueChange={setLifeThreatening}
-                  trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-                />
-              </View>
-
-              {!lifeThreatening && (
-                <>
-                  <FieldLabel>Severity</FieldLabel>
-                  <View style={styles.chipRow}>
-                    {ALLERGY_SEVERITIES.map((s) => (
-                      <Pressable
-                        key={s}
-                        style={[styles.chip, severity === s && styles.chipSelected]}
-                        onPress={() => setSeverity(severity === s ? null : s)}
-                      >
-                        <ThemedText type="small" style={severity === s ? styles.chipTextSelected : undefined}>
-                          {ALLERGY_SEVERITY_LABELS[s]}
-                        </ThemedText>
-                      </Pressable>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              <FieldLabel>Category</FieldLabel>
-              <View style={styles.chipRow}>
-                {ALLERGY_CATEGORIES.map((c) => (
-                  <Pressable
-                    key={c}
-                    style={[styles.chip, category === c && styles.chipSelected]}
-                    onPress={() => setCategory(category === c ? null : c)}
-                  >
-                    <ThemedText type="small" style={category === c ? styles.chipTextSelected : undefined}>
-                      {ALLERGY_CATEGORY_LABELS[c]}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
-
-              <FieldLabel>Notes (optional)</FieldLabel>
-              <TextInput
-                style={[styles.input, styles.multiline, inputThemeStyle]}
-                placeholderTextColor={theme.textSecondary}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                maxLength={1000}
-              />
-
-              {existing && (
-                <View style={styles.switchRow}>
-                  <ThemedText type="smallBold">Active</ThemedText>
-                  <Switch
-                    value={isActive}
-                    onValueChange={setIsActive}
-                    trackColor={{ false: theme.backgroundSelected, true: theme.accent }}
-                  />
-                </View>
-              )}
-
-              <View style={styles.actions}>
-                <Pressable style={styles.secondaryButton} onPress={requestClose} disabled={saving}>
-                  <ThemedText style={styles.secondaryButtonText}>Cancel</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[styles.primaryButton, saving && styles.disabled]}
-                  onPress={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#ffffff" />
-                  ) : (
-                    <ThemedText style={styles.primaryButtonText}>Save</ThemedText>
-                  )}
-                </Pressable>
-              </View>
-            </ScrollView>
-            </SafeAreaView>
-          </ThemedView>
+    <FormSheet
+      title={existing ? 'Edit allergy' : 'Add allergy'}
+      onClose={requestClose}
+      dismissible={!saving}
+      error={formError}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" className="flex-1" onPress={requestClose} disabled={saving} />
+          <Button label={saving ? 'Saving…' : 'Save'} className="flex-1" loading={saving} onPress={handleSave} />
+        </>
+      }>
+      <View className="gap-1">
+        <Text className="text-sm">Allergy</Text>
+        <Pressable
+          accessibilityRole="button"
+          className="min-h-11 justify-center rounded-control border border-brand-border bg-white px-3 dark:border-night-border dark:bg-night-card"
+          onPress={() => setPickerOpen(true)}>
+          <Text className="text-sm">
+            {catalogSelection === NEW_ENTRY_VALUE ? '+ Enter a new allergy…' : (selectedCatalogName ?? '+ Enter a new allergy…')}
+          </Text>
         </Pressable>
-      </Pressable>
+      </View>
 
-      {pickerOpen && (
-        <Modal visible animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
-            <Pressable style={styles.pickerSheetWrapper} onPress={(e) => e.stopPropagation()}>
-              <ThemedView style={styles.modalSheet}>
-                <SafeAreaView edges={['bottom']}>
-                <ThemedText type="subtitle" style={styles.modalTitle}>
-                  Allergy
-                </ThemedText>
-                <ScrollView style={styles.pickerList}>
-                  <PickerRow
-                    label="+ Enter a new allergy…"
-                    selected={catalogSelection === NEW_ENTRY_VALUE}
-                    onPress={() => {
-                      setCatalogSelection(NEW_ENTRY_VALUE);
-                      setPickerOpen(false);
-                    }}
-                  />
-                  {catalog.map((c) => (
-                    <PickerRow
-                      key={c.id}
-                      label={c.name}
-                      selected={catalogSelection === c.id}
-                      onPress={() => {
-                        setCatalogSelection(c.id);
-                        setPickerOpen(false);
-                      }}
-                    />
-                  ))}
-                </ScrollView>
-                <Pressable style={styles.closeButton} onPress={() => setPickerOpen(false)}>
-                  <ThemedText style={styles.closeButtonText}>Close</ThemedText>
-                </Pressable>
-                </SafeAreaView>
-              </ThemedView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      )}
-    </Modal>
-  );
-}
+      {catalogSelection === NEW_ENTRY_VALUE ? (
+        <Field label="New allergy name" value={newName} onChangeText={setNewName} maxLength={150} placeholder="e.g. Amoxicillin" />
+      ) : null}
 
-function FieldLabel({ children }: { children: string }) {
-  const styles = getStyles(useTheme());
-  return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.fieldLabel}>
-      {children}
-    </ThemedText>
+      <View className="gap-1">
+        <Text className="text-sm">Type</Text>
+        <View className="flex-row flex-wrap gap-1.5">
+          {TYPE_OPTIONS.map((opt) => (
+            <TagPill key={opt.value} label={opt.label} selected={allergyType === opt.value} onPress={() => setAllergyType(opt.value)} />
+          ))}
+        </View>
+      </View>
+
+      <SwitchRow label="Life-threatening" value={lifeThreatening} onValueChange={setLifeThreatening} />
+
+      {!lifeThreatening ? (
+        <View className="gap-1">
+          <Text className="text-sm">Severity</Text>
+          <View className="flex-row flex-wrap gap-1.5">
+            {ALLERGY_SEVERITIES.map((sv) => (
+              <TagPill key={sv} label={ALLERGY_SEVERITY_LABELS[sv]} selected={severity === sv} onPress={() => setSeverity(severity === sv ? null : sv)} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      <View className="gap-1">
+        <Text className="text-sm">Category</Text>
+        <View className="flex-row flex-wrap gap-1.5">
+          {ALLERGY_CATEGORIES.map((c) => (
+            <TagPill key={c} label={ALLERGY_CATEGORY_LABELS[c]} selected={category === c} onPress={() => setCategory(category === c ? null : c)} />
+          ))}
+        </View>
+      </View>
+
+      <Field
+        label="Notes (optional)"
+        className="min-h-20"
+        style={{ textAlignVertical: 'top' }}
+        value={notes}
+        onChangeText={setNotes}
+        multiline
+        maxLength={1000}
+      />
+
+      {existing ? <SwitchRow label="Active" value={isActive} onValueChange={setIsActive} /> : null}
+
+      {pickerOpen ? (
+        <Sheet onClose={() => setPickerOpen(false)}>
+          <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">Allergy</Text>
+          <ScrollView className="max-h-80">
+            <PickerRow
+              label="+ Enter a new allergy…"
+              selected={catalogSelection === NEW_ENTRY_VALUE}
+              onPress={() => {
+                setCatalogSelection(NEW_ENTRY_VALUE);
+                setPickerOpen(false);
+              }}
+            />
+            {catalog.map((c) => (
+              <PickerRow
+                key={c.id}
+                label={c.name}
+                selected={catalogSelection === c.id}
+                onPress={() => {
+                  setCatalogSelection(c.id);
+                  setPickerOpen(false);
+                }}
+              />
+            ))}
+          </ScrollView>
+          <Button label="Close" variant="ghost" className="mt-3" onPress={() => setPickerOpen(false)} />
+        </Sheet>
+      ) : null}
+    </FormSheet>
   );
 }
 
 function PickerRow({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const styles = getStyles(useTheme());
   return (
-    <Pressable style={styles.pickerRow} onPress={onPress}>
-      <ThemedText style={selected ? styles.pickerRowSelected : undefined}>{label}</ThemedText>
+    <Pressable
+      accessibilityRole="button"
+      className="min-h-12 justify-center border-b border-brand-border dark:border-night-border"
+      onPress={onPress}>
+      <Text className={cn('text-base', selected && 'font-bold text-brand-deep-blue dark:text-brand-cyan')}>{label}</Text>
     </Pressable>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-  container: { gap: Spacing.two },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  addButton: {
-    borderWidth: 1,
-    borderColor: Brand.deepBlue,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-  },
-  addButtonText: { color: Brand.deepBlue, fontWeight: '700' },
-  loading: { marginVertical: Spacing.three },
-  error: { color: Brand.danger, marginBottom: Spacing.two },
-  list: { gap: Spacing.two },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.three,
-  },
-  rowMain: { flex: 1, gap: 2 },
-  rowActions: { flexDirection: 'row', gap: Spacing.three },
-  editLink: { color: Brand.deepBlue, fontWeight: '600' },
-  danger: { color: Brand.danger, fontWeight: '600' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheetWrapper: { maxHeight: '90%' },
-  pickerSheetWrapper: { maxHeight: '70%' },
-  modalSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four },
-  modalTitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-  pickerList: { maxHeight: 320 },
-  pickerRow: { paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-  pickerRowSelected: { fontWeight: '700', color: theme.accent },
-  closeButton: { marginTop: Spacing.three, alignItems: 'center', paddingVertical: Spacing.two },
-  closeButtonText: { fontWeight: '600', color: Brand.deepBlue },
-  fieldLabel: { marginTop: Spacing.three, marginBottom: Spacing.one },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-  },
-  selectField: { justifyContent: 'center' },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-  },
-  chipSelected: { borderColor: theme.accent, backgroundColor: theme.backgroundSelected },
-  chipTextSelected: { color: theme.accent, fontWeight: '700' },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: Spacing.three,
-  },
-  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.four },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: Brand.deepBlue,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { fontWeight: '600' },
-  disabled: { opacity: 0.6 },
-});
 }
