@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { LowSupplyBanner } from '@/components/LowSupplyBanner';
-import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -39,7 +38,7 @@ type ListTab = 'active' | 'inactive';
 export default function MedicationsScreen() {
   const theme = useTheme();
   const styles = getStyles(theme);
-  const { activeProfileId, familyProfiles } = useActiveProfile();
+  const { activeProfileId } = useActiveProfile();
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
@@ -91,7 +90,7 @@ export default function MedicationsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <View style={styles.titleRow}>
           <ThemedText type="title" style={styles.title}>
             Medications
@@ -112,8 +111,6 @@ export default function MedicationsScreen() {
             </Pressable>
           </View>
         </View>
-
-        {familyProfiles.length > 0 && <ProfileSwitcher />}
 
         <View style={styles.segmented}>
           <SegmentButton label="Active" active={tab === 'active'} onPress={() => setTab('active')} />

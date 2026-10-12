@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LegalLinks } from '@/components/legal-links';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Brand, BorderRadius, Spacing } from '@/constants/theme';
@@ -110,6 +111,7 @@ export default function SignupScreen() {
           <Link href="/(auth)/login" style={styles.link}>
             <ThemedText type="linkPrimary">Already have an account? Sign in</ThemedText>
           </Link>
+          <LegalLinks />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ThemedView>

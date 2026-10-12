@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ProfileSwitcher } from '@/components/ProfileSwitcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TrendChart } from '@/components/TrendChart';
@@ -61,7 +60,7 @@ const DEFAULT_RANGE_DAYS: RangeDays = 7;
 export default function PainMoodScreen() {
   const theme = useTheme();
   const styles = getStyles(theme);
-  const { activeProfileId, familyProfiles } = useActiveProfile();
+  const { activeProfileId } = useActiveProfile();
   const [trackPain, setTrackPain] = useState(false);
   const [trackMood, setTrackMood] = useState(false);
   const [painLevel, setPainLevel] = useState(DEFAULT_LEVEL);
@@ -288,7 +287,7 @@ export default function PainMoodScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -304,8 +303,6 @@ export default function PainMoodScreen() {
           <ThemedText type="title" style={styles.title}>
             Pain & Mood
           </ThemedText>
-
-          {familyProfiles.length > 0 && <ProfileSwitcher />}
 
           {formError && <ThemedText style={styles.error}>{formError}</ThemedText>}
 
