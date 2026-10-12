@@ -171,9 +171,29 @@ export function generateDaySlots(
 }
 
 export function slotDueTime(slot: DaySlot, date: string): number {
-  return slot.postponedUntil
+  // A snooze only moves a still-pending dose. Once a member is taken/skipped
+  // its leftover postpone row must not pull it out of its group's event —
+  // otherwise one group splits into several single-medication cards.
+  return slot.postponedUntil && slot.status === "pending"
     ? new Date(slot.postponedUntil).getTime()
     : new Date(`${date}T${slot.scheduledTime}`).getTime();
+}
+
+/**
+ * The time a slot is grouped under. Same as slotDueTime, except a resolved
+ * (taken/skipped) member keeps its snooze time when a still-pending groupmate
+ * shares it — a whole-group snooze followed by one member being taken must
+ * not split the group — while a leftover snooze nobody else shares falls back
+ * to the scheduled time.
+ */
+export function slotGroupTime(slot: DaySlot, date: string, allSlots: DaySlot[]): number {
+  const due = slotDueTime(slot, date);
+  if (slot.status === "pending" || !slot.postponedUntil || !slot.groupId) return due;
+  const postponed = new Date(slot.postponedUntil).getTime();
+  const sharedWithPending = allSlots.some(
+    (o) => o.groupId === slot.groupId && o.status === "pending" && slotDueTime(o, date) === postponed,
+  );
+  return sharedWithPending ? postponed : due;
 }
 
 export interface NextDoseGroupEvent {
@@ -191,18 +211,19 @@ export interface NextDoseSingleEvent {
 export type NextDoseEvent = NextDoseGroupEvent | NextDoseSingleEvent;
 
 export function buildDoseEvents(slots: DaySlot[], date: string): NextDoseEvent[] {
-  const sorted = [...slots].sort((a, b) => slotDueTime(a, date) - slotDueTime(b, date));
+  const groupTime = (s: DaySlot) => slotGroupTime(s, date, slots);
+  const sorted = [...slots].sort((a, b) => groupTime(a) - groupTime(b));
   const events: NextDoseEvent[] = [];
   const seenGroupKeys = new Set<string>();
 
   for (const slot of sorted) {
-    const time = slotDueTime(slot, date);
+    const time = groupTime(slot);
     if (slot.groupId) {
       const key = `${slot.groupId}|${time}`;
       if (seenGroupKeys.has(key)) continue;
       seenGroupKeys.add(key);
       const members = sorted.filter(
-        (s) => s.groupId === slot.groupId && slotDueTime(s, date) === time,
+        (s) => s.groupId === slot.groupId && groupTime(s) === time,
       );
       events.push({ kind: "group", time, groupId: slot.groupId, groupName: slot.groupName!, members });
     } else {

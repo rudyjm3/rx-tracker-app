@@ -42,6 +42,7 @@ import {
   generateAdHocPrnSlots,
   generateDaySlots,
   slotDueTime,
+  slotGroupTime,
   SNOOZE_OPTIONS,
   type DaySlot,
   type NextDoseEvent,
@@ -445,7 +446,7 @@ export default function DashboardScreen() {
   const dueNowGroupMembers =
     dueNowEvent && dueNowEvent.kind === 'group'
       ? slots.filter(
-          (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotDueTime(s, scheduleDate) === dueNowEvent.time,
+          (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotGroupTime(s, scheduleDate, slots) === dueNowEvent.time,
         )
       : null;
 

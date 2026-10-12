@@ -18,11 +18,13 @@ import { useActiveProfile } from '@/lib/active-profile';
 import {
   getActiveMedications,
   getGroupDoseOverridesByMedication,
+  getGroupMembers,
+  getGroups,
   getInactiveMedications,
 } from '@/lib/medications';
 import { cn } from '@/lib/cn';
-import type { Medication } from '@/lib/types/medications';
-import { daysUntilRunout, scheduleSummary, type GroupDoseOverride } from '@/lib/utils';
+import type { Medication, MedicationGroup } from '@/lib/types/medications';
+import { daysUntilRunout, scheduleSummary, to12h, type GroupDoseOverride } from '@/lib/utils';
 
 // Date-only fields (start_date/created_at's date portion) must be parsed in
 // local time, not UTC — a UTC-midnight parse displays one day earlier for
@@ -44,6 +46,8 @@ export default function MedicationsScreen() {
   const [tab, setTab] = useState<ListTab>('active');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
+  const [groups, setGroups] = useState<MedicationGroup[]>([]);
+  const [groupMembers, setGroupMembers] = useState<{ group_id: string; medication_id: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const { alerts: supplyAlerts, dismiss: dismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
   const [refreshing, setRefreshing] = useState(false);
@@ -60,15 +64,19 @@ export default function MedicationsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const [data, overrides] = await Promise.all([
+      const [data, overrides, groupData, memberData] = await Promise.all([
         activeTab === 'active'
           ? getActiveMedications(activeProfileId)
           : getInactiveMedications(activeProfileId),
         getGroupDoseOverridesByMedication(activeProfileId),
+        getGroups(activeProfileId),
+        getGroupMembers(),
       ]);
       if (requestIdRef.current !== requestId) return;
       setMedications(data);
       setDoseOverrides(overrides);
+      setGroups(groupData);
+      setGroupMembers(memberData);
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load medications');
@@ -78,6 +86,15 @@ export default function MedicationsScreen() {
       else setLoading(false);
     }
   }, [activeProfileId]);
+
+  // Memberships of deleted (inactive) groups linger, so only active groups'
+  // members count as grouped.
+  const groupedIds = new Set(
+    tab === 'active'
+      ? groupMembers.filter((m) => groups.some((g) => g.id === m.group_id)).map((m) => m.medication_id)
+      : [],
+  );
+  const ungroupedMedications = medications.filter((m) => !groupedIds.has(m.id));
 
   // load() (and this callback) changes identity whenever activeProfileId
   // or tab changes, and useFocusEffect re-invokes its callback on identity
@@ -132,7 +149,33 @@ export default function MedicationsScreen() {
               {tab === 'active' ? 'No medications yet. Add your first one to get started.' : 'No inactive medications.'}
             </Text>
           ) : null}
-          {medications.map((med) => (
+          {/* Active medications that share a group render together in one
+              group container; inactive ones (and ungrouped) stay individual. */}
+          {tab === 'active'
+            ? groups.map((group) => {
+                const memberIds = new Set(
+                  groupMembers.filter((m) => m.group_id === group.id).map((m) => m.medication_id),
+                );
+                const members = medications.filter((m) => memberIds.has(m.id));
+                if (members.length === 0) return null;
+                return (
+                  <View
+                    key={group.id}
+                    className="gap-2 rounded-card border border-brand-border bg-brand-bg p-2 dark:border-night-border dark:bg-night-selected">
+                    <View className="flex-row items-center gap-1.5 px-1">
+                      <Ionicons name="layers-outline" size={14} color="#60708A" />
+                      <Text muted className="text-sm font-semibold">
+                        {group.name} · {to12h(group.scheduled_time.slice(0, 5))}
+                      </Text>
+                    </View>
+                    {members.map((med) => (
+                      <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
+                    ))}
+                  </View>
+                );
+              })
+            : null}
+          {ungroupedMedications.map((med) => (
             <MedicationCard key={med.id} medication={med} groupDoseOverrides={doseOverrides.get(med.id)} />
           ))}
         </>
