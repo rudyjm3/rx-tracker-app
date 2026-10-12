@@ -12,7 +12,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Vibration } from "react-native";
 import { createAudioPlayer } from "expo-audio";
-import Constants, { ExecutionEnvironment } from "expo-constants";
+import { isRunningInExpoGo } from "expo";
 
 import { getTodayLogs, getTodayPostpones } from "@/lib/dose-logs";
 import { getAllActiveMedicationsAcrossProfiles } from "@/lib/medications";
@@ -145,7 +145,7 @@ export interface ReminderTime {
 // Android Expo Go (SDK 53+) also can't load expo-notifications: merely
 // requiring it logs an uncaught error, so skip it there and use a
 // development build (`npx expo run:android` / EAS) to get reminders.
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const isExpoGo = isRunningInExpoGo();
 const isNotificationsSupported = Platform.OS !== "web" && !(Platform.OS === "android" && isExpoGo);
 let notificationsModule: typeof import("expo-notifications") | null | undefined;
 
