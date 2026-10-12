@@ -12,6 +12,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Vibration } from "react-native";
 import { createAudioPlayer } from "expo-audio";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 
 import { getTodayLogs, getTodayPostpones } from "@/lib/dose-logs";
 import { getAllActiveMedicationsAcrossProfiles } from "@/lib/medications";
@@ -140,7 +141,12 @@ export interface ReminderTime {
 // web build (web.output: "static" in app.json) where the native
 // notifications module doesn't exist at all, so importing or calling into
 // it must never run, let alone throw, on web/SSR.
-const isNotificationsSupported = Platform.OS !== "web";
+//
+// Android Expo Go (SDK 53+) also can't load expo-notifications: merely
+// requiring it logs an uncaught error, so skip it there and use a
+// development build (`npx expo run:android` / EAS) to get reminders.
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const isNotificationsSupported = Platform.OS !== "web" && !(Platform.OS === "android" && isExpoGo);
 let notificationsModule: typeof import("expo-notifications") | null | undefined;
 
 // Lazily require expo-notifications only on native platforms. A static
