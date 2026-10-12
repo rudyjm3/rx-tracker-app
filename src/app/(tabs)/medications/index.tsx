@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Platform, Pressable, RefreshControl, View } from 'react-native';
@@ -7,6 +7,7 @@ import ReorderableList, {
   useReorderableDrag,
   type ReorderableListReorderEvent,
 } from 'react-native-reorderable-list';
+import { Gesture } from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
@@ -47,6 +48,11 @@ function formatMedDate(value: string | null | undefined): string {
 }
 
 type ListTab = 'active' | 'inactive';
+
+// The drag handle starts a drag on long press; the list's pan gesture only
+// activates just after that delay so it doesn't fight RefreshControl on
+// Android (react-native-reorderable-list "Refresh Control" guidance).
+const DRAG_LONG_PRESS_MS = 250;
 
 export default function MedicationsScreen() {
   const { activeProfileId } = useActiveProfile();
@@ -120,6 +126,7 @@ export default function MedicationsScreen() {
   // Android: RefreshControl animates / fights the drag gesture, so it is
   // switched off for the duration of a drag (react-native-reorderable-list
   // "Refresh Control" troubleshooting).
+  const panGesture = useMemo(() => Gesture.Pan().activateAfterLongPress(DRAG_LONG_PRESS_MS + 20), []);
   const [refreshEnabled, setRefreshEnabled] = useState(true);
   const handleDragStart = useCallback(() => {
     'worklet';
@@ -187,6 +194,7 @@ export default function MedicationsScreen() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         dragEnabled={tab === 'active'}
+        panGesture={panGesture}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 }}
         ItemSeparatorComponent={ItemGap}
         refreshControl={
@@ -254,7 +262,8 @@ function MedicationCard({
             {draggable ? (
               <Pressable
                 className="-ml-2 -mt-2 h-11 w-8 items-center justify-center"
-                onPressIn={drag}
+                onLongPress={drag}
+                delayLongPress={DRAG_LONG_PRESS_MS}
                 accessibilityRole="button"
                 accessibilityLabel={`Drag to reorder ${medication.name}`}>
                 <Ionicons name="reorder-three-outline" size={22} color="#60708A" />
