@@ -1,26 +1,17 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 
+import { AuthShell } from '@/components/auth-shell';
 import { LegalLinks } from '@/components/legal-links';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Brand, BorderRadius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Callout } from '@/components/ui/callout';
+import { Field } from '@/components/ui/field';
+import { Text } from '@/components/ui/text';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
-  const theme = useTheme();
-  const styles = getStyles(theme);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,94 +27,52 @@ export default function LoginScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.form}
-        >
-          <ThemedText type="title" style={styles.title}>
-            RxTracker
-          </ThemedText>
-          <ThemedText type="subtitle" style={styles.subtitle}>
-            Sign in
-          </ThemedText>
+    <AuthShell>
+      <Text className="text-center text-[26.4px] font-extrabold text-brand-navy dark:text-white">Welcome back!</Text>
+      <Text muted className="mb-8 mt-2 text-center text-sm">
+        Sign in to continue tracking your medications.
+      </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={theme.textSecondary}
-            secureTextEntry
-            autoComplete="password"
-            value={password}
-            onChangeText={setPassword}
-          />
+      {error ? <Callout kind="error" className="mb-4">{error}</Callout> : null}
 
-          {error && (
-            <ThemedText themeColor="text" style={styles.error}>
-              {error}
-            </ThemedText>
-          )}
+      <View className="gap-4">
+        <Field
+          size="auth"
+          label="Email"
+          icon="mail-outline"
+          placeholder="you@example.com"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <Field
+          size="auth"
+          label="Password"
+          icon="lock-closed-outline"
+          placeholder="Enter your password"
+          secureTextEntry
+          autoComplete="password"
+          value={password}
+          onChangeText={setPassword}
+        />
+        <Button
+          label={submitting ? 'Signing in…' : 'Sign in'}
+          loading={submitting}
+          disabled={!email || !password}
+          onPress={handleSubmit}
+          className="mt-2 w-full"
+        />
+      </View>
 
-          <Pressable
-            style={[styles.button, submitting && styles.buttonDisabled]}
-            onPress={handleSubmit}
-            disabled={submitting || !email || !password}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <ThemedText style={styles.buttonText}>Sign in</ThemedText>
-            )}
-          </Pressable>
-
-          <Link href="/(auth)/signup" style={styles.link}>
-            <ThemedText type="linkPrimary">Need an account? Sign up</ThemedText>
-          </Link>
-          <LegalLinks />
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </ThemedView>
+      <Text muted className="mt-6 text-center text-sm">
+        Don&apos;t have an account?{' '}
+        <Link href="/(auth)/signup" className="font-bold text-brand-blue">
+          Sign up
+        </Link>
+      </Text>
+      <LegalLinks />
+    </AuthShell>
   );
-}
-
-function getStyles(theme: ReturnType<typeof useTheme>) {
-  return StyleSheet.create({
-    container: { flex: 1 },
-    safeArea: { flex: 1, justifyContent: 'center' },
-    form: { paddingHorizontal: Spacing.four, gap: Spacing.two },
-    title: { fontSize: 32, lineHeight: 38, marginBottom: Spacing.one },
-    subtitle: { fontSize: 18, lineHeight: 24, marginBottom: Spacing.three },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: BorderRadius.sm,
-      paddingHorizontal: Spacing.three,
-      paddingVertical: Spacing.two,
-      fontSize: 16,
-      color: theme.text,
-      backgroundColor: theme.backgroundElement,
-    },
-    error: { color: Brand.danger },
-    button: {
-      backgroundColor: Brand.deepBlue,
-      borderRadius: BorderRadius.sm,
-      paddingVertical: Spacing.three,
-      alignItems: 'center',
-      marginTop: Spacing.two,
-    },
-    buttonDisabled: { opacity: 0.6 },
-    buttonText: { color: '#ffffff', fontWeight: '600' },
-    link: { marginTop: Spacing.three, alignSelf: 'center' },
-  });
 }

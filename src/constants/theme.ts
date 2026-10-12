@@ -28,6 +28,14 @@ export const Brand = {
   gradientHero: ['#071D3D', '#0754A8', '#0A8AC8', '#14CFE0'] as const,
 } as const;
 
+// Gradient stops, DESIGN.md 2.3 / 17.1. Used through <GradientFill />.
+export const Gradient = {
+  brand: ['#14CFE0', '#0A8AC8', '#0754A8'],
+  brandDark: ['#102B57', '#0754A8', '#14CFE0'],
+  hero: ['#18D0DC', '#0A8AC8', '#0754A8', '#071D3D'],
+  auth: ['#071D3D', '#0754A8', '#0A8AC8', '#14CFE0'],
+} as const;
+
 export const BorderRadius = {
   sm: 10,
   md: 18,
