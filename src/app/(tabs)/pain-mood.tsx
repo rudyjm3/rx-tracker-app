@@ -13,6 +13,7 @@ import { PillTab, PillTabs } from '@/components/ui/pill-tabs';
 import { Screen } from '@/components/ui/screen';
 import { ScreenTitle, SectionTitle } from '@/components/ui/screen-title';
 import { Sheet } from '@/components/ui/sheet';
+import { ScoreBadge } from '@/components/ui/score-badge';
 import { TagPill } from '@/components/ui/tag-pill';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/cn';
@@ -28,7 +29,6 @@ import {
   getHistory,
   getMoodTags,
   getTrend,
-  levelColor,
   medicationTracksMood,
   medicationTracksPain,
   RANGE_OPTIONS,
@@ -735,17 +735,6 @@ function LevelBlock({
   );
 }
 
-// Outlined score pill in the tier color, e.g. "Pain 7/10" (DESIGN.md 8.9).
-function LevelBadge({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View className="rounded-full border px-2 py-0.5" style={{ borderColor: color }}>
-      <Text className="text-xs font-semibold" style={{ color }}>
-        {label} {value}/10
-      </Text>
-    </View>
-  );
-}
-
 function HistoryCard({ entry, onEdit }: { entry: StandaloneHistoryEntry; onEdit: () => void }) {
   return (
     <Card className="gap-1.5 p-3">
@@ -754,8 +743,8 @@ function HistoryCard({ entry, onEdit }: { entry: StandaloneHistoryEntry; onEdit:
           {formatLoggedAt(entry.loggedAt)}
         </Text>
         <View className="flex-row gap-1">
-          {entry.painLevel != null ? <LevelBadge label="Pain" value={entry.painLevel} color={levelColor('pain', entry.painLevel)} /> : null}
-          {entry.moodLevel != null ? <LevelBadge label="Mood" value={entry.moodLevel} color={levelColor('mood', entry.moodLevel)} /> : null}
+          {entry.painLevel != null ? <ScoreBadge type="pain" level={entry.painLevel} /> : null}
+          {entry.moodLevel != null ? <ScoreBadge type="mood" level={entry.moodLevel} /> : null}
         </View>
       </View>
       {entry.note ? <Text className="text-sm italic">{entry.note}</Text> : null}

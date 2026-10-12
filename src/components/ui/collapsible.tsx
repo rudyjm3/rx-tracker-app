@@ -15,8 +15,9 @@ export function Collapsible({
   title,
   open,
   onToggle,
-}: PropsWithChildren & { title: string; open?: boolean; onToggle?: () => void }) {
-  const [internalOpen, setInternalOpen] = useState(false);
+  defaultOpen = false,
+}: PropsWithChildren & { title: string; open?: boolean; onToggle?: () => void; defaultOpen?: boolean }) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const isOpen = open ?? internalOpen;
 
   return (
