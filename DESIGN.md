@@ -756,20 +756,9 @@ The app styles with **NativeWind 4.2.7** (Tailwind CSS v3). Web uses Tailwind v4
 
 ### 17.1 Tokens
 
-`src/constants/theme.ts` keeps only what classes can't express: `Brand` (icon, chart and tab-bar colors), `Colors` (light / dark surfaces for the tab bar) and `Gradient` (stops used by `GradientFill`). Radii (10 / 18 / 28), spacing and shadows are NativeWind classes (`rounded-control`, `rounded-card`, `rounded-hero`, `shadow-card`). The snippet below is the full token set for reference:
+`src/constants/theme.ts` keeps only what classes can't express: `Brand` (icon, chart and tab-bar colors), `Colors` (light / dark surfaces for the tab bar) and `Gradient` (stops used by `GradientFill`). Radii (10 / 18 / 28), spacing and shadows are NativeWind classes (`rounded-control`, `rounded-card`, `rounded-hero`, `shadow-card`). The only token object that still lives in code is `Gradient`:
 
 ```ts
-export const Status = {
-  success: '#18BFA6', warning: '#F5A524', danger: '#E5484D', snoozed: '#0A8AC8',
-} as const;
-
-export const Shadow = {
-  card: { shadowColor: '#071D3D', shadowOpacity: 0.14, shadowRadius: 22, shadowOffset: { width: 0, height: 18 }, elevation: 8 },
-  hero: { shadowColor: '#071D3D', shadowOpacity: 0.24, shadowRadius: 30, shadowOffset: { width: 0, height: 22 }, elevation: 12 },
-} as const;
-
-export const FontSize = { micro: 10, xs: 12, sm: 14, base: 16, lg: 18, xl: 20, h1: 24, display: 30, hero: 36 } as const;
-
 export const Gradient = {
   brand: ['#14CFE0', '#0A8AC8', '#0754A8'],
   brandDark: ['#102B57', '#0754A8', '#14CFE0'],
@@ -778,8 +767,17 @@ export const Gradient = {
 } as const;
 ```
 
+Everything else is a class from `tailwind.config.js`:
+
+| Token (section) | Class |
+|---|---|
+| Status colors (2.2) | `text-status-success` / `bg-status-warning/10` / `border-status-danger/30`, `text-brand-blue` for snoozed |
+| Card shadow (4.3) | `shadow-card` (the hero's heavier shadow is set inline on the hero wrapper) |
+| Type sizes (3.1) | `text-xs` / `text-sm` / `text-base` / `text-lg` / `text-2xl`, plus arbitrary sizes such as `text-[11px]` |
+| Radii (4.2) | `rounded-control` / `rounded-card` / `rounded-hero` / `rounded-full` |
+
 - Spacing: use the Tailwind scale directly (`gap-1.5`, `gap-3`, `p-4`, …).
-- Tint helper: `withAlpha(color, 0.1)` for `bg-status-*/10`.
+- Tints: use the alpha modifier, e.g. `bg-status-success/10`.
 - Gradients: `expo-linear-gradient` with `start={{x:0,y:0}} end={{x:1,y:1}}` (≈135°); auth hero ≈160° → `start={{x:0.3,y:0}} end={{x:0.7,y:1}}`.
 - Dark mode: keep brand and status hues; swap surfaces only (`backgroundElement #212225`, text white). Web has no dark mode.
 
@@ -802,7 +800,7 @@ export const Gradient = {
 | Web | React Native |
 |---|---|
 | `Button` | `Pressable` (+ `LinearGradient` for primary), same variants and radius. Heights: default **44**, compact **32–36** with `hitSlop` up to 44 pt |
-| Card | `View` with 1 px `#D7E6F8` border, radius 18, `Shadow.card` |
+| Card | `Card` from `ui/card.tsx`: `border border-brand-border rounded-card shadow-card` (`flat` drops the shadow) |
 | Input | `TextInput`, 1 px `#D7E6F8` border, radius 10, padding 12 × 8 (16 × 12 on auth); focus → border `#0A8AC8` (auth: wrap with a 4 px `rgba(10,138,200,0.1)` halo) |
 | Select | Bottom-sheet picker (iOS wheel / Android modal list) with the same option labels |
 | Date / time | `@react-native-community/datetimepicker` |

@@ -33,12 +33,15 @@ type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_do
 // every Take / Skip.
 export function TodayHistoryPanel({
   date,
+  profileId,
   medications,
   groups,
   groupMembers,
   refreshKey,
 }: {
   date: string;
+  /** The selected profile (null = the account owner), for fetching its inactive medications. */
+  profileId: string | null;
   /** The active profile's active medications; inactive ones are fetched here. */
   medications: Medication[];
   groups: MedicationGroup[];
@@ -53,7 +56,6 @@ export function TodayHistoryPanel({
   const [editing, setEditing] = useState<CalendarLogRow | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  const profileId = medications[0]?.profile_id ?? null;
   const allMedications = useMemo(() => [...medications, ...inactive], [medications, inactive]);
   const medicationIds = useMemo(() => allMedications.map((m) => m.id), [allMedications]);
   const idsKey = medicationIds.join(',');

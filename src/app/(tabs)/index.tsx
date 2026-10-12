@@ -114,7 +114,11 @@ export default function DashboardScreen() {
   const [snoozeEvent, setSnoozeEvent] = useState<NextDoseEvent | null>(null);
   // Take on a medication whose tracked inventory is at zero asks first
   // (zero-pill dialog) before falling through to handleAction.
-  const [zeroPillSlot, setZeroPillSlot] = useState<DaySlot | null>(null);
+  // `queue` are the zero-count slots still to ask about (the first is the one
+  // on screen); `rest` are the slots to record once the queue is answered
+  // (the non-blocked ones plus any the user chose to take anyway).
+  const [zeroFlow, setZeroFlow] = useState<{ queue: DaySlot[]; rest: DaySlot[] } | null>(null);
+  const zeroPillSlot = zeroFlow?.queue[0] ?? null;
   const [doseList, setDoseList] = useState<'required' | 'non-required' | null>(null);
   // ?setup=complete is passed once, right after onboarding. Captured into
   // state so the banner stays up after the param is stripped below.
@@ -285,13 +289,40 @@ export default function DashboardScreen() {
     }
   }
 
-  // Take from a schedule row: a zero-count tracked medication asks first.
+  // Take from a schedule row or the due-now overlay: a zero-count tracked
+  // medication asks first (zero-pill dialog).
   function handleTake(slot: DaySlot) {
-    if (slot.medication.inventory_enabled && (slot.medication.current_quantity ?? 0) <= 0) {
-      setZeroPillSlot(slot);
+    startTake([slot]);
+  }
+
+  function isZeroCount(slot: DaySlot): boolean {
+    return slot.medication.inventory_enabled && (slot.medication.current_quantity ?? 0) <= 0;
+  }
+
+  // Zero-count slots are asked about one at a time before anything is
+  // recorded; everything else goes straight to takeSlots.
+  function startTake(toTake: DaySlot[]) {
+    const blocked = toTake.filter(isZeroCount);
+    const rest = toTake.filter((s) => !isZeroCount(s));
+    if (blocked.length === 0) {
+      takeSlots(rest);
       return;
     }
-    handleAction(slot, 'taken');
+    setZeroFlow({ queue: blocked, rest });
+  }
+
+  // Answer for the zero-pill slot on screen: take it anyway (joins `rest`) or
+  // drop it; once the queue is empty, record what's left.
+  function resolveZeroPill(takeAnyway: boolean) {
+    if (!zeroFlow) return;
+    const [current, ...queue] = zeroFlow.queue;
+    const rest = takeAnyway ? [...zeroFlow.rest, current] : zeroFlow.rest;
+    if (queue.length > 0) {
+      setZeroFlow({ queue, rest });
+      return;
+    }
+    setZeroFlow(null);
+    takeSlots(rest);
   }
 
   async function handleSnooze(slot: DaySlot, minutes: number) {
@@ -313,8 +344,11 @@ export default function DashboardScreen() {
     return event.kind === 'group' ? event.members : [event.slot];
   }
 
-  async function handleTakeAllForEvent(event: NextDoseEvent) {
-    const pending = eventSlots(event).filter((s) => s.status === 'pending');
+  function handleTakeAllForEvent(event: NextDoseEvent) {
+    startTake(eventSlots(event).filter((s) => s.status === 'pending'));
+  }
+
+  async function takeSlots(pending: DaySlot[]) {
     // Slots needing feedback can't just loop through handleAction: each
     // call would set feedbackSlot synchronously and the next iteration's
     // call would overwrite it before the user ever sees the first sheet.
@@ -484,7 +518,13 @@ export default function DashboardScreen() {
     day: 'numeric',
   });
   const dosesTaken = slots.filter((s) => s.status === 'taken').length;
-  const dosesMissed = slots.filter((s) => s.status === 'missed').length;
+  // Same effective state as the adherence card: an untouched non-PRN dose past
+  // its grace period counts as missed even before a log row is written.
+  const dosesMissed = slots.filter(
+    (s) =>
+      s.status === 'missed' ||
+      (s.status === 'pending' && !s.isPrn && nowTick > slotDueTime(s, scheduleDate) + graceMinutes * 60_000),
+  ).length;
 
   return (
     <View className="flex-1 bg-brand-bg dark:bg-night-bg">
@@ -597,6 +637,7 @@ export default function DashboardScreen() {
 
           <TodayHistoryPanel
             date={scheduleDate}
+            profileId={activeProfileId}
             medications={medications}
             groups={groupList}
             groupMembers={groupMemberList}
@@ -619,13 +660,9 @@ export default function DashboardScreen() {
           // Remount per slot so the corrected count starts from zero.
           key={`${zeroPillSlot.medicationId}|${zeroPillSlot.scheduledTime}`}
           slot={zeroPillSlot}
-          onClose={() => setZeroPillSlot(null)}
-          onCancelDose={() => setZeroPillSlot(null)}
-          onTakeAnyway={() => {
-            const slot = zeroPillSlot;
-            setZeroPillSlot(null);
-            handleAction(slot, 'taken');
-          }}
+          onClose={() => resolveZeroPill(false)}
+          onCancelDose={() => resolveZeroPill(false)}
+          onTakeAnyway={() => resolveZeroPill(true)}
         />
       ) : null}
 
@@ -695,7 +732,7 @@ export default function DashboardScreen() {
         onTakeAll={() => dueNowEvent && handleTakeAllForEvent(dueNowEvent)}
         onSkipAll={() => dueNowEvent && handleSkipAllForEvent(dueNowEvent)}
         onSnoozeAll={(minutes) => dueNowEvent && handleSnoozeAllForEvent(dueNowEvent, minutes)}
-        onTakeOne={(slot) => handleAction(slot, 'taken')}
+        onTakeOne={handleTake}
         onSkipOne={(slot) => handleAction(slot, 'skipped')}
         onSnoozeOne={(slot, minutes) => handleSnooze(slot, minutes)}
         defaultSnoozeMinutes={defaultSnoozeMinutes}
