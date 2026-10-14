@@ -68,9 +68,12 @@ import type {
 } from '@/lib/types/medications';
 import {
   daysUntilRunout,
+  isoToUsDate,
   localDateString,
+  maskBirthDateInput,
   scheduleSummary,
   to12h,
+  usDateToIso,
   type GroupDoseOverride,
 } from '@/lib/utils';
 
@@ -1419,6 +1422,7 @@ interface EditFormState {
   inventoryUnit: string;
   startingQuantity: string;
   lowSupplyThreshold: string;
+  startDate: string;
   endDate: string;
 }
 
@@ -1454,7 +1458,8 @@ function toFormState(med: Medication): EditFormState {
     inventoryUnit: med.inventory_unit ?? '',
     startingQuantity: med.starting_quantity != null ? String(med.starting_quantity) : '',
     lowSupplyThreshold: String(med.low_supply_threshold),
-    endDate: med.end_date ?? '',
+    startDate: isoToUsDate(med.start_date),
+    endDate: isoToUsDate(med.end_date),
   };
 }
 
@@ -1530,11 +1535,20 @@ function EditForm({
       setFormError('Dose quantity must be a positive number.');
       return;
     }
-    if (form.endDate && !DATE_RE.test(form.endDate)) {
-      setFormError('End date must be in YYYY-MM-DD format.');
+    // Dates are typed as MM-DD-YYYY, stored as YYYY-MM-DD. A blank start
+    // date keeps the saved value (including null on legacy rows, which the
+    // calendar and reports read as the creation date) rather than inventing one.
+    const startDate = form.startDate ? usDateToIso(form.startDate) : medication.start_date;
+    if (form.startDate && !startDate) {
+      setFormError('Start date must be a valid date in MM-DD-YYYY format.');
       return;
     }
-    if (form.endDate && medication.start_date && form.endDate < medication.start_date) {
+    const endDate = form.endDate ? usDateToIso(form.endDate) : null;
+    if (form.endDate && !endDate) {
+      setFormError('End date must be a valid date in MM-DD-YYYY format.');
+      return;
+    }
+    if (endDate && startDate && endDate < startDate) {
       setFormError('End date can’t be before the start date.');
       return;
     }
@@ -1562,8 +1576,8 @@ function EditForm({
       reminders_enabled: medication.reminders_enabled,
       adherence_enabled: medication.adherence_enabled,
       profile_id: medication.profile_id,
-      start_date: medication.start_date,
-      end_date: form.endDate || null,
+      start_date: startDate,
+      end_date: endDate,
     };
 
     const scheduleTimes: ScheduleTimeInput[] =
@@ -1688,7 +1702,20 @@ function EditForm({
         />
 
         <View className="gap-1">
-          <Field label="End date (optional)" value={form.endDate} onChangeText={(v) => update('endDate', v)} placeholder="YYYY-MM-DD" />
+          <Field
+            label="Start date (MM-DD-YYYY, blank = unchanged)"
+            value={form.startDate}
+            onChangeText={(v) => update('startDate', maskBirthDateInput(v))}
+            placeholder="MM-DD-YYYY"
+            keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+          />
+          <Field
+            label="End date (optional, MM-DD-YYYY)"
+            value={form.endDate}
+            onChangeText={(v) => update('endDate', maskBirthDateInput(v))}
+            placeholder="MM-DD-YYYY"
+            keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+          />
           <Text muted className="text-xs">
             The regimen stops generating doses after this date. Leave blank for an ongoing medication.
           </Text>

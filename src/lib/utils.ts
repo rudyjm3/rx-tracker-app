@@ -258,10 +258,15 @@ export function maskBirthDateInput(text: string): string {
   return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
 }
 
-export function isoToUsDate(iso: string | null | undefined): string {
+// Display format for every user-facing date: stored YYYY-MM-DD strings are
+// shown as MM-DD-YYYY. Pure string slicing — no Date object — so it can't
+// shift a day across timezones. Keep identical to rx-tracker-web's version.
+export function formatDate(iso: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
   return match ? `${match[2]}-${match[3]}-${match[1]}` : "";
 }
+
+export const isoToUsDate = formatDate;
 
 // Returns YYYY-MM-DD for a complete, real MM-DD-YYYY date, otherwise null.
 export function usDateToIso(us: string): string | null {
