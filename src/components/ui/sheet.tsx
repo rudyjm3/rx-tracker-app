@@ -7,10 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export function Sheet({
   onClose,
   dismissible = true,
+  handle = false,
   children,
 }: {
   onClose: () => void;
   dismissible?: boolean;
+  // Draws a drag-handle grabber at the top of the sheet.
+  handle?: boolean;
   children: ReactNode;
 }) {
   const close = dismissible ? onClose : undefined;
@@ -19,6 +22,7 @@ export function Sheet({
       <Pressable className="flex-1 justify-end bg-black/40" onPress={close}>
         <Pressable className="max-h-[85%]" onPress={(e) => e.stopPropagation()}>
           <View className="rounded-t-hero bg-brand-card p-6 dark:bg-night-card">
+            {handle ? <View className="mb-3 -mt-3 h-1.5 w-10 self-center rounded-full bg-brand-border dark:bg-night-border" /> : null}
             <SafeAreaView edges={['bottom']}>{children}</SafeAreaView>
           </View>
         </Pressable>

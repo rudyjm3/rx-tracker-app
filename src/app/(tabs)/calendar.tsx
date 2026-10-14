@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,36 +19,52 @@ import {
   calendarDayColor,
   currentMonth,
   monthBounds,
+  summarizeDay,
+  summarizeMonth,
   type CalendarDayColor,
+  type CalendarMonthSummary,
   type CalendarDayDetail,
 } from '@/lib/calendar';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
 import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
 import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
-import { localDateString } from '@/lib/utils';
+import { formatDate, localDateString } from '@/lib/utils';
 
 const ENDS_FLAG_COLOR = '#F5A524';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-// Day cell background = worst status (DESIGN.md 8.7): missed -> danger/10,
-// skipped without any taken -> warning/10, taken -> success/10, no data ->
-// white, future -> brand-bg.
+// Day cell background = worst status (any missed -> danger, else any skipped
+// -> warning, else all taken -> success), as a light brand tint. Days with
+// nothing logged and future days keep the neutral light-blue tint.
+const NEUTRAL_BG = 'bg-brand-bg dark:bg-night-selected';
 const DAY_BG: Record<CalendarDayColor, string> = {
-  future: 'bg-brand-bg dark:bg-night-selected',
-  missed: 'bg-status-danger/10',
-  skipped: 'bg-status-warning/10',
-  taken: 'bg-status-success/10',
-  empty: 'bg-white dark:bg-night-card',
+  future: NEUTRAL_BG,
+  missed: 'bg-status-danger/20',
+  skipped: 'bg-status-warning/20',
+  taken: 'bg-status-success/20',
+  empty: NEUTRAL_BG,
+};
+
+// Count text sits on a tinted cell, so use darker shades of the brand hues
+// (light mode) for readable contrast; the raw brand colors are too pale.
+const COUNT_TEXT = {
+  taken: 'text-teal-800 dark:text-status-success',
+  skipped: 'text-amber-800 dark:text-status-warning',
+  missed: 'text-red-800 dark:text-status-danger',
+  late: 'text-orange-700 dark:text-orange-400',
 };
 
 export default function CalendarScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
   const [dayDetails, setDayDetails] = useState<Record<string, CalendarDayDetail>>({});
+  const [asNeededIds, setAsNeededIds] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -93,6 +110,7 @@ export default function CalendarScreen() {
       );
       setMarkers(markerData);
       setDayDetails(details);
+      setAsNeededIds(new Set(allMedications.filter((med) => med.as_needed).map((med) => med.id)));
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load calendar');
@@ -127,6 +145,8 @@ export default function CalendarScreen() {
     cells.push({ date: `${bounds.monthStart.slice(0, 7)}-${String(day).padStart(2, '0')}`, day });
   }
 
+  const summary = useMemo(() => summarizeMonth(dayDetails, today, asNeededIds), [dayDetails, today, asNeededIds]);
+
   const selectedDay = selectedDate ? (dayDetails[selectedDate] ?? null) : null;
 
   return (
@@ -157,6 +177,8 @@ export default function CalendarScreen() {
 
         {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
+        <MonthSummaryRow summary={summary} />
+
         <View>
           <View className="flex-row">
             {WEEKDAY_LABELS.map((label) => (
@@ -177,6 +199,7 @@ export default function CalendarScreen() {
                 const marker = markers[cell.date];
                 const dayColor = calendarDayColor(isFuture, marker);
                 const isToday = cell.date === today;
+                const lateCount = detail && !isFuture ? summarizeDay(detail, asNeededIds, true).late : 0;
                 const hasMarkerCounts =
                   !isFuture && marker && (marker.taken > 0 || marker.skipped > 0 || marker.missed > 0);
                 const endingMedications = detail?.endingMedications ?? [];
@@ -194,7 +217,7 @@ export default function CalendarScreen() {
                         DAY_BG[dayColor],
                       )}>
                       <View className="flex-row items-center justify-between">
-                        <Text className={cn('text-sm font-semibold', dayColor === 'future' && 'text-brand-text-muted dark:text-night-muted')}>
+                        <Text className={cn('text-sm font-semibold', (dayColor === 'future' || dayColor === 'empty') && 'text-brand-text-muted dark:text-night-muted')}>
                           {cell.day}
                         </Text>
                         {endingMedications.length > 0 ? (
@@ -204,13 +227,16 @@ export default function CalendarScreen() {
                       {hasMarkerCounts ? (
                         <View className="flex-row flex-wrap gap-x-1">
                           {marker!.taken > 0 ? (
-                            <Text className="text-[10px] font-medium text-status-success dark:text-status-success">{marker!.taken}T</Text>
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.taken)}>{marker!.taken}T</Text>
                           ) : null}
                           {marker!.skipped > 0 ? (
-                            <Text className="text-[10px] font-medium text-status-warning dark:text-status-warning">{marker!.skipped}S</Text>
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.skipped)}>{marker!.skipped}S</Text>
                           ) : null}
                           {marker!.missed > 0 ? (
-                            <Text className="text-[10px] font-medium text-status-danger dark:text-status-danger">{marker!.missed}M</Text>
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.missed)}>{marker!.missed}M</Text>
+                          ) : null}
+                          {lateCount > 0 ? (
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.late)}>{lateCount}L</Text>
                           ) : null}
                         </View>
                       ) : null}
@@ -227,14 +253,29 @@ export default function CalendarScreen() {
           <LegendItem className="bg-status-warning" label="Skipped" />
           <LegendItem className="bg-status-danger" label="Missed" />
         </View>
+        <View className="-mt-2 flex-row items-center justify-center gap-1.5">
+          <Text className={cn('text-xs font-bold', COUNT_TEXT.late)}>L</Text>
+          <Text muted className="text-xs">Late = taken after grace period</Text>
+        </View>
       </Card>
 
       {selectedDate ? (
-        <Sheet onClose={() => setSelectedDate(null)}>
-          <Text className="mb-3 text-lg font-bold text-brand-navy dark:text-white">
-            {selectedDay ? `${selectedDay.dayName}, ${selectedDay.displayDate}` : selectedDate}
-          </Text>
-          <ScrollView className="max-h-[420px]">
+        <Sheet handle onClose={() => setSelectedDate(null)}>
+          <View className="mb-3 flex-row items-center justify-between gap-2">
+            <Text className="flex-1 text-lg font-bold text-brand-navy dark:text-white">
+              {selectedDay ? `${selectedDay.dayName}, ${formatDate(selectedDate)}` : formatDate(selectedDate)}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              className="h-11 w-11 items-center justify-center"
+              hitSlop={4}
+              onPress={() => setSelectedDate(null)}>
+              <Ionicons name="close" size={24} color={theme.accent} />
+            </Pressable>
+          </View>
+          {/* Sheet caps at 85% of the screen; leave room for the handle, header, padding and bottom inset. */}
+          <ScrollView style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
             <DayDetailContent
               day={selectedDay}
               onLogAsNeeded={(medicationId, date) => {
@@ -243,7 +284,6 @@ export default function CalendarScreen() {
               }}
             />
           </ScrollView>
-          <Button label="Close" variant="ghost" className="mt-3" onPress={() => setSelectedDate(null)} />
         </Sheet>
       ) : null}
     </Screen>
@@ -468,6 +508,27 @@ function PlannedSlotRow({
       <Text muted className="text-xs">
         {slot.isPrn ? 'Planned (as needed)' : 'Scheduled'}
       </Text>
+    </View>
+  );
+}
+
+function MonthSummaryRow({ summary }: { summary: CalendarMonthSummary }) {
+  const items = [
+    { label: 'Adherence', value: summary.adherencePct === null ? '—' : `${summary.adherencePct}%`, className: '' },
+    { label: 'Missed', value: String(summary.missed), className: COUNT_TEXT.missed },
+    { label: 'Late', value: String(summary.late), className: COUNT_TEXT.late },
+    { label: 'Skipped', value: String(summary.skipped), className: COUNT_TEXT.skipped },
+  ];
+  return (
+    <View className="-mt-1 flex-row gap-1 rounded-control bg-brand-bg px-2 py-1.5 dark:bg-night-selected">
+      {items.map((item) => (
+        <View key={item.label} className="min-w-0 flex-1 items-center">
+          <Text className={cn('text-sm font-bold leading-tight', item.className)}>{item.value}</Text>
+          <Text muted numberOfLines={1} className="text-[10px]">
+            {item.label}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
