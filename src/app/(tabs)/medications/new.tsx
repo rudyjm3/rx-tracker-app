@@ -19,9 +19,9 @@ import { createMedication, type MedicationInput, type ScheduleTimeInput } from '
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { MedicationType, ScheduleMode } from '@/lib/types/medications';
+import { localDateString, maskBirthDateInput, usDateToIso } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface NewMedicationFormState {
   name: string;
@@ -41,6 +41,7 @@ interface NewMedicationFormState {
   inventoryUnit: string;
   startingQuantity: string;
   lowSupplyThreshold: string;
+  startDate: string;
   endDate: string;
 }
 
@@ -64,6 +65,7 @@ const initialState: NewMedicationFormState = {
   inventoryUnit: 'tablets',
   startingQuantity: '',
   lowSupplyThreshold: '5',
+  startDate: '',
   endDate: '',
 };
 
@@ -150,8 +152,19 @@ export default function NewMedicationScreen() {
         return;
       }
     }
-    if (form.endDate && !DATE_RE.test(form.endDate)) {
-      setFormError('End date must be in YYYY-MM-DD format.');
+    // Blank start date = today; dates are typed as MM-DD-YYYY, stored as YYYY-MM-DD.
+    const startDate = form.startDate ? usDateToIso(form.startDate) : localDateString();
+    if (!startDate) {
+      setFormError('Start date must be a valid date in MM-DD-YYYY format.');
+      return;
+    }
+    const endDate = form.endDate ? usDateToIso(form.endDate) : null;
+    if (form.endDate && !endDate) {
+      setFormError('End date must be a valid date in MM-DD-YYYY format.');
+      return;
+    }
+    if (endDate && endDate < startDate) {
+      setFormError('End date can’t be before the start date.');
       return;
     }
 
@@ -178,7 +191,8 @@ export default function NewMedicationScreen() {
       reminders_enabled: true,
       adherence_enabled: true,
       profile_id: activeProfileId,
-      end_date: form.endDate || null,
+      start_date: startDate,
+      end_date: endDate,
     };
 
     const scheduleTimes: ScheduleTimeInput[] =
@@ -310,7 +324,20 @@ export default function NewMedicationScreen() {
         />
 
         <View className="gap-1">
-          <Field label="End date (optional)" value={form.endDate} onChangeText={(v) => update('endDate', v)} placeholder="YYYY-MM-DD" />
+          <Field
+            label="Start date (MM-DD-YYYY, blank = today)"
+            value={form.startDate}
+            onChangeText={(v) => update('startDate', maskBirthDateInput(v))}
+            placeholder="MM-DD-YYYY"
+            keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+          />
+          <Field
+            label="End date (optional, MM-DD-YYYY)"
+            value={form.endDate}
+            onChangeText={(v) => update('endDate', maskBirthDateInput(v))}
+            placeholder="MM-DD-YYYY"
+            keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+          />
           <Text muted className="text-xs">
             The regimen stops generating doses after this date. Leave blank for an ongoing medication.
           </Text>
