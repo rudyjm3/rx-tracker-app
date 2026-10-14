@@ -1535,9 +1535,11 @@ function EditForm({
       setFormError('Dose quantity must be a positive number.');
       return;
     }
-    // Blank start date = today; dates are typed as MM-DD-YYYY, stored as YYYY-MM-DD.
-    const startDate = form.startDate ? usDateToIso(form.startDate) : (medication.start_date ?? localDateString());
-    if (!startDate) {
+    // Dates are typed as MM-DD-YYYY, stored as YYYY-MM-DD. A blank start
+    // date keeps the saved value (including null on legacy rows, which the
+    // calendar and reports read as the creation date) rather than inventing one.
+    const startDate = form.startDate ? usDateToIso(form.startDate) : medication.start_date;
+    if (form.startDate && !startDate) {
       setFormError('Start date must be a valid date in MM-DD-YYYY format.');
       return;
     }
@@ -1546,7 +1548,7 @@ function EditForm({
       setFormError('End date must be a valid date in MM-DD-YYYY format.');
       return;
     }
-    if (endDate && endDate < startDate) {
+    if (endDate && startDate && endDate < startDate) {
       setFormError('End date can’t be before the start date.');
       return;
     }
@@ -1701,7 +1703,7 @@ function EditForm({
 
         <View className="gap-1">
           <Field
-            label="Start date (MM-DD-YYYY, blank = keep current)"
+            label="Start date (MM-DD-YYYY, blank = unchanged)"
             value={form.startDate}
             onChangeText={(v) => update('startDate', maskBirthDateInput(v))}
             placeholder="MM-DD-YYYY"
