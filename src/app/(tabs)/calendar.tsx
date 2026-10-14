@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,10 +29,23 @@ import {
 import { getMissedGraceMinutes } from '@/lib/app-settings';
 import { getCalendarLogs } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
+import { getRunoutByDate, type RunoutEntry } from '@/lib/schedule';
 import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
 import { formatDate, localDateString } from '@/lib/utils';
 
 const ENDS_FLAG_COLOR = '#F5A524';
+
+// Run-out marker: red when the projected run-out is within a week (or the
+// medication is already out/low), amber when further away.
+const RUNOUT_URGENT_DAYS = 7;
+const RUNOUT_URGENT_COLOR = '#E5484D';
+const RUNOUT_SOON_COLOR = '#F5A524';
+const RUNOUT_ICON = 'bottle-tonic-plus';
+const RUNOUT_ESTIMATE_NOTE = 'Run-out dates are estimates that assume your current schedule continues.';
+
+function runoutColor(runouts: RunoutEntry[]): string {
+  return runouts.some((r) => r.daysLeft <= RUNOUT_URGENT_DAYS) ? RUNOUT_URGENT_COLOR : RUNOUT_SOON_COLOR;
+}
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -63,6 +77,7 @@ export default function CalendarScreen() {
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
   const [dayDetails, setDayDetails] = useState<Record<string, CalendarDayDetail>>({});
+  const [runoutByDate, setRunoutByDate] = useState<Record<string, RunoutEntry[]>>({});
   const [excludedIds, setExcludedIds] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +120,17 @@ export default function CalendarScreen() {
         groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[],
       );
       setDayDetails(details);
+      // Same fetched medications/groups as the grid (already scoped to the
+      // selected profile), so a dose or inventory edit moves the markers on
+      // the next focus-triggered reload — no separate fetch or polling.
+      setRunoutByDate(
+        getRunoutByDate(
+          activeMeds,
+          groups,
+          groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[],
+          localDateString(),
+        ),
+      );
       // Left out of the month's adherence: PRN and adherence-tracking-off medications.
       setExcludedIds(
         new Set(allMedications.filter((med) => med.as_needed || !med.adherence_enabled).map((med) => med.id)),
@@ -202,6 +228,8 @@ export default function CalendarScreen() {
                 const hasMarkerCounts = !!stats && (stats.taken > 0 || stats.skipped > 0 || stats.missed > 0);
                 const lateCount = stats?.late ?? 0;
                 const endingMedications = detail?.endingMedications ?? [];
+                // Past days never show a marker; one icon per cell however many medications run out.
+                const runouts = cell.date >= today ? (runoutByDate[cell.date] ?? []) : [];
 
                 return (
                   <Pressable
@@ -219,8 +247,20 @@ export default function CalendarScreen() {
                         <Text className={cn('text-sm font-semibold', (dayColor === 'future' || dayColor === 'empty') && 'text-brand-text-muted dark:text-night-muted')}>
                           {cell.day}
                         </Text>
-                        {endingMedications.length > 0 ? (
-                          <Ionicons name="flag" size={11} color={ENDS_FLAG_COLOR} accessibilityLabel="Medication ends" />
+                        {endingMedications.length > 0 || runouts.length > 0 ? (
+                          <View className="flex-row items-center gap-px">
+                            {runouts.length > 0 ? (
+                              <MaterialCommunityIcons
+                                name={RUNOUT_ICON}
+                                size={12}
+                                color={runoutColor(runouts)}
+                                accessibilityLabel="Medication runs out"
+                              />
+                            ) : null}
+                            {endingMedications.length > 0 ? (
+                              <Ionicons name="flag" size={11} color={ENDS_FLAG_COLOR} accessibilityLabel="Medication ends" />
+                            ) : null}
+                          </View>
                         ) : null}
                       </View>
                       {hasMarkerCounts ? (
@@ -256,6 +296,13 @@ export default function CalendarScreen() {
           <Text className={cn('text-xs font-bold', COUNT_TEXT.late)}>L</Text>
           <Text muted className="text-xs">Late = taken after grace period</Text>
         </View>
+        <View className="-mt-2 items-center gap-0.5">
+          <View className="flex-row items-center gap-1.5">
+            <MaterialCommunityIcons name={RUNOUT_ICON} size={14} color={RUNOUT_URGENT_COLOR} />
+            <Text muted className="text-xs">Refill needed (projected run-out)</Text>
+          </View>
+          <Text muted className="text-center text-[10px]">Run-out dates are estimates.</Text>
+        </View>
       </Card>
 
       {selectedDate ? (
@@ -277,6 +324,7 @@ export default function CalendarScreen() {
           <ScrollView style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
             <DayDetailContent
               day={selectedDay}
+              runouts={selectedDate >= today ? (runoutByDate[selectedDate] ?? []) : []}
               onLogAsNeeded={(medicationId, date) => {
                 setSelectedDate(null);
                 router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
@@ -293,11 +341,49 @@ export default function CalendarScreen() {
 const ENDING_BOX = 'rounded-control border border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-950';
 const ENDING_TEXT = 'text-amber-700 dark:text-amber-300';
 
+function formatQty(n: number): string {
+  return Number(n.toFixed(3)).toString();
+}
+
+// "Runs out" lands on its projected day; "Out of stock" / "Low supply" are
+// filed under today by getRunoutByDate and carry the estimated run-out date.
+function RunoutCallout({ runouts }: { runouts: RunoutEntry[] }) {
+  if (runouts.length === 0) return null;
+  return (
+    <View className="mb-2 gap-1">
+      {runouts.map((r) => {
+        const color = r.daysLeft <= RUNOUT_URGENT_DAYS ? RUNOUT_URGENT_COLOR : RUNOUT_SOON_COLOR;
+        const label = r.status === 'out' ? 'Out of stock' : r.status === 'low' ? 'Low supply' : 'Runs out';
+        return (
+          <View key={r.medicationId} className="flex-row items-start gap-1.5">
+            <View className="pt-0.5">
+              <MaterialCommunityIcons name={RUNOUT_ICON} size={14} color={color} />
+            </View>
+            <Text className="flex-1 text-sm">
+              <Text className="text-sm font-bold" style={{ color }}>
+                {label}:
+              </Text>{' '}
+              {r.dose ? `${r.name} ${r.dose}` : r.name}{' '}
+              <Text muted className="text-xs">
+                ({formatQty(r.quantity)} {r.unit} left today
+                {r.status === 'low' ? ` · est. run-out ${formatDate(r.runoutDate)}` : ''})
+              </Text>
+            </Text>
+          </View>
+        );
+      })}
+      <Text muted className="text-xs">{RUNOUT_ESTIMATE_NOTE}</Text>
+    </View>
+  );
+}
+
 function DayDetailContent({
   day,
+  runouts,
   onLogAsNeeded,
 }: {
   day: CalendarDayDetail | null;
+  runouts: RunoutEntry[];
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
   if (!day) {
@@ -337,6 +423,7 @@ function DayDetailContent({
     return (
       <View>
         {endingCallout}
+        <RunoutCallout runouts={runouts} />
         {summaryLine}
         {totalPlanned === 0 ? (
           <Text muted className="text-sm">No doses planned for this day.</Text>
@@ -369,6 +456,7 @@ function DayDetailContent({
   return (
     <View>
       {endingCallout}
+      <RunoutCallout runouts={runouts} />
       {summaryLine}
       {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
         <Text muted className="text-sm">No dose data for this day.</Text>

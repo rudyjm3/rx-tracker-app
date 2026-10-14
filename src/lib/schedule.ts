@@ -10,7 +10,7 @@ import type {
   MedicationGroup,
   MedicationGroupMember,
 } from "@/lib/types/medications";
-import { timeToMinutes } from "@/lib/utils";
+import { daysUntilRunout, localDateString, timeToMinutes, type GroupDoseOverride } from "@/lib/utils";
 
 interface ResolveQuantityPerDoseArgs {
   medication: Pick<Medication, "quantity_per_dose">;
@@ -275,4 +275,99 @@ export function generateAdHocPrnSlots(
         medication,
       };
     });
+}
+
+export type RunoutStatus = "runout" | "low" | "out";
+
+export interface RunoutEntry {
+  medicationId: string;
+  name: string;
+  dose: string | null;
+  dose_amount: number | null;
+  dose_unit: string | null;
+  status: RunoutStatus;
+  quantity: number; // current_quantity as of now
+  unit: string; // inventory_unit, e.g. "tablets"
+  runoutDate: string; // projected run-out, local YYYY-MM-DD
+  daysLeft: number; // whole days from today to runoutDate (includes any wait for start_date)
+}
+
+function addLocalDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return localDateString(d);
+}
+
+function wholeDaysBetween(from: string, to: string): number {
+  const ms = new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
+/**
+ * Projected refill dates, keyed by local YYYY-MM-DD — the single source
+ * for the calendar grid marker, the day popup, and anything summarizing
+ * refills later. Run-out date = today + daysUntilRunout() (which already
+ * honors per-time and group-member quantity_per_dose); it assumes the
+ * current schedule continues unchanged, so it is an estimate.
+ *
+ * Skipped: inactive, as-needed, inventory-untracked or quantity-less
+ * medications, ones with no fixed schedule to project from, and ones whose
+ * end_date is on/before the projected run-out (the regimen finishes first).
+ * Medications already out of stock or at/below their low-supply threshold
+ * are filed under `todayDate` ("out"/"low") instead of the future date.
+ */
+export function getRunoutByDate(
+  medications: Medication[],
+  groups: Pick<MedicationGroup, "id" | "scheduled_time">[],
+  groupMembers: Pick<MedicationGroupMember, "group_id" | "medication_id" | "quantity_per_dose">[],
+  todayDate: string,
+): Record<string, RunoutEntry[]> {
+  const groupsById = new Map(groups.map((g) => [g.id, g]));
+  const result: Record<string, RunoutEntry[]> = {};
+
+  for (const med of medications) {
+    if (!med.active || med.as_needed || !med.inventory_enabled) continue;
+    if (med.current_quantity == null) continue;
+    const hasSchedule =
+      med.schedule_mode === "fixed_times"
+        ? (med.medication_schedule_times ?? []).length > 0
+        : !!med.interval_hours;
+    if (!hasSchedule) continue;
+
+    const overrides: GroupDoseOverride[] = groupMembers
+      .filter((m) => m.medication_id === med.id && groupsById.has(m.group_id))
+      .map((m) => ({
+        scheduled_time: groupsById.get(m.group_id)!.scheduled_time,
+        quantity_per_dose: m.quantity_per_dose,
+      }));
+    const daysLeft = daysUntilRunout(med, overrides);
+    if (daysLeft == null) continue;
+
+    // Consumption only starts on start_date, so a not-yet-started regimen's
+    // supply runs out that many days after it begins, not after today.
+    const baseDate = med.start_date && med.start_date > todayDate ? med.start_date : todayDate;
+    const runoutDate = addLocalDays(baseDate, daysLeft);
+    if (med.end_date && med.end_date <= runoutDate) continue;
+
+    const status: RunoutStatus =
+      med.current_quantity <= 0
+        ? "out"
+        : med.current_quantity <= med.low_supply_threshold
+          ? "low"
+          : "runout";
+    const key = status === "runout" ? runoutDate : todayDate;
+    (result[key] ??= []).push({
+      medicationId: med.id,
+      name: med.name,
+      dose: med.dose,
+      dose_amount: med.dose_amount,
+      dose_unit: med.dose_unit,
+      status,
+      quantity: med.current_quantity,
+      unit: med.inventory_unit || "pills",
+      runoutDate,
+      daysLeft: wholeDaysBetween(todayDate, runoutDate),
+    });
+  }
+  return result;
 }
