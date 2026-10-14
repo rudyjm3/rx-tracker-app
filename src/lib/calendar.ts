@@ -1,15 +1,15 @@
 // Ported subset of rx-tracker-web's lib/calendar.ts — month arithmetic,
 // day-cell coloring, and (as of the calendar enhancements) the
 // group-bucketed day-detail view with planned required/non-required
-// counts. This app doesn't write finalized "missed" logs yet, so past
-// days without a dose_logs row just render empty rather than as missed,
-// and medsForDate below uses each medication's current `active` flag
+// counts. This app doesn't write finalized "missed" logs, so buildDayDetails
+// synthesizes a missed slot for every required dose still unlogged past its
+// grace period (same approach as lib/export.ts), and medsForDate below uses each medication's current `active` flag
 // rather than replaying status-event history — a deliberate
 // simplification (the calendar spec's planned counts are explicitly not
 // adjusted for one-off skips or pauses, so there's no need for the web
 // app's fuller wasActiveOnDate/historicallyActiveMedications replay here).
 import type { CalendarLogRow } from "@/lib/dose-logs";
-import { generateDaySlots } from "@/lib/schedule";
+import { generateDaySlots, slotDueTime, type DaySlot } from "@/lib/schedule";
 import { formatLate, localDateString, minutesLate, to12h } from "@/lib/utils";
 import type {
   DoseLogStatus,
@@ -69,7 +69,10 @@ export type CalendarDayColor = "future" | "missed" | "skipped" | "taken" | "empt
 
 /**
  * Day-cell color priority: future days are neutral regardless of data;
- * otherwise missed beats skipped-only beats taken beats no data at all.
+ * otherwise the day's worst outcome wins — any missed dose, then any
+ * skipped dose, then all-taken. A day with nothing logged stays neutral.
+ * Doses still upcoming have no dose_logs row yet, so they never count
+ * against today. Matches rx-tracker-web's calendarDayColor.
  */
 export function calendarDayColor(
   isFuture: boolean,
@@ -78,7 +81,7 @@ export function calendarDayColor(
   if (isFuture) return "future";
   if (!marker) return "empty";
   if (marker.missed > 0) return "missed";
-  if (marker.skipped > 0 && marker.taken === 0) return "skipped";
+  if (marker.skipped > 0) return "skipped";
   if (marker.taken > 0) return "taken";
   return "empty";
 }
@@ -199,6 +202,78 @@ export interface CalendarDayDetail {
 }
 
 /**
+ * This app never writes a finalized "missed" row for a dose nobody logged,
+ * so a past required dose with no row would otherwise vanish from the day
+ * (and inflate adherence). Regenerates the day's required slots against its
+ * real logs and, for each medication, records as missed the slots still
+ * pending past due time + grace — capped by the count-based unlogged total
+ * (scheduled − logged) so a same-day schedule edit can't invent misses.
+ * Upcoming doses (not yet past grace) are never counted.
+ */
+function addOverdueMissedSlots(
+  day: CalendarDayDetail,
+  date: string,
+  requiredSlots: DaySlot[],
+  dayLogs: CalendarLogRow[],
+  medsForDate: Medication[],
+  graceMinutes: number,
+): void {
+  const requiredMeds = medsForDate.filter((m) => !m.as_needed);
+  if (requiredMeds.length === 0) return;
+  const now = Date.now();
+  const withStatus = generateDaySlots(date, requiredMeds, [], [], dayLogs, [], { ignoreDashboardVisibility: true });
+  const overdueByMed = new Map<string, DaySlot[]>();
+  for (const s of withStatus) {
+    if (s.isPrn || s.status !== "pending" || now <= slotDueTime(s, date) + graceMinutes * 60_000) continue;
+    overdueByMed.set(s.medicationId, [...(overdueByMed.get(s.medicationId) ?? []), s]);
+  }
+  const summaries = [...day.medications, ...day.groups.flatMap((g) => g.medications)];
+  for (const [medicationId, overdue] of overdueByMed) {
+    const scheduled = requiredSlots.filter((s) => s.medicationId === medicationId).length;
+    const existing = summaries.find((m) => m.medicationId === medicationId);
+    const owed = Math.min(overdue.length, Math.max(0, scheduled - (existing?.total ?? 0)));
+    if (owed === 0) continue;
+    let summary = existing;
+    if (!summary) {
+      const med = overdue[0].medication;
+      summary = {
+        medicationId,
+        name: med.name,
+        dose: med.dose,
+        dose_amount: med.dose_amount,
+        dose_unit: med.dose_unit,
+        total: 0,
+        taken: 0,
+        late: 0,
+        skipped: 0,
+        missed: 0,
+        slots: [],
+      };
+      day.medications.push(summary);
+    }
+    for (const s of overdue.slice(0, owed)) {
+      const time = s.scheduledTime.slice(0, 5);
+      summary.total++;
+      summary.missed++;
+      summary.slots.push({
+        logId: `unlogged-${medicationId}-${time}`,
+        medicationId,
+        time,
+        displayTime: to12h(time),
+        status: "missed",
+        isLate: false,
+        lateLabel: null,
+        takenAt: null,
+        painLevel: null,
+        moodLevel: null,
+        note: "",
+        deductedQuantity: null,
+      });
+    }
+  }
+}
+
+/**
  * Groups a month's raw dose_logs into per-day, per-medication summaries
  * for the day-detail view, clusters medications sharing a group into
  * `day.groups`, and (new) ensures every date in [monthStart, monthEnd] has
@@ -240,6 +315,11 @@ export function buildDayDetails(
     const existing = memberIdsByGroup.get(member.group_id) ?? [];
     existing.push(member.medication_id);
     memberIdsByGroup.set(member.group_id, existing);
+  }
+
+  const logsByDate = new Map<string, CalendarLogRow[]>();
+  for (const log of logs) {
+    logsByDate.set(log.scheduled_for_date, [...(logsByDate.get(log.scheduled_for_date) ?? []), log]);
   }
 
   const result: Record<string, CalendarDayDetail> = {};
@@ -450,6 +530,10 @@ export function buildDayDetails(
     const requiredSlots = slots.filter((s) => !s.isPrn);
     const prnSlots = slots.filter((s) => s.isPrn);
 
+    if (!isFuture) {
+      addOverdueMissedSlots(day, date, requiredSlots, logsByDate.get(date) ?? [], medsForDate, graceMinutes);
+    }
+
     // Both counts are actual logged totals for the date, topped up with
     // any still-unlogged occurrence per medication — never the current
     // schedule's raw projection alone for a date with logs, and never
@@ -546,4 +630,75 @@ export function buildDayDetails(
   }
 
   return result;
+}
+
+export interface CalendarDayStats {
+  taken: number; // includes late doses — a late dose is still taken
+  late: number;
+  skipped: number;
+  missed: number;
+}
+
+function allSlots(day: CalendarDayDetail): { medicationId: string; slot: CalendarDaySlot }[] {
+  return [...day.medications, ...day.groups.flatMap((g) => g.medications)].flatMap((med) =>
+    med.slots.map((slot) => ({ medicationId: med.medicationId, slot })),
+  );
+}
+
+/**
+ * Per-day outcome counts from the same day-detail data the detail sheet
+ * uses, so the grid's L badge, the sheet labels, and the month summary
+ * can't disagree. `excludedIds` (PRN or adherence-tracking-off medications)
+ * are left out unless `includeAsNeeded` is set; the grid badges include them (matching the
+ * T/S/M markers), the adherence summary doesn't. Ported from
+ * rx-tracker-web's lib/calendar.ts.
+ */
+export function summarizeDay(
+  day: CalendarDayDetail,
+  excludedIds: ReadonlySet<string>,
+  includeAsNeeded: boolean,
+): CalendarDayStats {
+  const stats: CalendarDayStats = { taken: 0, late: 0, skipped: 0, missed: 0 };
+  for (const { medicationId, slot } of allSlots(day)) {
+    if (!includeAsNeeded && excludedIds.has(medicationId)) continue;
+    if (slot.status === "taken") {
+      stats.taken++;
+      if (slot.isLate) stats.late++;
+    } else if (slot.status === "skipped") stats.skipped++;
+    else if (slot.status === "missed") stats.missed++;
+  }
+  return stats;
+}
+
+export interface CalendarMonthSummary extends CalendarDayStats {
+  required: number; // resolved required doses (taken + skipped + missed) up to today
+  adherencePct: number | null; // null when nothing is resolved yet
+}
+
+/**
+ * Month totals for days up to and including `todayDate` (local
+ * YYYY-MM-DD strings, compared lexicographically). Future days are
+ * ignored and doses still pending have no log row, so neither can lower
+ * adherence. Same formula as computeAdherence: taken / resolved required.
+ */
+export function summarizeMonth(
+  dayDetails: Record<string, CalendarDayDetail>,
+  todayDate: string,
+  excludedIds: ReadonlySet<string>,
+): CalendarMonthSummary {
+  const total: CalendarDayStats = { taken: 0, late: 0, skipped: 0, missed: 0 };
+  for (const [date, day] of Object.entries(dayDetails)) {
+    if (date > todayDate) continue;
+    const s = summarizeDay(day, excludedIds, false);
+    total.taken += s.taken;
+    total.late += s.late;
+    total.skipped += s.skipped;
+    total.missed += s.missed;
+  }
+  const required = total.taken + total.skipped + total.missed;
+  return {
+    ...total,
+    required,
+    adherencePct: required === 0 ? null : Math.round((total.taken / required) * 100),
+  };
 }
