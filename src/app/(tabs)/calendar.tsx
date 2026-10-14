@@ -27,6 +27,8 @@ import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedication
 import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
 
+const ENDS_FLAG_COLOR = '#F5A524';
+
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 // Day cell background = worst status (DESIGN.md 8.7): missed -> danger/10,
@@ -191,14 +193,14 @@ export default function CalendarScreen() {
                         isToday ? 'border-2 border-brand-blue' : 'border border-brand-border/60 dark:border-night-border',
                         DAY_BG[dayColor],
                       )}>
-                      <Text className={cn('text-sm font-semibold', dayColor === 'future' && 'text-brand-text-muted dark:text-night-muted')}>
-                        {cell.day}
-                      </Text>
-                      {detail ? (
-                        <Text muted className="text-[8px] leading-[10px]">
-                          Req {detail.plannedRequired}/Non-req {detail.plannedNonRequired}
+                      <View className="flex-row items-center justify-between">
+                        <Text className={cn('text-sm font-semibold', dayColor === 'future' && 'text-brand-text-muted dark:text-night-muted')}>
+                          {cell.day}
                         </Text>
-                      ) : null}
+                        {endingMedications.length > 0 ? (
+                          <Ionicons name="flag" size={11} color={ENDS_FLAG_COLOR} accessibilityLabel="Medication ends" />
+                        ) : null}
+                      </View>
                       {hasMarkerCounts ? (
                         <View className="flex-row flex-wrap gap-x-1">
                           {marker!.taken > 0 ? (
@@ -211,13 +213,6 @@ export default function CalendarScreen() {
                             <Text className="text-[10px] font-medium text-status-danger dark:text-status-danger">{marker!.missed}M</Text>
                           ) : null}
                         </View>
-                      ) : null}
-                      {endingMedications.length > 0 ? (
-                        <Text numberOfLines={1} className="text-[8px] font-semibold leading-[10px] text-brand-deep-blue dark:text-brand-cyan">
-                          {endingMedications.length === 1
-                            ? `Ends today: ${endingMedications[0].name}`
-                            : `Ends today: ${endingMedications[0].name} +${endingMedications.length - 1} more`}
-                        </Text>
                       ) : null}
                     </View>
                   </Pressable>
@@ -273,17 +268,10 @@ function DayDetailContent({
   const endingIds = new Set(day.endingMedications.map((m) => m.medicationId));
 
   const endingCallout = day.endingMedications.length > 0 && (
-    <View className={cn(ENDING_BOX, 'mb-3 gap-0.5 p-2')}>
-      <Text className={cn('text-sm font-bold', ENDING_TEXT)}>
-        {day.endingMedications.length === 1 ? 'Regimen ending today' : 'Regimens ending today'}
-      </Text>
-      {day.endingMedications.map((med) => (
-        <Text key={med.medicationId} className={cn('text-sm', ENDING_TEXT)}>
-          {med.name}
-          {med.dose ? ` ${med.dose}` : ''}
-        </Text>
-      ))}
-    </View>
+    <Text className={cn('mb-2 text-sm font-bold', ENDING_TEXT)}>
+      Ends today:{' '}
+      {day.endingMedications.map((med) => (med.dose ? `${med.name} ${med.dose}` : med.name)).join(', ')}
+    </Text>
   );
 
   const totalPlannedSlots =
@@ -309,8 +297,8 @@ function DayDetailContent({
     const totalPlanned = totalPlannedSlots;
     return (
       <View>
-        {summaryLine}
         {endingCallout}
+        {summaryLine}
         {totalPlanned === 0 ? (
           <Text muted className="text-sm">No doses planned for this day.</Text>
         ) : (
@@ -341,8 +329,8 @@ function DayDetailContent({
 
   return (
     <View>
-      {summaryLine}
       {endingCallout}
+      {summaryLine}
       {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
         <Text muted className="text-sm">No dose data for this day.</Text>
       ) : (
