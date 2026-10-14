@@ -26,7 +26,7 @@ import {
   type CalendarDayDetail,
 } from '@/lib/calendar';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
-import { getCalendarLogs, getCalendarMarkers, type CalendarDayMarker } from '@/lib/dose-logs';
+import { getCalendarLogs } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
 import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
 import { formatDate, localDateString } from '@/lib/utils';
@@ -62,9 +62,8 @@ export default function CalendarScreen() {
   const { height: windowHeight } = useWindowDimensions();
   const { activeProfileId } = useActiveProfile();
   const [month, setMonth] = useState(currentMonth());
-  const [markers, setMarkers] = useState<Record<string, CalendarDayMarker>>({});
   const [dayDetails, setDayDetails] = useState<Record<string, CalendarDayDetail>>({});
-  const [asNeededIds, setAsNeededIds] = useState<ReadonlySet<string>>(new Set());
+  const [excludedIds, setExcludedIds] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -93,10 +92,7 @@ export default function CalendarScreen() {
       if (requestIdRef.current !== requestId) return;
       const allMedications: Medication[] = [...activeMeds, ...inactiveMeds];
       const medicationIds = allMedications.map((med) => med.id);
-      const [markerData, logData] = await Promise.all([
-        getCalendarMarkers(b.monthStart, b.monthEnd, medicationIds),
-        getCalendarLogs(b.monthStart, b.monthEnd, medicationIds),
-      ]);
+      const logData = await getCalendarLogs(b.monthStart, b.monthEnd, medicationIds);
       if (requestIdRef.current !== requestId) return;
       const details = buildDayDetails(
         b.monthStart,
@@ -108,9 +104,11 @@ export default function CalendarScreen() {
         groups,
         groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[],
       );
-      setMarkers(markerData);
       setDayDetails(details);
-      setAsNeededIds(new Set(allMedications.filter((med) => med.as_needed).map((med) => med.id)));
+      // Left out of the month's adherence: PRN and adherence-tracking-off medications.
+      setExcludedIds(
+        new Set(allMedications.filter((med) => med.as_needed || !med.adherence_enabled).map((med) => med.id)),
+      );
     } catch (e) {
       if (requestIdRef.current !== requestId) return;
       setError(e instanceof Error ? e.message : 'Failed to load calendar');
@@ -145,7 +143,7 @@ export default function CalendarScreen() {
     cells.push({ date: `${bounds.monthStart.slice(0, 7)}-${String(day).padStart(2, '0')}`, day });
   }
 
-  const summary = useMemo(() => summarizeMonth(dayDetails, today, asNeededIds), [dayDetails, today, asNeededIds]);
+  const summary = useMemo(() => summarizeMonth(dayDetails, today, excludedIds), [dayDetails, today, excludedIds]);
 
   const selectedDay = selectedDate ? (dayDetails[selectedDate] ?? null) : null;
 
@@ -177,7 +175,7 @@ export default function CalendarScreen() {
 
         {error ? <Text className="text-sm text-status-danger dark:text-status-danger">{error}</Text> : null}
 
-        <MonthSummaryRow summary={summary} />
+        {loading || error ? null : <MonthSummaryRow summary={summary} />}
 
         <View>
           <View className="flex-row">
@@ -196,12 +194,13 @@ export default function CalendarScreen() {
                 if (!cell.date) return <View key={`blank-${i}`} className="min-h-[76px] w-[14.28%]" />;
                 const detail = dayDetails[cell.date];
                 const isFuture = detail ? detail.isFuture : cell.date > today;
-                const marker = markers[cell.date];
-                const dayColor = calendarDayColor(isFuture, marker);
+                // One source for color, badges and summary: the day-detail slots
+                // (logged outcomes plus unlogged doses past their grace period).
+                const stats = detail && !isFuture ? summarizeDay(detail, excludedIds, true) : undefined;
+                const dayColor = calendarDayColor(isFuture, stats);
                 const isToday = cell.date === today;
-                const lateCount = detail && !isFuture ? summarizeDay(detail, asNeededIds, true).late : 0;
-                const hasMarkerCounts =
-                  !isFuture && marker && (marker.taken > 0 || marker.skipped > 0 || marker.missed > 0);
+                const hasMarkerCounts = !!stats && (stats.taken > 0 || stats.skipped > 0 || stats.missed > 0);
+                const lateCount = stats?.late ?? 0;
                 const endingMedications = detail?.endingMedications ?? [];
 
                 return (
@@ -226,14 +225,14 @@ export default function CalendarScreen() {
                       </View>
                       {hasMarkerCounts ? (
                         <View className="flex-row flex-wrap gap-x-1">
-                          {marker!.taken > 0 ? (
-                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.taken)}>{marker!.taken}T</Text>
+                          {stats!.taken > 0 ? (
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.taken)}>{stats!.taken}T</Text>
                           ) : null}
-                          {marker!.skipped > 0 ? (
-                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.skipped)}>{marker!.skipped}S</Text>
+                          {stats!.skipped > 0 ? (
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.skipped)}>{stats!.skipped}S</Text>
                           ) : null}
-                          {marker!.missed > 0 ? (
-                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.missed)}>{marker!.missed}M</Text>
+                          {stats!.missed > 0 ? (
+                            <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.missed)}>{stats!.missed}M</Text>
                           ) : null}
                           {lateCount > 0 ? (
                             <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.late)}>{lateCount}L</Text>
