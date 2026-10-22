@@ -208,6 +208,32 @@ export async function editDoseLog(logId: string, input: DoseLogEditInput): Promi
   if (error) throw error;
 }
 
+export interface DoseLogBatchEditInput extends DoseLogEditInput {
+  logId: string;
+}
+
+/**
+ * Applies several edit_dose_log edits in one transaction via the
+ * edit_dose_logs_batch RPC: either every row is edited (with inventory
+ * adjusted) or none are. Used by the group "Edit all" flow.
+ */
+export async function editDoseLogsBatch(edits: DoseLogBatchEditInput[]): Promise<void> {
+  if (edits.length === 0) return;
+  const { error } = await supabase.rpc("edit_dose_logs_batch", {
+    p_edits: edits.map((e) => ({
+      log_id: e.logId,
+      status: e.status,
+      taken_at: e.takenAt ?? null,
+      pain_level: e.painLevel ?? null,
+      mood_level: e.moodLevel ?? null,
+      note: e.note ?? null,
+      quantity_per_dose: e.quantityPerDose ?? null,
+      inventory_enabled: e.inventoryEnabled ?? false,
+    })),
+  });
+  if (error) throw error;
+}
+
 /**
  * Deletes a dose_logs row via the delete_dose_log RPC, restoring
  * deducted inventory if it was a 'taken' entry on an inventory-tracked
