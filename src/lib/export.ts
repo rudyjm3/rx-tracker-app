@@ -161,12 +161,13 @@ export async function buildReportData(options: ReportOptions): Promise<ReportDat
   const allDoseHistories = await Promise.all(options.medications.map((m) => getDoseHistory(m.id)));
   const medications = options.medications.filter((m, i) =>
     wasActiveDuring(
-      m.start_date,
+      m.start_date ?? m.created_at.slice(0, 10),
       allDoseHistories[i]
         .filter((e): e is Extract<DoseHistoryEntry, { type: "status_event" }> => e.type === "status_event")
         .map((e) => e.data),
       startDate,
       endDate,
+      m.end_date,
     ),
   );
   const doseHistories = options.medications.flatMap((m, i) => (medications.includes(m) ? [allDoseHistories[i]] : []));

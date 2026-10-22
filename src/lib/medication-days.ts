@@ -23,6 +23,7 @@ function eventDayNumber(eventAt: string): number {
   return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
 }
 
+// `courseEnd` is the medication's end_date, the last day it is usable.
 // Medications with no start date can't be placed in time, so they count as
 // active.
 export function wasActiveDuring(
@@ -30,9 +31,11 @@ export function wasActiveDuring(
   events: MedicationStatusEventLike[],
   rangeStart: string,
   rangeEnd: string,
+  courseEnd: string | null = null,
 ): boolean {
   if (!startDate) return true;
   const from = dayNumber(rangeStart);
+  if (courseEnd && dayNumber(courseEnd) < from) return false;
   const end = dayNumber(rangeEnd);
   const sorted = events
     .filter((e) => e.event === "discontinued" || e.event === "resumed")

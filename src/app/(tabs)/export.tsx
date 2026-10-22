@@ -108,7 +108,13 @@ export default function ExportScreen() {
       !DATE_RE.test(startDate) || !DATE_RE.test(endDate)
         ? medications
         : medications.filter((m) =>
-            wasActiveDuring(m.start_date, statusEventsById.get(m.id) ?? [], startDate, endDate),
+            wasActiveDuring(
+              m.start_date ?? m.created_at.slice(0, 10),
+              statusEventsById.get(m.id) ?? [],
+              startDate,
+              endDate,
+              m.end_date,
+            ),
           ),
     [medications, statusEventsById, startDate, endDate],
   );
