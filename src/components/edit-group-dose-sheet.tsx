@@ -59,6 +59,9 @@ export function EditGroupDoseSheet({
       return;
     }
     setSaving(true);
+    // edit_dose_log is a per-row RPC, so a failure partway through would leave
+    // earlier members changed; the rows already saved are restored below.
+    const saved: CalendarLogRow[] = [];
     try {
       for (const log of logs) {
         const medication = medications.find((m) => m.id === log.medication_id);
@@ -77,12 +80,44 @@ export function EditGroupDoseSheet({
           quantityPerDose,
           inventoryEnabled: medication.inventory_enabled,
         });
+        saved.push(log);
       }
       onSaved();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Couldn't save changes");
+      const failedToRestore = await restoreSaved(saved);
+      setFormError(
+        failedToRestore > 0
+          ? `Couldn't save all changes, and ${failedToRestore} medication(s) could not be restored. Check them individually.`
+          : e instanceof Error
+            ? e.message
+            : "Couldn't save changes",
+      );
       setSaving(false);
     }
+  }
+
+  // Puts already-saved members back to their original values; returns how many failed to restore.
+  async function restoreSaved(saved: CalendarLogRow[]): Promise<number> {
+    let failed = 0;
+    for (const log of saved) {
+      const medication = medications.find((m) => m.id === log.medication_id);
+      if (!medication) continue;
+      try {
+        await editDoseLog(log.id, {
+          status: log.status,
+          takenAt: log.status === 'taken' ? log.taken_at : null,
+          painLevel: log.pain_level,
+          moodLevel: log.mood_level,
+          note: log.note ?? '',
+          quantityPerDose:
+            log.deducted_quantity ?? resolveHistoricalQuantityPerDose(log, medication, groups, groupMembers),
+          inventoryEnabled: medication.inventory_enabled,
+        });
+      } catch {
+        failed++;
+      }
+    }
+    return failed;
   }
 
   return (
