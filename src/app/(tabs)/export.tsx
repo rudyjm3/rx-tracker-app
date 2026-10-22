@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -15,11 +15,14 @@ import { ScreenTitle, SectionTitle } from '@/components/ui/screen-title';
 import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
 import { buildReportData, renderReportHtml } from '@/lib/export';
-import { getActiveMedications, getInactiveMedications } from '@/lib/medications';
+import { wasActiveDuring, type MedicationStatusEventLike } from '@/lib/medication-days';
+import { getActiveMedications, getDoseHistory, getInactiveMedications } from '@/lib/medications';
 import { useAuth } from '@/lib/supabase/AuthProvider';
 import type { Medication } from '@/lib/types/medications';
 import { getUserProfile } from '@/lib/user-profile';
 import { localDateString } from '@/lib/utils';
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function defaultStartDate(): string {
   const d = new Date();
@@ -47,6 +50,7 @@ export default function ExportScreen() {
   const [includePain, setIncludePain] = useState(true);
   const [includeMood, setIncludeMood] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [statusEventsById, setStatusEventsById] = useState<Map<string, MedicationStatusEventLike[]>>(new Map());
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [loadingMedications, setLoadingMedications] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -62,8 +66,18 @@ export default function ExportScreen() {
             getActiveMedications(activeProfileId),
             getInactiveMedications(activeProfileId),
           ]);
+          const all = [...active, ...inactive];
+          const histories = await Promise.all(all.map((m) => getDoseHistory(m.id)));
           if (cancelled) return;
-          setMedications([...active, ...inactive]);
+          setMedications(all);
+          setStatusEventsById(
+            new Map(
+              all.map((m, i) => [
+                m.id,
+                histories[i].flatMap((e) => (e.type === 'status_event' ? [e.data] : [])),
+              ]),
+            ),
+          );
           setExcludedIds(new Set());
         } catch (e) {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load medications');
@@ -86,7 +100,25 @@ export default function ExportScreen() {
     });
   }
 
-  const selectedMedications = medications.filter((m) => !excludedIds.has(m.id));
+  // Only medications in use on at least one day of the reporting period
+  // can appear in the report, so only those are offered here.
+  const periodMedications = useMemo(
+    () =>
+      // Dates are free-text, so don't filter while one is half-typed.
+      !DATE_RE.test(startDate) || !DATE_RE.test(endDate)
+        ? medications
+        : medications.filter((m) =>
+            wasActiveDuring(
+              m.start_date ?? m.created_at.slice(0, 10),
+              statusEventsById.get(m.id) ?? [],
+              startDate,
+              endDate,
+              m.end_date,
+            ),
+          ),
+    [medications, statusEventsById, startDate, endDate],
+  );
+  const selectedMedications = periodMedications.filter((m) => !excludedIds.has(m.id));
 
   async function handleGenerate() {
     setError(null);
@@ -190,7 +222,7 @@ export default function ExportScreen() {
               </Pressable>
               <Pressable
                 className="min-h-11 justify-center"
-                onPress={() => setExcludedIds(new Set(medications.map((m) => m.id)))}
+                onPress={() => setExcludedIds(new Set(periodMedications.map((m) => m.id)))}
                 hitSlop={8}>
                 <Text className="text-sm font-semibold text-brand-blue dark:text-brand-cyan">Select none</Text>
               </Pressable>
@@ -198,13 +230,13 @@ export default function ExportScreen() {
           </View>
           {loadingMedications ? (
             <ActivityIndicator className="mt-2" />
-          ) : medications.length === 0 ? (
+          ) : periodMedications.length === 0 ? (
             <Text muted className="text-sm">
-              No medications to include yet.
+              No medications to include for this period.
             </Text>
           ) : (
             <View className="rounded-control border border-brand-border dark:border-night-border">
-              {medications.map((med, i) => {
+              {periodMedications.map((med, i) => {
                 const selected = !excludedIds.has(med.id);
                 return (
                   <Pressable
