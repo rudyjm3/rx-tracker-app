@@ -288,7 +288,7 @@ export default function CalendarScreen() {
             </Pressable>
           </View>
           {/* Sheet caps at 85% of the screen; leave room for the handle, header, padding and bottom inset. */}
-          <ScrollView style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
             <DayDetailContent
               day={selectedDay}
               onEditSlot={(logId) => setEditingLog(logs.find((l) => l.id === logId) ?? null)}
