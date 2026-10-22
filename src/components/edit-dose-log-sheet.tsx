@@ -14,7 +14,7 @@ import { generateDaySlots } from '@/lib/schedule';
 import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
 
-const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+export const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
 const STATUS_OPTIONS: { value: DoseLogStatus; label: string }[] = [
   { value: 'taken', label: 'Taken' },
@@ -22,13 +22,13 @@ const STATUS_OPTIONS: { value: DoseLogStatus; label: string }[] = [
   { value: 'missed', label: 'Missed' },
 ];
 
-function timeFromIso(iso: string | null): string | null {
+export function timeFromIso(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function nowTime(): string {
+export function nowTime(): string {
   return timeFromIso(new Date().toISOString())!;
 }
 
@@ -37,12 +37,12 @@ function nowTime(): string {
 // medication schedule-time form, which stores the string as-is rather
 // than parsing it) accepts a single-digit hour, but passing one straight
 // into `new Date(...)` yields an Invalid Date whose toISOString() throws.
-function normalizeTime(time: string): string {
+export function normalizeTime(time: string): string {
   const [hours, minutes] = time.split(':');
   return `${hours.padStart(2, '0')}:${minutes}`;
 }
 
-type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_dose: number | null };
+export type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_dose: number | null };
 
 // The medication's own quantity_per_dose is only the right fallback for a
 // slot with no group or per-schedule-time override — resolve the actual
@@ -50,7 +50,7 @@ type GroupMemberRow = { group_id: string; medication_id: string; quantity_per_do
 // the same generateDaySlots the dashboard's Take flow uses, so correcting
 // a skipped/missed entry to Taken deducts the same amount the normal Take
 // button would have.
-function resolveHistoricalQuantityPerDose(
+export function resolveHistoricalQuantityPerDose(
   log: CalendarLogRow,
   medication: Medication,
   groups: MedicationGroup[],

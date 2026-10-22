@@ -4,6 +4,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EditDoseLogSheet } from '@/components/edit-dose-log-sheet';
+import { EditGroupDoseSheet } from '@/components/edit-group-dose-sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,9 +28,9 @@ import {
   type CalendarDayDetail,
 } from '@/lib/calendar';
 import { getMissedGraceMinutes } from '@/lib/app-settings';
-import { getCalendarLogs } from '@/lib/dose-logs';
+import { getCalendarLogs, type CalendarLogRow } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups, getInactiveMedications } from '@/lib/medications';
-import type { Medication, MedicationGroupMember } from '@/lib/types/medications';
+import type { Medication, MedicationGroup, MedicationGroupMember } from '@/lib/types/medications';
 import { formatDate, localDateString } from '@/lib/utils';
 
 const ENDS_FLAG_COLOR = '#F5A524';
@@ -67,6 +69,14 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [logs, setLogs] = useState<CalendarLogRow[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [groups, setGroups] = useState<MedicationGroup[]>([]);
+  const [groupMembers, setGroupMembers] = useState<
+    Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[]
+  >([]);
+  const [editingLog, setEditingLog] = useState<CalendarLogRow | null>(null);
+  const [editingGroup, setEditingGroup] = useState<{ name: string; logs: CalendarLogRow[] } | null>(null);
 
   const bounds = useMemo(() => monthBounds(month), [month]);
   const today = localDateString();
@@ -105,6 +115,10 @@ export default function CalendarScreen() {
         groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[],
       );
       setDayDetails(details);
+      setLogs(logData);
+      setMedications(allMedications);
+      setGroups(groups);
+      setGroupMembers(groupMembers as Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[]);
       // Left out of the month's adherence: PRN and adherence-tracking-off medications.
       setExcludedIds(
         new Set(allMedications.filter((med) => med.as_needed || !med.adherence_enabled).map((med) => med.id)),
@@ -258,7 +272,7 @@ export default function CalendarScreen() {
         </View>
       </Card>
 
-      {selectedDate ? (
+      {selectedDate && !editingLog && !editingGroup ? (
         <Sheet handle onClose={() => setSelectedDate(null)}>
           <View className="mb-3 flex-row items-center justify-between gap-2">
             <Text className="flex-1 text-lg font-bold text-brand-navy dark:text-white">
@@ -274,9 +288,14 @@ export default function CalendarScreen() {
             </Pressable>
           </View>
           {/* Sheet caps at 85% of the screen; leave room for the handle, header, padding and bottom inset. */}
-          <ScrollView style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: Math.max(160, windowHeight * 0.85 - 120 - insets.bottom) }}>
             <DayDetailContent
               day={selectedDay}
+              onEditSlot={(logId) => setEditingLog(logs.find((l) => l.id === logId) ?? null)}
+              onEditGroup={(name, logIds) => {
+                const groupLogs = logs.filter((l) => logIds.includes(l.id));
+                if (groupLogs.length > 0) setEditingGroup({ name, logs: groupLogs });
+              }}
               onLogAsNeeded={(medicationId, date) => {
                 setSelectedDate(null);
                 router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
@@ -284,6 +303,40 @@ export default function CalendarScreen() {
             />
           </ScrollView>
         </Sheet>
+      ) : null}
+
+      {editingLog ? (
+        <EditDoseLogSheet
+          key={editingLog.id}
+          log={editingLog}
+          medication={medications.find((m) => m.id === editingLog.medication_id) ?? null}
+          groups={groups}
+          groupMembers={groupMembers}
+          onClose={() => setEditingLog(null)}
+          onSaved={() => {
+            setEditingLog(null);
+            load(month);
+          }}
+          onDeleted={() => {
+            setEditingLog(null);
+            load(month);
+          }}
+        />
+      ) : null}
+
+      {editingGroup ? (
+        <EditGroupDoseSheet
+          groupName={editingGroup.name}
+          logs={editingGroup.logs}
+          medications={medications}
+          groups={groups}
+          groupMembers={groupMembers}
+          onClose={() => setEditingGroup(null)}
+          onSaved={() => {
+            setEditingGroup(null);
+            load(month);
+          }}
+        />
       ) : null}
     </Screen>
   );
@@ -295,9 +348,13 @@ const ENDING_TEXT = 'text-amber-700 dark:text-amber-300';
 
 function DayDetailContent({
   day,
+  onEditSlot,
+  onEditGroup,
   onLogAsNeeded,
 }: {
   day: CalendarDayDetail | null;
+  onEditSlot: (logId: string) => void;
+  onEditGroup: (groupName: string, logIds: string[]) => void;
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
   if (!day) {
@@ -375,11 +432,16 @@ function DayDetailContent({
       ) : (
         <>
           {day.groups.map((group) => (
-            <GroupBox key={group.groupId} name={group.groupName}>
+            <GroupBox
+              key={group.groupId}
+              name={group.groupName}
+              editTargets={groupEditTargets(group.medications)}
+              onEditAll={(logIds) => onEditGroup(group.groupName, logIds)}>
               {group.medications.map((med) => (
                 <MedicationSummaryRow
                   key={med.medicationId}
                   med={med}
+                  onEditSlot={onEditSlot}
                   endingToday={endingIds.has(med.medicationId)}
                 />
               ))}
@@ -406,7 +468,7 @@ function DayDetailContent({
                 'mb-3 rounded-control border p-2',
                 endingIds.has(med.medicationId) ? ENDING_BOX : 'border-brand-border dark:border-night-border',
               )}>
-              <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} />
+              <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} onEditSlot={onEditSlot} />
             </View>
           ))}
           {day.pendingUngroupedAsNeeded.map((med) => (
@@ -434,25 +496,72 @@ function DayDetailContent({
 }
 
 // Group as a bordered card with a Layers title (DESIGN.md 9.6).
-function GroupBox({ name, children }: { name: string; children: React.ReactNode }) {
+function GroupBox({
+  name,
+  editTargets,
+  onEditAll,
+  children,
+}: {
+  name: string;
+  editTargets?: GroupEditTarget[];
+  onEditAll?: (logIds: string[]) => void;
+  children: React.ReactNode;
+}) {
   const theme = useTheme();
   return (
     <View className="mb-3 gap-2 rounded-card border border-brand-border p-3 dark:border-night-border">
-      <View className="flex-row items-center gap-1.5">
-        <Ionicons name="layers-outline" size={14} color={theme.accent} />
-        <Text className="text-sm font-bold text-brand-navy dark:text-white">{name}</Text>
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-1 flex-row items-center gap-1.5">
+          <Ionicons name="layers-outline" size={14} color={theme.accent} />
+          <Text className="flex-shrink text-sm font-bold text-brand-navy dark:text-white">{name}</Text>
+        </View>
+        {editTargets && onEditAll ? (
+          <View className="items-end">
+            {editTargets.map((target) => (
+              <Pressable
+                key={target.time}
+                accessibilityRole="button"
+                className="min-h-11 justify-center"
+                hitSlop={6}
+                onPress={() => onEditAll(target.logIds)}>
+                <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
+                  {editTargets.length > 1 ? `Edit all · ${target.displayTime}` : 'Edit all'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
       {children}
     </View>
   );
 }
 
+type GroupEditTarget = { time: string; displayTime: string; logIds: string[] };
+
+// One "Edit all" target per distinct dose time among a group's logged slots.
+// Slots synthesized for unlogged overdue doses have no dose_logs row to edit.
+function groupEditTargets(medications: CalendarDayDetail['medications']): GroupEditTarget[] {
+  const byTime = new Map<string, GroupEditTarget>();
+  for (const med of medications) {
+    for (const slot of med.slots) {
+      if (slot.logId.startsWith('unlogged-')) continue;
+      const target = byTime.get(slot.time) ?? { time: slot.time, displayTime: slot.displayTime, logIds: [] };
+      target.logIds.push(slot.logId);
+      byTime.set(slot.time, target);
+    }
+  }
+  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+}
+
 function MedicationSummaryRow({
   med,
   endingToday,
+  onEditSlot,
 }: {
   med: CalendarDayDetail['medications'][number];
   endingToday: boolean;
+  onEditSlot: (logId: string) => void;
 }) {
   return (
     <View className="gap-1 p-0.5">
@@ -468,11 +577,23 @@ function MedicationSummaryRow({
         <View key={slot.logId} className="gap-0.5 rounded-control bg-brand-bg px-2.5 py-2 dark:bg-night-selected">
           <View className="flex-row items-center justify-between">
             <Text className="text-sm">{slot.displayTime}</Text>
-            {slot.status === 'taken' ? (
-              <Badge variant={slot.isLate ? 'late' : 'taken'}>{slot.isLate ? `Taken (${slot.lateLabel})` : 'Taken'}</Badge>
-            ) : (
-              <Badge variant={slot.status === 'skipped' ? 'skipped' : 'missed'} />
-            )}
+            <View className="flex-row items-center gap-3">
+              {slot.status === 'taken' ? (
+                <Badge variant={slot.isLate ? 'late' : 'taken'}>{slot.isLate ? `Taken (${slot.lateLabel})` : 'Taken'}</Badge>
+              ) : (
+                <Badge variant={slot.status === 'skipped' ? 'skipped' : 'missed'} />
+              )}
+              {slot.logId.startsWith('unlogged-') ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${med.name} dose at ${slot.displayTime}`}
+                  className="min-h-9 justify-center"
+                  hitSlop={6}
+                  onPress={() => onEditSlot(slot.logId)}>
+                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">Edit</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
           {slot.note ? (
             <Text muted className="text-xs italic">
