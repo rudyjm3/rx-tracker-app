@@ -14,6 +14,7 @@ import { getProfileAllergies } from "@/lib/allergies";
 import { getMissedGraceMinutes } from "@/lib/app-settings";
 import { getCalendarLogs, type CalendarLogRow } from "@/lib/dose-logs";
 import { getDoseHistory } from "@/lib/medications";
+import { wasActiveDuring } from "@/lib/medication-days";
 import { getTrend, groupDailyAverages, type WellbeingMetric } from "@/lib/pain-mood";
 import { generateDaySlots, slotDueTime } from "@/lib/schedule";
 import { getSideEffects } from "@/lib/side-effects";
@@ -152,13 +153,28 @@ function reportSlotsForDate(
 }
 
 export async function buildReportData(options: ReportOptions): Promise<ReportData> {
-  const { profileId, patientName, startDate, endDate, medications, includePain, includeMood } = options;
+  const { profileId, patientName, startDate, endDate, includePain, includeMood } = options;
+
+  // Only medications in use on at least one day of the reporting period
+  // belong in the report; ones discontinued before it started (or started
+  // after it ended) are left out of every section.
+  const allDoseHistories = await Promise.all(options.medications.map((m) => getDoseHistory(m.id)));
+  const medications = options.medications.filter((m, i) =>
+    wasActiveDuring(
+      m.start_date,
+      allDoseHistories[i]
+        .filter((e): e is Extract<DoseHistoryEntry, { type: "status_event" }> => e.type === "status_event")
+        .map((e) => e.data),
+      startDate,
+      endDate,
+    ),
+  );
+  const doseHistories = options.medications.flatMap((m, i) => (medications.includes(m) ? [allDoseHistories[i]] : []));
   const medicationIds = medications.map((m) => m.id);
 
-  const [logs, allergies, doseHistories, sideEffectLists, graceMinutes] = await Promise.all([
+  const [logs, allergies, sideEffectLists, graceMinutes] = await Promise.all([
     getCalendarLogs(startDate, endDate, medicationIds),
     getProfileAllergies(profileId),
-    Promise.all(medications.map((m) => getDoseHistory(m.id))),
     Promise.all(medications.map((m) => getSideEffects(m.id))),
     getMissedGraceMinutes(),
   ]);
