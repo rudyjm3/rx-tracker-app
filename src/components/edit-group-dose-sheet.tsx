@@ -15,7 +15,7 @@ import { FormSheet } from '@/components/ui/form-sheet';
 import { PillTabs } from '@/components/ui/pill-tabs';
 import { Text } from '@/components/ui/text';
 import { TimeField } from '@/components/ui/time-field';
-import { editDoseLog, type CalendarLogRow } from '@/lib/dose-logs';
+import { editDoseLogsBatch, type CalendarLogRow } from '@/lib/dose-logs';
 import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
 
@@ -59,65 +59,35 @@ export function EditGroupDoseSheet({
       return;
     }
     setSaving(true);
-    // edit_dose_log is a per-row RPC, so a failure partway through would leave
-    // earlier members changed; the rows already saved are restored below.
-    const saved: CalendarLogRow[] = [];
     try {
-      for (const log of logs) {
+      // One transactional RPC: every member is edited or none are.
+      const edits = logs.flatMap((log) => {
         const medication = medications.find((m) => m.id === log.medication_id);
-        if (!medication) continue;
+        if (!medication) return [];
         const baseDate = log.taken_at ? localDateString(new Date(log.taken_at)) : log.scheduled_for_date;
         const quantityPerDose =
           status === 'taken' && log.status === 'taken' && log.deducted_quantity !== null
             ? log.deducted_quantity
             : resolveHistoricalQuantityPerDose(log, medication, groups, groupMembers);
-        await editDoseLog(log.id, {
-          status,
-          takenAt: status === 'taken' ? new Date(`${baseDate}T${normalizeTime(time)}:00`).toISOString() : null,
-          painLevel: status === 'taken' ? (log.pain_level ?? undefined) : undefined,
-          moodLevel: status === 'taken' ? (log.mood_level ?? undefined) : undefined,
-          note: status === 'taken' ? note.trim() : '',
-          quantityPerDose,
-          inventoryEnabled: medication.inventory_enabled,
-        });
-        saved.push(log);
-      }
+        return [
+          {
+            logId: log.id,
+            status,
+            takenAt: status === 'taken' ? new Date(`${baseDate}T${normalizeTime(time)}:00`).toISOString() : null,
+            painLevel: status === 'taken' ? (log.pain_level ?? undefined) : undefined,
+            moodLevel: status === 'taken' ? (log.mood_level ?? undefined) : undefined,
+            note: status === 'taken' ? note.trim() : '',
+            quantityPerDose,
+            inventoryEnabled: medication.inventory_enabled,
+          },
+        ];
+      });
+      await editDoseLogsBatch(edits);
       onSaved();
     } catch (e) {
-      const failedToRestore = await restoreSaved(saved);
-      setFormError(
-        failedToRestore > 0
-          ? `Couldn't save all changes, and ${failedToRestore} medication(s) could not be restored. Check them individually.`
-          : e instanceof Error
-            ? e.message
-            : "Couldn't save changes",
-      );
+      setFormError(e instanceof Error ? e.message : "Couldn't save changes");
       setSaving(false);
     }
-  }
-
-  // Puts already-saved members back to their original values; returns how many failed to restore.
-  async function restoreSaved(saved: CalendarLogRow[]): Promise<number> {
-    let failed = 0;
-    for (const log of saved) {
-      const medication = medications.find((m) => m.id === log.medication_id);
-      if (!medication) continue;
-      try {
-        await editDoseLog(log.id, {
-          status: log.status,
-          takenAt: log.status === 'taken' ? log.taken_at : null,
-          painLevel: log.pain_level,
-          moodLevel: log.mood_level,
-          note: log.note ?? '',
-          quantityPerDose:
-            log.deducted_quantity ?? resolveHistoricalQuantityPerDose(log, medication, groups, groupMembers),
-          inventoryEnabled: medication.inventory_enabled,
-        });
-      } catch {
-        failed++;
-      }
-    }
-    return failed;
   }
 
   return (
