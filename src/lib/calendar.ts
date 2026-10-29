@@ -598,10 +598,24 @@ export function buildDayDetails(
         dose_unit: m.dose_unit,
       }));
 
-    if (isFuture) {
+    // Future dates plan every slot. Today plans only what's still
+    // unlogged — per medication, the earliest slots are treated as already
+    // covered by its logged doses (count-based, like the totals above) — so
+    // the detail lists the whole day's schedule and shrinks as doses land.
+    if (isFuture || date === todayDate) {
       const ungroupedPlanned: CalendarDayPlannedSlot[] = [];
       const byGroup = new Map<string, CalendarDayPlannedSlot[]>();
-      for (const slot of slots) {
+      const toSkipByMed = new Map<string, number>();
+      if (!isFuture) {
+        for (const [id, n] of loggedCountsByMed) toSkipByMed.set(id, n);
+      }
+      const orderedSlots = [...slots].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+      for (const slot of orderedSlots) {
+        const skip = toSkipByMed.get(slot.medicationId) ?? 0;
+        if (skip > 0) {
+          toSkipByMed.set(slot.medicationId, skip - 1);
+          continue;
+        }
         const planned: CalendarDayPlannedSlot = {
           medicationId: slot.medicationId,
           name: slot.medicationName,

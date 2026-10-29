@@ -379,9 +379,21 @@ function DayDetailContent({
     ...day.plannedMedications.map((m) => m.medicationId),
     ...day.plannedGroups.flatMap((g) => g.medications.map((m) => m.medicationId)),
   ]).size;
+  const loggedMedIds = new Set([
+    ...day.medications.map((m) => m.medicationId),
+    ...day.groups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+  ]);
+  const plannedOnlyMedications = day.isFuture
+    ? 0
+    : [
+        ...new Set([
+          ...day.plannedMedications.map((m) => m.medicationId),
+          ...day.plannedGroups.flatMap((g) => g.medications.map((m) => m.medicationId)),
+        ]),
+      ].filter((id) => !loggedMedIds.has(id)).length;
   const totalMedicationsForSummary = day.isFuture
     ? totalPlannedMedications
-    : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0);
+    : day.medications.length + day.groups.reduce((n, g) => n + g.medications.length, 0) + plannedOnlyMedications;
   const summaryLine = (
     <Text muted className="mb-2 text-sm">
       Medications: {totalMedicationsForSummary} | Planned doses — Required: {day.plannedRequired} / Non-required:{' '}
@@ -421,13 +433,18 @@ function DayDetailContent({
     );
   }
 
-  const totalMedications = totalMedicationsForSummary;
+  // Today only: schedule slots with no dose logged yet, shown alongside the
+  // logged doses so the full day is visible and fills in as doses are taken.
+  const loggedGroupIds = new Set(day.groups.map((g) => g.groupId));
+  const remainingByGroup = new Map(day.plannedGroups.map((g) => [g.groupId, g]));
+  const unloggedGroups = day.plannedGroups.filter((g) => !loggedGroupIds.has(g.groupId));
+  const totalMedications = totalMedicationsForSummary + plannedOnlyMedications;
 
   return (
     <View>
       {endingCallout}
       {summaryLine}
-      {totalMedications === 0 && day.groups.length === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
+      {totalMedications === 0 && day.groups.length === 0 && totalPlannedSlots === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (
         <Text muted className="text-sm">No dose data for this day.</Text>
       ) : (
         <>
@@ -443,6 +460,13 @@ function DayDetailContent({
                   med={med}
                   onEditSlot={onEditSlot}
                   endingToday={endingIds.has(med.medicationId)}
+                />
+              ))}
+              {(remainingByGroup.get(group.groupId)?.medications ?? []).map((slot) => (
+                <PlannedSlotRow
+                  key={`planned-${slot.medicationId}-${slot.scheduledTime}`}
+                  slot={slot}
+                  endingToday={endingIds.has(slot.medicationId)}
                 />
               ))}
               {group.pendingAsNeeded.map((member) => (
@@ -461,6 +485,17 @@ function DayDetailContent({
               ))}
             </GroupBox>
           ))}
+          {unloggedGroups.map((group) => (
+            <GroupBox key={group.groupId} name={group.groupName}>
+              {group.medications.map((slot) => (
+                <PlannedSlotRow
+                  key={`${slot.medicationId}-${slot.scheduledTime}`}
+                  slot={slot}
+                  endingToday={endingIds.has(slot.medicationId)}
+                />
+              ))}
+            </GroupBox>
+          ))}
           {day.medications.map((med) => (
             <View
               key={med.medicationId}
@@ -469,6 +504,11 @@ function DayDetailContent({
                 endingIds.has(med.medicationId) ? ENDING_BOX : 'border-brand-border dark:border-night-border',
               )}>
               <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} onEditSlot={onEditSlot} />
+            </View>
+          ))}
+          {day.plannedMedications.map((slot) => (
+            <View key={`${slot.medicationId}-${slot.scheduledTime}`} className="mb-3 rounded-control border border-brand-border p-2 dark:border-night-border">
+              <PlannedSlotRow slot={slot} endingToday={endingIds.has(slot.medicationId)} />
             </View>
           ))}
           {day.pendingUngroupedAsNeeded.map((med) => (
