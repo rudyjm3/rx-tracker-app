@@ -14,6 +14,7 @@ import { QuickActionsPanel } from '@/components/dashboard/quick-actions-panel';
 import { SetupCompleteBanner } from '@/components/dashboard/setup-complete-banner';
 import { TodayHistoryPanel } from '@/components/dashboard/today-history-panel';
 import { ZeroPillSheet } from '@/components/dashboard/zero-pill-sheet';
+import { normalizeTime } from '@/components/edit-dose-log-sheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
@@ -22,6 +23,7 @@ import { MedName } from '@/components/ui/med-name';
 import { SafeArea } from '@/components/ui/safe-area';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
+import { TimeField } from '@/components/ui/time-field';
 import { useLowSupplyAlerts } from '@/hooks/use-low-supply-alerts';
 import { computeAdherenceStats, type AdherenceStats } from '@/lib/adherence';
 import { useActiveProfile } from '@/lib/active-profile';
@@ -48,7 +50,7 @@ import {
   type NextDoseEvent,
 } from '@/lib/schedule';
 import type { Medication, MedicationGroup } from '@/lib/types/medications';
-import { formatEpochTime, isLate, localDateString, parseTimeInput, to12h } from '@/lib/utils';
+import { formatEpochTime, isLate, localDateString } from '@/lib/utils';
 
 const DEFAULT_LEVEL = 5;
 
@@ -884,19 +886,18 @@ function TimeEntrySheet({
 }) {
   const [value, setValue] = useState(() => {
     const now = new Date();
-    return to12h(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function handleSubmit() {
     setFormError(null);
-    const parsed = parseTimeInput(value);
-    if (!parsed) {
-      setFormError('Enter a time like 8:30 PM or 20:30');
+    if (!value) {
+      setFormError('Enter a valid time (hour 1–12, minute 00–59).');
       return;
     }
-    const taken = new Date(`${date}T${parsed}`);
+    const taken = new Date(`${date}T${normalizeTime(value)}:00`);
     if (taken.getTime() > Date.now()) {
       setFormError("The time taken can't be in the future");
       return;
@@ -921,15 +922,7 @@ function TimeEntrySheet({
         </Text>
       )}
       {formError && <Text className="text-status-danger dark:text-status-danger">{formError}</Text>}
-      <Field
-        label="Actual time taken"
-        value={value}
-        onChangeText={setValue}
-        placeholder="8:30 PM"
-        autoCapitalize="characters"
-        autoCorrect={false}
-        editable={!saving}
-      />
+      <TimeField label="Actual time taken" value={value} onChange={setValue} />
       <View className="mt-6 flex-row gap-2">
         <Button label="Cancel" variant="secondary" className="flex-1" onPress={onClose} disabled={saving} />
         <Button label="Submit" className="flex-1" onPress={handleSubmit} loading={saving} />
