@@ -526,29 +526,21 @@ function ManageTagsSheet({
             </Text>
           ) : null}
           {localTags.map((tag) => (
-            <View key={tag.id} className="flex-row items-center justify-between gap-2 rounded-control border border-brand-border p-2 dark:border-night-border">
-              {editingId === tag.id ? (
-                <Input
-                  className="flex-1 py-1"
-                  value={editingName}
-                  onChangeText={setEditingName}
-                  autoFocus
-                  onSubmitEditing={() => handleRename(tag.id)}
-                />
-              ) : (
-                <Pressable className="min-h-11 flex-1 justify-center" onPress={() => startEditing(tag)}>
-                  <Text className="text-sm">{tag.name}</Text>
-                </Pressable>
-              )}
-
-              <View className="flex-row items-center gap-3">
-                <SwitchRow
-                  className="py-0"
-                  label="Always show"
-                  value={tag.always_show}
-                  onValueChange={() => handleToggleAlwaysShow(tag)}
-                  disabled={busyId === tag.id}
-                />
+            <View key={tag.id} className="gap-1 rounded-control border border-brand-border p-2 dark:border-night-border">
+              <View className="flex-row items-center justify-between gap-3">
+                {editingId === tag.id ? (
+                  <Input
+                    className="flex-1 py-1"
+                    value={editingName}
+                    onChangeText={setEditingName}
+                    autoFocus
+                    onSubmitEditing={() => handleRename(tag.id)}
+                  />
+                ) : (
+                  <Pressable className="min-h-11 flex-1 justify-center" onPress={() => startEditing(tag)}>
+                    <Text className="text-sm font-semibold">{tag.name}</Text>
+                  </Pressable>
+                )}
                 {editingId === tag.id ? (
                   <Pressable className="min-h-11 justify-center" onPress={() => handleRename(tag.id)} disabled={busyId === tag.id} hitSlop={8}>
                     <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Save</Text>
@@ -559,6 +551,13 @@ function ManageTagsSheet({
                   </Pressable>
                 )}
               </View>
+              <SwitchRow
+                className="py-0"
+                label="Always show"
+                value={tag.always_show}
+                onValueChange={() => handleToggleAlwaysShow(tag)}
+                disabled={busyId === tag.id}
+              />
             </View>
           ))}
         </View>
