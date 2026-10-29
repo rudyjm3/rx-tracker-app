@@ -168,6 +168,14 @@ export interface MoodTag {
   created_at: string;
 }
 
+export interface MedicationNote {
+  id: string;
+  medication_id: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type SideEffectSeverity = "mild" | "moderate" | "severe";
 
 export interface SideEffect {

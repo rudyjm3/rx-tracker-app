@@ -39,6 +39,7 @@ import {
   type ScheduleTimeInput,
 } from '@/lib/medications';
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
+import { addNote, deleteNote, getNotes, updateNote } from '@/lib/notes';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import { medicationTracksMood, medicationTracksPain, type WellbeingMetric } from '@/lib/pain-mood';
 import { generateDaySlots, type DaySlot } from '@/lib/schedule';
@@ -59,6 +60,7 @@ import type {
   DoseLog,
   Medication,
   MedicationGroup,
+  MedicationNote,
   MedicationRefill,
   MedicationType,
   ScheduleMode,
@@ -114,6 +116,7 @@ export default function MedicationDetailScreen() {
   const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
   const [logDoseOpen, setLogDoseOpen] = useState(false);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [statusSheetDirection, setStatusSheetDirection] = useState<'discontinue' | 'resume' | null>(null);
   const [updateDoseOpen, setUpdateDoseOpen] = useState(false);
 
@@ -143,6 +146,9 @@ export default function MedicationDetailScreen() {
         break;
       case 'sideEffects':
         setSideEffectsOpen(true);
+        break;
+      case 'notes':
+        setNotesOpen(true);
         break;
       case 'updateDose':
         setUpdateDoseOpen(true);
@@ -267,6 +273,8 @@ export default function MedicationDetailScreen() {
           <Button label="Update Prescribed Dose" variant="secondary" className="flex-1" onPress={() => setUpdateDoseOpen(true)} />
           <Button label="Side Effects" variant="secondary" className="flex-1" onPress={() => setSideEffectsOpen(true)} />
         </View>
+
+        <Button label="Notes" variant="secondary" onPress={() => setNotesOpen(true)} />
       </View>
 
       {hasInventory && refillHistory.length > 0 ? (
@@ -317,6 +325,8 @@ export default function MedicationDetailScreen() {
 
       {sideEffectsOpen ? <SideEffectsSheet medication={medication} onClose={() => setSideEffectsOpen(false)} /> : null}
 
+      {notesOpen ? <NotesSheet medication={medication} onClose={() => setNotesOpen(false)} /> : null}
+
       {statusSheetDirection ? (
         <StatusChangeSheet
           direction={statusSheetDirection}
@@ -341,6 +351,206 @@ export default function MedicationDetailScreen() {
         />
       ) : null}
     </Screen>
+  );
+}
+
+function formatNoteDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Port of rx-tracker-web's NotesModal: the medication's instructions (read
+ * only) plus free-form notes the user can add, edit and delete.
+ */
+function NotesSheet({ medication, onClose }: { medication: Medication; onClose: () => void }) {
+  const [notes, setNotes] = useState<MedicationNote[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const instructions = medication.instructions?.trim();
+
+  const load = useCallback(async () => {
+    try {
+      setNotes(await getNotes(medication.id));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load notes");
+    }
+  }, [medication.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  async function run(action: () => Promise<void>, fallback: string) {
+    setFormError(null);
+    setBusy(true);
+    try {
+      await action();
+      await load();
+      return true;
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : fallback);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAdd() {
+    const text = draft.trim();
+    if (!text) return;
+    if (await run(() => addNote(medication.id, text), "Couldn't save this note")) {
+      setDraft('');
+      setShowAddForm(false);
+    }
+  }
+
+  async function handleSaveEdit(id: string) {
+    const text = editingText.trim();
+    if (!text) return;
+    if (await run(() => updateNote(id, text), "Couldn't save this note")) {
+      setEditingId(null);
+      setEditingText('');
+    }
+  }
+
+  function confirmDelete(entry: MedicationNote) {
+    confirmDestructive('Delete this note?', 'This note will be removed.', 'Delete', () => {
+      run(() => deleteNote(entry.id), "Couldn't delete this note");
+    });
+  }
+
+  return (
+    <FormSheet
+      title="Notes"
+      subtitle={`${medication.name}${medication.dose ? ` — ${medication.dose}` : ''}`}
+      onClose={onClose}
+      dismissible={!busy}
+      error={formError ?? loadError}
+      footer={<Button label="Done" variant="ghost" className="flex-1" onPress={onClose} disabled={busy} />}>
+      {instructions ? (
+        <View className="gap-1">
+          <Text muted className="text-sm">
+            Instructions (from medication record)
+          </Text>
+          <Text className="text-base">{instructions}</Text>
+        </View>
+      ) : null}
+
+      {notes === null && !loadError ? <ActivityIndicator /> : null}
+
+      {notes?.length === 0 && !instructions ? (
+        <Text muted className="text-sm">
+          No notes yet. Add one below.
+        </Text>
+      ) : null}
+
+      {notes?.map((entry) => (
+        <View key={entry.id} className="gap-2 rounded-card border border-brand-border p-3 dark:border-night-border">
+          {editingId === entry.id ? (
+            <>
+              <Input
+                className="min-h-24"
+                style={{ textAlignVertical: 'top' }}
+                value={editingText}
+                onChangeText={setEditingText}
+                maxLength={5000}
+                multiline
+              />
+              <View className="flex-row gap-2">
+                <Button
+                  label={busy ? 'Saving…' : 'Save'}
+                  size="compact"
+                  loading={busy}
+                  disabled={!editingText.trim()}
+                  onPress={() => handleSaveEdit(entry.id)}
+                />
+                <Button
+                  label="Cancel"
+                  size="compact"
+                  variant="ghost"
+                  disabled={busy}
+                  onPress={() => {
+                    setEditingId(null);
+                    setEditingText('');
+                  }}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <Text className="text-base">{entry.note}</Text>
+              <Text muted className="text-xs">
+                Added {formatNoteDate(entry.created_at)}
+                {entry.updated_at && entry.updated_at !== entry.created_at ? ` · Edited ${formatNoteDate(entry.updated_at)}` : ''}
+              </Text>
+              <View className="flex-row gap-4">
+                <Pressable
+                  className="min-h-11 justify-center"
+                  hitSlop={8}
+                  disabled={busy}
+                  onPress={() => {
+                    setEditingId(entry.id);
+                    setEditingText(entry.note);
+                  }}>
+                  <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Edit</Text>
+                </Pressable>
+                <Pressable className="min-h-11 justify-center" hitSlop={8} disabled={busy} onPress={() => confirmDelete(entry)}>
+                  <Text className="text-sm font-semibold text-status-danger dark:text-status-danger">Delete</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </View>
+      ))}
+
+      {showAddForm ? (
+        <View className="gap-2">
+          <Input
+            className="min-h-24"
+            style={{ textAlignVertical: 'top' }}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Enter note…"
+            maxLength={5000}
+            multiline
+          />
+          <View className="flex-row gap-2">
+            <Button
+              label={busy ? 'Saving…' : 'Save note'}
+              size="compact"
+              loading={busy}
+              disabled={!draft.trim()}
+              onPress={handleAdd}
+            />
+            <Button
+              label="Cancel"
+              size="compact"
+              variant="ghost"
+              disabled={busy}
+              onPress={() => {
+                setDraft('');
+                setShowAddForm(false);
+              }}
+            />
+          </View>
+        </View>
+      ) : (
+        <Pressable className="min-h-11 justify-center self-start" hitSlop={8} onPress={() => setShowAddForm(true)}>
+          <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">+ Add new note</Text>
+        </Pressable>
+      )}
+    </FormSheet>
   );
 }
 

@@ -299,12 +299,6 @@ function MedicationCard({
             {scheduleSummary(medication)}
           </Text>
 
-          {medication.instructions ? (
-            <Text muted className="mt-0.5 text-sm">
-              {medication.instructions}
-            </Text>
-          ) : null}
-
           {hasInventory ? (
             <View className="mt-2 gap-1">
               <View className="h-1.5 max-w-xs overflow-hidden rounded-full bg-brand-bg dark:bg-night-selected">
@@ -362,10 +356,14 @@ function MedicationActionsMenu({
             ]
           : []),
         { label: 'Update Prescribed Dose', action: 'updateDose' },
+        { label: 'Notes', action: 'notes' },
         { label: 'Side Effects', action: 'sideEffects' },
         { label: 'Discontinue Use', action: 'discontinue', destructive: true },
       ]
-    : [{ label: 'Reactivate', action: 'resume' }];
+    : [
+        { label: 'Notes', action: 'notes' },
+        { label: 'Reactivate', action: 'resume' },
+      ];
 
   return (
     <ActionSheet
