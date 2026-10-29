@@ -598,10 +598,49 @@ export function buildDayDetails(
         dose_unit: m.dose_unit,
       }));
 
-    if (isFuture) {
+    // Future dates plan every slot. Today plans only what's still
+    // unlogged — per medication, the earliest slots are treated as already
+    // covered by its logged doses (count-based, like the totals above) — so
+    // the detail lists the whole day's schedule and shrinks as doses land.
+    if (isFuture || date === todayDate) {
       const ungroupedPlanned: CalendarDayPlannedSlot[] = [];
       const byGroup = new Map<string, CalendarDayPlannedSlot[]>();
-      for (const slot of slots) {
+      const orderedSlots = [...slots].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+      // Slots already covered by a logged dose (today only). Logs are
+      // matched to a slot with the same time first; any log whose time no
+      // longer exists in the schedule (e.g. edited since) falls back to
+      // covering the earliest remaining slot, count-based as above.
+      const covered = new Set<(typeof orderedSlots)[number]>();
+      if (!isFuture) {
+        const loggedTimesByMed = new Map<string, string[]>();
+        for (const m of [...day.medications, ...day.groups.flatMap((g) => g.medications)]) {
+          loggedTimesByMed.set(m.medicationId, m.slots.map((s) => s.time));
+        }
+        for (const [medicationId, times] of loggedTimesByMed) {
+          const medSlots = orderedSlots.filter((s) => s.medicationId === medicationId);
+          let unmatched = 0;
+          for (const time of times) {
+            const match = medSlots.find((s) => !covered.has(s) && s.scheduledTime === time);
+            if (match) covered.add(match);
+            else unmatched++;
+          }
+          for (const s of medSlots) {
+            if (unmatched === 0) break;
+            if (!covered.has(s)) {
+              covered.add(s);
+              unmatched--;
+            }
+          }
+        }
+      }
+      // Group as-needed members with no log are already listed (with a
+      // Log dose action) via pendingAsNeeded.
+      const pendingGroupPrnIds = new Set(
+        isFuture ? [] : day.groups.flatMap((g) => g.pendingAsNeeded.map((p) => p.medicationId)),
+      );
+      for (const slot of orderedSlots) {
+        if (covered.has(slot)) continue;
+        if (slot.isPrn && pendingGroupPrnIds.has(slot.medicationId)) continue;
         const planned: CalendarDayPlannedSlot = {
           medicationId: slot.medicationId,
           name: slot.medicationName,
