@@ -27,7 +27,7 @@ export function FormSheet({
 }) {
   return (
     <Sheet onClose={onClose} dismissible={dismissible}>
-      <ScrollView keyboardShouldPersistTaps="handled" className="max-h-[520px]">
+      <ScrollView keyboardShouldPersistTaps="handled" className="max-h-[520px] shrink">
         <Text accessibilityRole="header" className="text-lg font-bold text-brand-navy dark:text-white">
           {title}
         </Text>
