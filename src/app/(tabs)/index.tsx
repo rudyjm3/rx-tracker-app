@@ -350,6 +350,16 @@ export default function DashboardScreen() {
   }
 
   async function takeSlots(pending: DaySlot[]) {
+    // Past the grace period the dose is being logged after the fact, so ask
+    // when it was actually taken (same flow as a late group Take All)
+    // instead of stamping it with the current time.
+    const now = Date.now();
+    if (pending.some((s) => now > slotDueTime(s, scheduleDate) + graceMinutes * 60_000)) {
+      const needsFeedback = pending.filter((s) => s.medication.feedback_type !== 'none');
+      setBatch({ date: scheduleDate, slots: pending, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
+      setFeedbackSlot(needsFeedback[0] ?? null);
+      return;
+    }
     // Slots needing feedback can't just loop through handleAction: each
     // call would set feedbackSlot synchronously and the next iteration's
     // call would overwrite it before the user ever sees the first sheet.
@@ -720,7 +730,10 @@ export default function DashboardScreen() {
       {batch?.timeStep && !feedbackSlot && (
         <TimeEntrySheet
           slotCount={batch.slots.length}
-          dueTime={events.find((e) => e.kind === 'group' && e.members.includes(batch.slots[0]))?.time ?? null}
+          dueTime={
+            events.find((e) => e.kind === 'group' && e.members.includes(batch.slots[0]))?.time ??
+            slotDueTime(batch.slots[0], batch.date)
+          }
           date={batch.date}
           onClose={() => setBatch(null)}
           onSubmit={handleBatchTimeSubmit}
