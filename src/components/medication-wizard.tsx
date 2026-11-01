@@ -381,27 +381,35 @@ export function MedicationWizard({
 
   // ── Drafts (create mode) ────────────────────────────────────────────
   const draftIdRef = useRef<string | undefined>(draft?.id);
-  const draftCreateRef = useRef<Promise<string> | null>(null);
   const finishedRef = useRef(false);
+  // Every draft write goes through this chain, so they run one at a time in
+  // call order: the first insert finishes (and yields the id) before any
+  // update, and an older snapshot can never overwrite a newer one.
+  const draftChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const [baseline] = useState(() => JSON.stringify(initial.form));
 
-  async function persistDraft(f: WizardFormState, s: number, furthest: number): Promise<void> {
-    if (mode !== 'create' || finishedRef.current) return;
-    if (!draftIdRef.current && draftCreateRef.current) draftIdRef.current = await draftCreateRef.current;
-    const existingId = draftIdRef.current;
-    const pending = saveDraft({
-      id: existingId,
-      formData: toDraftData(f),
-      currentStep: s,
-      furthestStep: Math.max(furthest, s),
-      profileId,
+  function persistDraft(f: WizardFormState, s: number, furthest: number): Promise<void> {
+    if (mode !== 'create') return Promise.resolve();
+    const run = draftChainRef.current.then(async () => {
+      if (finishedRef.current) return;
+      draftIdRef.current = await saveDraft({
+        id: draftIdRef.current,
+        formData: toDraftData(f),
+        currentStep: s,
+        furthestStep: Math.max(furthest, s),
+        profileId,
+      });
     });
-    if (!existingId) draftCreateRef.current = pending;
-    try {
-      draftIdRef.current = await pending;
-    } finally {
-      if (!existingId) draftCreateRef.current = null;
-    }
+    draftChainRef.current = run.catch(() => {});
+    return run;
+  }
+
+  // Stops further draft writes, waits for any in flight, then removes the
+  // draft — so a pending first insert can't land after the cleanup.
+  async function finishDraft(): Promise<void> {
+    finishedRef.current = true;
+    await draftChainRef.current;
+    if (draftIdRef.current) await deleteDraft(draftIdRef.current);
   }
 
   // Best-effort autosave: a transient failure isn't worth interrupting the
@@ -430,21 +438,27 @@ export function MedicationWizard({
     }
   }
 
-  function handleCancel() {
-    if (mode === 'create' && draftIdRef.current) {
-      confirmDestructive('Discard this medication?', 'Your saved draft will be deleted.', 'Discard', async () => {
-        finishedRef.current = true;
-        try {
-          if (draftIdRef.current) await deleteDraft(draftIdRef.current);
-        } catch {
-          // The draft is stale either way; leaving the screen is what matters.
-        }
-        onCancel();
-      });
+  async function handleCancel() {
+    if (mode !== 'create') {
+      finishedRef.current = true;
+      onCancel();
       return;
     }
-    finishedRef.current = true;
-    onCancel();
+    // Let a pending first save settle so we know whether a draft exists.
+    await draftChainRef.current;
+    if (!draftIdRef.current) {
+      finishedRef.current = true;
+      onCancel();
+      return;
+    }
+    confirmDestructive('Discard this medication?', 'Your saved draft will be deleted.', 'Discard', async () => {
+      try {
+        await finishDraft();
+      } catch {
+        // The draft is stale either way; leaving the screen is what matters.
+      }
+      onCancel();
+    });
   }
 
   // ── Form helpers ────────────────────────────────────────────────────
@@ -568,8 +582,6 @@ export function MedicationWizard({
       } else {
         savedId = (await createMedication(input, scheduleTimes)).id;
       }
-      finishedRef.current = true;
-
       // The medication itself is saved; a group-assignment failure is
       // reported without blocking (retrying would create a duplicate).
       let groupError: string | null = null;
@@ -581,12 +593,14 @@ export function MedicationWizard({
           groupError = e instanceof Error ? e.message : 'Unknown error';
         }
       }
-      if (mode === 'create' && draftIdRef.current) {
+      if (mode === 'create') {
         try {
-          await deleteDraft(draftIdRef.current);
+          await finishDraft();
         } catch {
           // A leftover draft is harmless — it can be discarded from the list.
         }
+      } else {
+        finishedRef.current = true;
       }
       resyncIfRemindersEnabled();
       if (groupError) {
