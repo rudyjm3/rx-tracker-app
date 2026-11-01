@@ -22,6 +22,8 @@ import { Screen } from '@/components/ui/screen';
 import { ScreenTitle } from '@/components/ui/screen-title';
 import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
+import { confirmDestructive } from '@/lib/confirm';
+import { deleteDraft, getDrafts, type ParsedDraft } from '@/lib/drafts';
 import {
   getActiveMedications,
   getGroupDoseOverridesByMedication,
@@ -61,6 +63,7 @@ export default function MedicationsScreen() {
   const [doseOverrides, setDoseOverrides] = useState<Map<string, GroupDoseOverride[]>>(new Map());
   const [groups, setGroups] = useState<MedicationGroup[]>([]);
   const [groupMembers, setGroupMembers] = useState<{ group_id: string; medication_id: string }[]>([]);
+  const [drafts, setDrafts] = useState<ParsedDraft<{ name?: string }>[]>([]);
   const [loading, setLoading] = useState(true);
   const { alerts: supplyAlerts, dismiss: dismissSupply, dismissError: supplyDismissError } = useLowSupplyAlerts(medications);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,15 +80,18 @@ export default function MedicationsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const [data, overrides, groupData, memberData] = await Promise.all([
+      const [data, overrides, groupData, memberData, draftData] = await Promise.all([
         activeTab === 'active'
           ? getActiveMedications(activeProfileId)
           : getInactiveMedications(activeProfileId),
         getGroupDoseOverridesByMedication(activeProfileId),
         getGroups(activeProfileId),
         getGroupMembers(),
+        // Drafts are a convenience — never let them fail the whole list.
+        getDrafts<{ name?: string }>(activeProfileId).catch(() => []),
       ]);
       if (requestIdRef.current !== requestId) return;
+      setDrafts(draftData);
       setMedications(data);
       setDoseOverrides(overrides);
       setGroups(groupData);
@@ -179,6 +185,45 @@ export default function MedicationsScreen() {
       ) : null}
 
       {loading ? null : <LowSupplyBanner alerts={supplyAlerts} onDismiss={dismissSupply} />}
+
+      {tab === 'active' && drafts.length > 0 ? (
+        <Card className="gap-2 p-4">
+          <Text className="text-sm font-semibold">Drafts in progress</Text>
+          {drafts.map((draft) => (
+            <View key={draft.id} className="flex-row items-center justify-between gap-2">
+              <View className="flex-1">
+                <Text className="text-sm" numberOfLines={1}>
+                  {draft.formData.name?.trim() || 'Untitled medication'}
+                </Text>
+                <Text muted className="text-xs">
+                  Updated {new Date(draft.updatedAt).toLocaleString()}
+                </Text>
+              </View>
+              <Button
+                label="Resume"
+                size="compact"
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/medications/new', params: { draftId: draft.id } })}
+              />
+              <Button
+                label="Discard"
+                size="compact"
+                variant="ghost"
+                onPress={() =>
+                  confirmDestructive('Discard this draft?', undefined, 'Discard', async () => {
+                    try {
+                      await deleteDraft(draft.id);
+                      setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Failed to discard draft');
+                    }
+                  })
+                }
+              />
+            </View>
+          ))}
+        </Card>
+      ) : null}
     </View>
   );
 
