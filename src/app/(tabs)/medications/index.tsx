@@ -397,6 +397,7 @@ function MedicationActionsMenu({
         ...(hasInventory
           ? [
               { label: 'Log Refill', action: 'refill' },
+              { label: 'Refill History', action: 'refillHistory' },
               { label: 'Adjust Quantity', action: 'adjust' },
             ]
           : []),

@@ -83,3 +83,26 @@ export async function adjustQuantity(
   });
   if (error) throw error;
 }
+
+// Edit / delete a logged refill. Both run as row-locked RPCs (see
+// rx-tracker-web's supabase/migrations/20261102000000_edit_delete_refill.sql)
+// that shift the medication's current_quantity by the change in amount.
+export async function updateRefill(
+  refillId: string,
+  amount: number,
+  refillDate: string,
+  note = "",
+): Promise<void> {
+  const { error } = await supabase.rpc("update_refill", {
+    p_refill_id: refillId,
+    p_amount: amount,
+    p_refill_date: refillDate,
+    p_note: note,
+  });
+  if (error) throw error;
+}
+
+export async function deleteRefill(refillId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_refill", { p_refill_id: refillId });
+  if (error) throw error;
+}
