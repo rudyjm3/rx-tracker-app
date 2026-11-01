@@ -22,7 +22,7 @@ import { TimeField } from '@/components/ui/time-field';
 import { cn } from '@/lib/cn';
 import { confirmDestructive } from '@/lib/confirm';
 import { getTodayLogs, recordDoseAtTime, type DoseFeedback } from '@/lib/dose-logs';
-import { adjustQuantity, getRefillHistory, logRefill } from '@/lib/inventory';
+import { adjustQuantity, deleteRefill, getRefillHistory, logRefill, updateRefill } from '@/lib/inventory';
 import {
   activateMedication,
   deactivateMedication,
@@ -104,6 +104,7 @@ export default function MedicationDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [refillSheetMode, setRefillSheetMode] = useState<'refill' | 'adjust' | null>(null);
+  const [editingRefill, setEditingRefill] = useState<MedicationRefill | null>(null);
   const [logDoseOpen, setLogDoseOpen] = useState(false);
   const [sideEffectsOpen, setSideEffectsOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -133,6 +134,9 @@ export default function MedicationDetailScreen() {
       case 'refill':
       case 'adjust':
         setRefillSheetMode(action);
+        break;
+      case 'refillHistory':
+        // History is already a section on this screen — nothing to open.
         break;
       case 'sideEffects':
         setSideEffectsOpen(true);
@@ -165,6 +169,23 @@ export default function MedicationDetailScreen() {
       setLoading(false);
     }
   }, [id]);
+
+  function handleDeleteRefill(entry: MedicationRefill) {
+    const unit = medication?.inventory_unit ?? '';
+    confirmDestructive(
+      'Delete refill?',
+      `Delete the ${entry.refill_date} refill of ${entry.amount} ${unit}? Your current count will go down by ${entry.amount} ${unit}.`,
+      'Delete',
+      async () => {
+        try {
+          await deleteRefill(entry.id);
+          await load();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to delete refill');
+        }
+      },
+    );
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -273,7 +294,13 @@ export default function MedicationDetailScreen() {
           <SectionTitle>Refill History</SectionTitle>
           <Card flat className="p-3">
             {refillHistory.map((entry) => (
-              <RefillHistoryRow key={entry.id} entry={entry} unit={medication.inventory_unit} />
+              <RefillHistoryRow
+                key={entry.id}
+                entry={entry}
+                unit={medication.inventory_unit}
+                onEdit={() => setEditingRefill(entry)}
+                onDelete={() => handleDeleteRefill(entry)}
+              />
             ))}
           </Card>
         </View>
@@ -288,6 +315,18 @@ export default function MedicationDetailScreen() {
             ))}
           </Card>
         </View>
+      ) : null}
+
+      {hasInventory && editingRefill ? (
+        <EditRefillSheet
+          refill={editingRefill}
+          medication={medication}
+          onClose={() => setEditingRefill(null)}
+          onSaved={async () => {
+            setEditingRefill(null);
+            await load();
+          }}
+        />
       ) : null}
 
       {hasInventory && refillSheetMode ? (
@@ -545,12 +584,34 @@ function NotesSheet({ medication, onClose }: { medication: Medication; onClose: 
   );
 }
 
-function RefillHistoryRow({ entry, unit }: { entry: MedicationRefill; unit: string }) {
+function RefillHistoryRow({
+  entry,
+  unit,
+  onEdit,
+  onDelete,
+}: {
+  entry: MedicationRefill;
+  unit: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const isAdjustment = entry.entry_type === 'adjustment';
   const sign = entry.amount >= 0 ? '+' : '';
   return (
     <View className="gap-0.5 border-b border-brand-border py-2 last:border-b-0 dark:border-night-border">
-      <Text className="text-sm font-semibold text-brand-navy dark:text-white">{entry.refill_date}</Text>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-sm font-semibold text-brand-navy dark:text-white">{entry.refill_date}</Text>
+        {!isAdjustment ? (
+          <View className="flex-row gap-4">
+            <Pressable className="min-h-11 justify-center" hitSlop={8} onPress={onEdit}>
+              <Text className="text-sm font-semibold text-brand-deep-blue dark:text-brand-cyan">Edit</Text>
+            </Pressable>
+            <Pressable className="min-h-11 justify-center" hitSlop={8} onPress={onDelete}>
+              <Text className="text-sm font-semibold text-status-danger">Delete</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
       <Text muted className="text-xs">
         {isAdjustment ? 'Adjustment' : 'Refill'} · {sign}
         {entry.amount} {unit} · {entry.pills_on_hand} on hand after
@@ -684,6 +745,72 @@ function RefillSheet({
           <Field label="Reason (optional)" value={note} onChangeText={setNote} placeholder="e.g. recount, dropped a pill" />
         </>
       )}
+    </FormSheet>
+  );
+}
+
+function EditRefillSheet({
+  refill,
+  medication,
+  onClose,
+  onSaved,
+}: {
+  refill: MedicationRefill;
+  medication: Medication;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [refillDate, setRefillDate] = useState(refill.refill_date);
+  const [amount, setAmount] = useState(String(refill.amount));
+  const [note, setNote] = useState(refill.note ?? '');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setFormError(null);
+    const amountValue = Number(amount);
+    if (!amount || !Number.isFinite(amountValue) || amountValue < 0) {
+      setFormError('Amount added must be zero or greater.');
+      return;
+    }
+    if (!DATE_RE.test(refillDate)) {
+      setFormError('Refill date must be YYYY-MM-DD.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateRefill(refill.id, amountValue, refillDate, note);
+      onSaved();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Failed to update refill');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormSheet
+      title="Edit Refill"
+      subtitle={`${medication.name}${medication.dose ? ` ${medication.dose}` : ''}`}
+      onClose={onClose}
+      error={formError}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" className="flex-1" onPress={onClose} disabled={saving} />
+          <Button label={saving ? 'Saving…' : 'Save'} className="flex-1" loading={saving} onPress={handleSubmit} />
+        </>
+      }>
+      <Field label="Refill date" value={refillDate} onChangeText={setRefillDate} placeholder="YYYY-MM-DD" />
+      <Field
+        label={`Amount added (${medication.inventory_unit})`}
+        keyboardType="numeric"
+        value={amount}
+        onChangeText={setAmount}
+      />
+      <Field label="Note (optional)" value={note} onChangeText={setNote} />
+      <Text muted className="text-xs">
+        Changing the amount also adjusts your current count by the difference.
+      </Text>
     </FormSheet>
   );
 }
