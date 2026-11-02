@@ -217,6 +217,7 @@ function addOverdueMissedSlots(
   dayLogs: CalendarLogRow[],
   medsForDate: Medication[],
   graceMinutes: number,
+  groupsById: Map<string, MedicationGroup>,
 ): void {
   const requiredMeds = medsForDate.filter((m) => !m.as_needed);
   if (requiredMeds.length === 0) return;
@@ -249,7 +250,26 @@ function addOverdueMissedSlots(
         missed: 0,
         slots: [],
       };
-      day.medications.push(summary);
+      // Place a brand-new summary in the group its overdue slots belong to
+      // (all of them must share one group, like logged doses) so a missed
+      // evening dose sits with its groupmates instead of standing alone.
+      const slotGroupIds = new Set(
+        requiredSlots
+          .filter((s) => s.medicationId === medicationId)
+          .map((s) => s.groupId ?? null),
+      );
+      const groupId = slotGroupIds.size === 1 ? [...slotGroupIds][0] : null;
+      const target = groupId && groupsById.has(groupId) ? groupId : null;
+      if (target) {
+        let group = day.groups.find((g) => g.groupId === target);
+        if (!group) {
+          group = { groupId: target, groupName: groupsById.get(target)!.name, medications: [], pendingAsNeeded: [] };
+          day.groups.push(group);
+        }
+        group.medications.push(summary);
+      } else {
+        day.medications.push(summary);
+      }
     }
     for (const s of overdue.slice(0, owed)) {
       const time = s.scheduledTime.slice(0, 5);
@@ -320,6 +340,28 @@ export function buildDayDetails(
   const logsByDate = new Map<string, CalendarLogRow[]>();
   for (const log of logs) {
     logsByDate.set(log.scheduled_for_date, [...(logsByDate.get(log.scheduled_for_date) ?? []), log]);
+  }
+
+  // Active as-needed members of a group with no log that day — they show as
+  // "Log dose" rows inside the group card.
+  function pendingAsNeededForDate(date: string, groupId: string, loggedIds: Set<string>): CalendarDayPendingMember[] {
+    return (memberIdsByGroup.get(groupId) ?? [])
+      .filter((id) => !loggedIds.has(id))
+      .map((id) => medsById.get(id))
+      .filter((m): m is NonNullable<typeof m> => !!m && m.as_needed && m.active)
+      .filter(
+        (m) =>
+          (!m.start_date || date >= m.start_date) &&
+          (!m.end_date || date <= m.end_date) &&
+          date >= m.created_at.slice(0, 10),
+      )
+      .map((m) => ({
+        medicationId: m.id,
+        name: m.name,
+        dose: m.dose,
+        dose_amount: m.dose_amount,
+        dose_unit: m.dose_unit,
+      }));
   }
 
   const result: Record<string, CalendarDayDetail> = {};
@@ -438,37 +480,17 @@ export function buildDayDetails(
       }
     }
 
-    function pendingAsNeededFor(groupId: string): CalendarDayPendingMember[] {
-      return (memberIdsByGroup.get(groupId) ?? [])
-        .filter((id) => !loggedMedicationIds.has(id))
-        .map((id) => medsById.get(id))
-        .filter((m): m is NonNullable<typeof m> => !!m && m.as_needed && m.active)
-        .filter(
-          (m) =>
-            (!m.start_date || date >= m.start_date) &&
-            (!m.end_date || date <= m.end_date) &&
-            date >= m.created_at.slice(0, 10),
-        )
-        .map((m) => ({
-          medicationId: m.id,
-          name: m.name,
-          dose: m.dose,
-          dose_amount: m.dose_amount,
-          dose_unit: m.dose_unit,
-        }));
-    }
-
     day.medications = ungrouped;
     day.groups = [...groupBuckets.entries()].map(([groupId, meds]) => ({
       groupId,
       groupName: groupsById.get(groupId)!.name,
       medications: meds,
-      pendingAsNeeded: pendingAsNeededFor(groupId),
+      pendingAsNeeded: pendingAsNeededForDate(date, groupId, loggedMedicationIds),
     }));
 
     for (const groupId of candidateGroupIds) {
       if (groupBuckets.has(groupId) || !groupsById.has(groupId)) continue;
-      const pendingAsNeeded = pendingAsNeededFor(groupId);
+      const pendingAsNeeded = pendingAsNeededForDate(date, groupId, loggedMedicationIds);
       if (pendingAsNeeded.length === 0) continue;
       day.groups.push({
         groupId,
@@ -531,7 +553,23 @@ export function buildDayDetails(
     const prnSlots = slots.filter((s) => s.isPrn);
 
     if (!isFuture) {
-      addOverdueMissedSlots(day, date, requiredSlots, logsByDate.get(date) ?? [], medsForDate, graceMinutes);
+      addOverdueMissedSlots(
+        day,
+        date,
+        requiredSlots,
+        logsByDate.get(date) ?? [],
+        medsForDate,
+        graceMinutes,
+        groupsById,
+      );
+      // Groups created from missed doses need their as-needed members too
+      // (e.g. an as-needed Melatonin in the evening group).
+      const loggedNow = new Set(
+        [...day.medications, ...day.groups.flatMap((g) => g.medications)].map((m) => m.medicationId),
+      );
+      for (const g of day.groups) {
+        if (g.pendingAsNeeded.length === 0) g.pendingAsNeeded = pendingAsNeededForDate(date, g.groupId, loggedNow);
+      }
     }
 
     // Both counts are actual logged totals for the date, topped up with

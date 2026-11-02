@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EditDoseLogSheet } from '@/components/edit-dose-log-sheet';
 import { EditGroupDoseSheet } from '@/components/edit-group-dose-sheet';
+import { LogGroupMissedSheet, type MissedGroupEntry } from '@/components/log-group-missed-sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -77,6 +78,7 @@ export default function CalendarScreen() {
   >([]);
   const [editingLog, setEditingLog] = useState<CalendarLogRow | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ name: string; logs: CalendarLogRow[] } | null>(null);
+  const [loggingMissed, setLoggingMissed] = useState<{ name: string; date: string; target: GroupMissedTarget } | null>(null);
 
   const bounds = useMemo(() => monthBounds(month), [month]);
   const today = localDateString();
@@ -272,7 +274,7 @@ export default function CalendarScreen() {
         </View>
       </Card>
 
-      {selectedDate && !editingLog && !editingGroup ? (
+      {selectedDate && !editingLog && !editingGroup && !loggingMissed ? (
         <Sheet handle onClose={() => setSelectedDate(null)}>
           <View className="mb-3 flex-row items-center justify-between gap-2">
             <Text className="flex-1 text-lg font-bold text-brand-navy dark:text-white">
@@ -296,6 +298,7 @@ export default function CalendarScreen() {
                 const groupLogs = logs.filter((l) => logIds.includes(l.id));
                 if (groupLogs.length > 0) setEditingGroup({ name, logs: groupLogs });
               }}
+              onLogGroupMissed={(name, date, target) => setLoggingMissed({ name, date, target })}
               onLogAsNeeded={(medicationId, date) => {
                 setSelectedDate(null);
                 router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
@@ -319,6 +322,23 @@ export default function CalendarScreen() {
           }}
           onDeleted={() => {
             setEditingLog(null);
+            load(month);
+          }}
+        />
+      ) : null}
+
+      {loggingMissed ? (
+        <LogGroupMissedSheet
+          groupName={loggingMissed.name}
+          date={loggingMissed.date}
+          displayTime={loggingMissed.target.displayTime}
+          entries={loggingMissed.target.entries}
+          medications={medications}
+          groups={groups}
+          groupMembers={groupMembers}
+          onClose={() => setLoggingMissed(null)}
+          onSaved={() => {
+            setLoggingMissed(null);
             load(month);
           }}
         />
@@ -350,11 +370,13 @@ function DayDetailContent({
   day,
   onEditSlot,
   onEditGroup,
+  onLogGroupMissed,
   onLogAsNeeded,
 }: {
   day: CalendarDayDetail | null;
   onEditSlot: (logId: string) => void;
   onEditGroup: (groupName: string, logIds: string[]) => void;
+  onLogGroupMissed: (groupName: string, date: string, target: GroupMissedTarget) => void;
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
   if (!day) {
@@ -453,7 +475,9 @@ function DayDetailContent({
               key={group.groupId}
               name={group.groupName}
               editTargets={groupEditTargets(group.medications)}
-              onEditAll={(logIds) => onEditGroup(group.groupName, logIds)}>
+              onEditAll={(logIds) => onEditGroup(group.groupName, logIds)}
+              logTargets={groupMissedTargets(group.medications)}
+              onLogAll={(target) => onLogGroupMissed(group.groupName, day.date, target)}>
               {group.medications.map((med) => (
                 <MedicationSummaryRow
                   key={med.medicationId}
@@ -540,11 +564,15 @@ function GroupBox({
   name,
   editTargets,
   onEditAll,
+  logTargets,
+  onLogAll,
   children,
 }: {
   name: string;
   editTargets?: GroupEditTarget[];
   onEditAll?: (logIds: string[]) => void;
+  logTargets?: GroupMissedTarget[];
+  onLogAll?: (target: GroupMissedTarget) => void;
   children: React.ReactNode;
 }) {
   const theme = useTheme();
@@ -555,9 +583,21 @@ function GroupBox({
           <Ionicons name="layers-outline" size={14} color={theme.accent} />
           <Text className="flex-shrink text-sm font-bold text-brand-navy dark:text-white">{name}</Text>
         </View>
-        {editTargets && onEditAll ? (
+        {(editTargets && onEditAll) || (logTargets && onLogAll) ? (
           <View className="items-end">
-            {editTargets.map((target) => (
+            {(logTargets ?? []).map((target) => (
+              <Pressable
+                key={`log-${target.time}`}
+                accessibilityRole="button"
+                className="min-h-11 justify-center"
+                hitSlop={6}
+                onPress={() => onLogAll?.(target)}>
+                <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
+                  {logTargets!.length > 1 ? `Log all · ${target.displayTime}` : 'Log all'}
+                </Text>
+              </Pressable>
+            ))}
+            {(editTargets ?? []).map((target) => (
               <Pressable
                 key={target.time}
                 accessibilityRole="button"
@@ -565,7 +605,7 @@ function GroupBox({
                 hitSlop={6}
                 onPress={() => onEditAll(target.logIds)}>
                 <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
-                  {editTargets.length > 1 ? `Edit all · ${target.displayTime}` : 'Edit all'}
+                  {editTargets!.length > 1 ? `Edit all · ${target.displayTime}` : 'Edit all'}
                 </Text>
               </Pressable>
             ))}
@@ -588,6 +628,23 @@ function groupEditTargets(medications: CalendarDayDetail['medications']): GroupE
       if (slot.logId.startsWith('unlogged-')) continue;
       const target = byTime.get(slot.time) ?? { time: slot.time, displayTime: slot.displayTime, logIds: [] };
       target.logIds.push(slot.logId);
+      byTime.set(slot.time, target);
+    }
+  }
+  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+}
+
+type GroupMissedTarget = { time: string; displayTime: string; entries: MissedGroupEntry[] };
+
+// One "Log all" target per distinct dose time among a group's unlogged
+// overdue ("Missed", no dose_logs row yet) slots.
+function groupMissedTargets(medications: CalendarDayDetail['medications']): GroupMissedTarget[] {
+  const byTime = new Map<string, GroupMissedTarget>();
+  for (const med of medications) {
+    for (const slot of med.slots) {
+      if (!slot.logId.startsWith('unlogged-')) continue;
+      const target = byTime.get(slot.time) ?? { time: slot.time, displayTime: slot.displayTime, entries: [] };
+      target.entries.push({ medicationId: med.medicationId, time: slot.time });
       byTime.set(slot.time, target);
     }
   }
