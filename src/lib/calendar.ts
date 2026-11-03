@@ -411,8 +411,9 @@ export function buildDayDetails(
     // supply runs out that many days after it begins, not after today.
     const baseDate = med.start_date && med.start_date > todayDate ? med.start_date : todayDate;
     const runoutDate = addDays(baseDate, daysLeft);
-    // The regimen finishes before the supply would run out.
-    if (med.end_date && med.end_date <= runoutDate) continue;
+    // The regimen finishes before the supply would run out. A run-out on the
+    // final day (end_date is inclusive) is still a shortage, so keep it.
+    if (med.end_date && med.end_date < runoutDate) continue;
     const quantity = med.current_quantity ?? 0;
     const kind = quantity <= 0 ? "out" : quantity <= med.low_supply_threshold ? "low" : "runs_out";
     const date = kind === "runs_out" ? runoutDate : todayDate;
