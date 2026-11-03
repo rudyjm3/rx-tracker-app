@@ -437,7 +437,9 @@ export function MedicationWizard({
     setFormError(null);
     try {
       await persistDraft(form, step, furthestStep);
-      setNotice('Draft saved.');
+      // Saved: stop autosaves and return to wherever the wizard was opened from.
+      finishedRef.current = true;
+      onCancel();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Couldn’t save draft');
     } finally {
