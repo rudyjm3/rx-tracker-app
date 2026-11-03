@@ -40,7 +40,8 @@ export function AlertsSheet({
                   {medication.dose ? ` — ${medication.dose}` : ''}
                 </Text>
                 <Text className="text-sm font-bold" style={{ color: SUPPLY_SEVERITY_COLORS[severity] }}>
-                  {SUPPLY_SEVERITY_LABELS[severity]} — {medication.current_quantity} {medication.inventory_unit} remaining
+                  {SUPPLY_SEVERITY_LABELS[severity]}
+                  {medication.current_quantity != null ? ` — ${medication.current_quantity} ${medication.inventory_unit} remaining` : ''}
                 </Text>
               </View>
               <Button

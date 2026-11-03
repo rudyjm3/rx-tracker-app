@@ -35,6 +35,10 @@ import type { Medication, MedicationGroup, MedicationGroupMember } from '@/lib/t
 import { formatDate, localDateString } from '@/lib/utils';
 
 const ENDS_FLAG_COLOR = '#F5A524';
+const RUNS_OUT_COLOR = '#F5A524';
+const OUT_OF_STOCK_COLOR = '#E5484D';
+// Run-out/refill within this many days is shown in red, like the web calendar.
+const SUPPLY_URGENT_DAYS = 7;
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -218,6 +222,8 @@ export default function CalendarScreen() {
                 const hasMarkerCounts = !!stats && (stats.taken > 0 || stats.skipped > 0 || stats.missed > 0);
                 const lateCount = stats?.late ?? 0;
                 const endingMedications = detail?.endingMedications ?? [];
+                const supplyAlerts = detail?.supplyAlerts ?? [];
+                const supplyUrgent = supplyAlerts.some((a) => a.kind === 'out' || a.daysLeft <= SUPPLY_URGENT_DAYS);
 
                 return (
                   <Pressable
@@ -254,6 +260,14 @@ export default function CalendarScreen() {
                             <Text className={cn('text-[10px] font-semibold', COUNT_TEXT.late)}>{lateCount}L</Text>
                           ) : null}
                         </View>
+                      ) : null}
+                      {supplyAlerts.length > 0 ? (
+                        <Ionicons
+                          name="medkit-outline"
+                          size={14}
+                          color={supplyUrgent ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR}
+                          accessibilityLabel={supplyUrgent ? 'Medication out of stock or running out soon' : 'Medication runs out or refill due'}
+                        />
                       ) : null}
                     </View>
                   </Pressable>
@@ -385,6 +399,38 @@ function DayDetailContent({
 
   const endingIds = new Set(day.endingMedications.map((m) => m.medicationId));
 
+  const supplyCallout =
+    day.supplyAlerts.length > 0 ? (
+      <View className="mb-2 gap-1">
+        {day.supplyAlerts.map((alert) => {
+          const out = alert.kind === 'out' || alert.daysLeft <= SUPPLY_URGENT_DAYS;
+          const lead =
+            alert.kind === 'out'
+              ? 'Out of stock: '
+              : alert.kind === 'low'
+                ? 'Low supply: '
+                : alert.kind === 'refill'
+                  ? 'Refill due: '
+                  : 'Runs out: ';
+          const label = alert.dose ? `${alert.name} ${alert.dose}` : alert.name;
+          return (
+            <View key={alert.medicationId} className="flex-row items-start gap-1.5">
+              <Ionicons name="medkit-outline" size={16} color={out ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR} />
+              <Text className="flex-1 text-sm">
+                <Text className={cn('text-sm font-bold', out ? 'text-status-danger dark:text-status-danger' : ENDING_TEXT)}>
+                  {lead}
+                </Text>
+                {label} ({alert.quantity} {alert.unit} left today{alert.kind === 'low' ? ` · est. run-out ${formatDate(alert.runoutDate)}` : ''})
+              </Text>
+            </View>
+          );
+        })}
+        {day.supplyAlerts.some((a) => a.kind !== 'refill') ? (
+          <Text muted className="text-xs">Run-out dates are estimates that assume your current schedule continues.</Text>
+        ) : null}
+      </View>
+    ) : null;
+
   const endingCallout = day.endingMedications.length > 0 && (
     <Text className={cn('mb-2 text-sm font-bold', ENDING_TEXT)}>
       Ends today:{' '}
@@ -427,6 +473,7 @@ function DayDetailContent({
     const totalPlanned = totalPlannedSlots;
     return (
       <View>
+        {supplyCallout}
         {endingCallout}
         {summaryLine}
         {totalPlanned === 0 ? (
@@ -464,6 +511,7 @@ function DayDetailContent({
 
   return (
     <View>
+      {supplyCallout}
       {endingCallout}
       {summaryLine}
       {totalMedications === 0 && day.groups.length === 0 && totalPlannedSlots === 0 && day.pendingUngroupedAsNeeded.length === 0 ? (

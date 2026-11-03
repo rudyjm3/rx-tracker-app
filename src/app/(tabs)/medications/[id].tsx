@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { MedicationWizard } from '@/components/medication-wizard';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,7 @@ import { TimeField } from '@/components/ui/time-field';
 import { cn } from '@/lib/cn';
 import { confirmDestructive } from '@/lib/confirm';
 import { getTodayLogs, recordDoseAtTime, type DoseFeedback } from '@/lib/dose-logs';
-import { adjustQuantity, deleteRefill, getRefillHistory, logRefill, updateRefill } from '@/lib/inventory';
+import { adjustQuantity, deleteRefill, getRefillHistory, logRefill, setNextRefillDate, updateRefill } from '@/lib/inventory';
 import {
   activateMedication,
   deactivateMedication,
@@ -63,6 +63,8 @@ import type {
 } from '@/lib/types/medications';
 import {
   daysUntilRunout,
+  formatDate,
+  suggestNextRefillDate,
   localDateString,
   scheduleSummary,
   to12h,
@@ -258,6 +260,10 @@ export default function MedicationDetailScreen() {
             }${(medication.current_quantity ?? 0) <= medication.low_supply_threshold ? ' · Low supply' : ''}`}
           />
         ) : null}
+
+        {hasInventory && medication.next_refill_date ? (
+          <DetailRow label="Next refill" value={formatDate(medication.next_refill_date)} />
+        ) : null}
       </Card>
 
       <View className="gap-2">
@@ -333,6 +339,7 @@ export default function MedicationDetailScreen() {
         <RefillSheet
           mode={refillSheetMode}
           medication={medication}
+          groupDoseOverrides={groupDoseOverrides}
           onClose={() => setRefillSheetMode(null)}
           onSaved={async () => {
             setRefillSheetMode(null);
@@ -647,14 +654,23 @@ function DoseHistoryRow({ entry }: { entry: DoseHistoryEntry }) {
   );
 }
 
+function isIsoDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return d.getFullYear() === Number(match[1]) && d.getMonth() === Number(match[2]) - 1 && d.getDate() === Number(match[3]);
+}
+
 function RefillSheet({
   mode,
   medication,
+  groupDoseOverrides,
   onClose,
   onSaved,
 }: {
   mode: 'refill' | 'adjust';
   medication: Medication;
+  groupDoseOverrides: GroupDoseOverride[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -664,8 +680,18 @@ function RefillSheet({
     medication.current_quantity != null ? String(medication.current_quantity) : '0',
   );
   const [note, setNote] = useState('');
+  const [nextRefill, setNextRefill] = useState(medication.next_refill_date ?? '');
+  // Once the user edits the next refill date themselves, stop overwriting it
+  // with a fresh suggestion as the amount / refill date change.
+  const [nextRefillTouched, setNextRefillTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  function suggest(amountText: string, dateText: string) {
+    const amountValue = Number(amountText);
+    if (nextRefillTouched || !amountText || !Number.isFinite(amountValue) || amountValue <= 0 || !isIsoDate(dateText)) return;
+    setNextRefill(suggestNextRefillDate(medication, amountValue, dateText, groupDoseOverrides));
+  }
 
   async function handleSubmit() {
     setFormError(null);
@@ -675,9 +701,24 @@ function RefillSheet({
         setFormError('Amount added must be zero or greater.');
         return;
       }
+      const nextDate = nextRefill.trim();
+      if (nextDate && !isIsoDate(nextDate)) {
+        setFormError('Next refill date must be a valid date (YYYY-MM-DD).');
+        return;
+      }
       setSaving(true);
       try {
         await logRefill(medication.id, amountValue, null, note, refillDate);
+        // The refill is committed at this point. If only the date update
+        // fails, don't surface an error that invites retrying "Log Refill"
+        // (which would add the refill a second time).
+        if ((nextDate || null) !== (medication.next_refill_date ?? null)) {
+          try {
+            await setNextRefillDate(medication.id, nextDate || null);
+          } catch {
+            Alert.alert('Refill logged', "The next refill date couldn't be saved. Set it from Edit.");
+          }
+        }
         onSaved();
       } catch (e) {
         setFormError(e instanceof Error ? e.message : 'Failed to log refill');
@@ -721,14 +762,37 @@ function RefillSheet({
       }>
       {mode === 'refill' ? (
         <>
-          <Field label="Refill date" value={refillDate} onChangeText={setRefillDate} placeholder="YYYY-MM-DD" />
+          <Field
+            label="Refill date"
+            value={refillDate}
+            onChangeText={(v) => {
+              setRefillDate(v);
+              suggest(amount, v);
+            }}
+            placeholder="YYYY-MM-DD"
+          />
           <Field
             label={`Amount added (${medication.inventory_unit})`}
             keyboardType="numeric"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(v) => {
+              setAmount(v);
+              suggest(v, refillDate);
+            }}
             placeholder="e.g. 30"
           />
+          <Field
+            label="Next refill date (optional)"
+            value={nextRefill}
+            onChangeText={(v) => {
+              setNextRefillTouched(true);
+              setNextRefill(v);
+            }}
+            placeholder="YYYY-MM-DD"
+          />
+          <Text muted className="text-xs">
+            Suggested from how long your supply lasts on the current schedule. Edit or clear it as needed.
+          </Text>
           <Field label="Note (optional)" value={note} onChangeText={setNote} placeholder="e.g. 30-day supply" />
         </>
       ) : (

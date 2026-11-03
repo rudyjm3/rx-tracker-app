@@ -60,6 +60,7 @@ interface WizardFormState {
   inventoryEnabled: boolean;
   startingQuantity: string;
   lowSupplyThreshold: string;
+  nextRefillDate: string; // MM-DD-YYYY
   quantityPerDose: string;
   feedbackType: FeedbackType;
   dashboardEnabled: boolean;
@@ -86,6 +87,7 @@ const initialState: WizardFormState = {
   inventoryEnabled: false,
   startingQuantity: '',
   lowSupplyThreshold: '5',
+  nextRefillDate: '',
   quantityPerDose: '1',
   feedbackType: 'none',
   dashboardEnabled: true,
@@ -118,6 +120,7 @@ function stateFromMedication(med: Medication): WizardFormState {
     inventoryEnabled: med.inventory_enabled,
     startingQuantity: med.starting_quantity != null ? String(med.starting_quantity) : '',
     lowSupplyThreshold: String(med.low_supply_threshold),
+    nextRefillDate: isoToUsDate(med.next_refill_date),
     quantityPerDose: String(med.quantity_per_dose),
     feedbackType: med.feedback_type,
     dashboardEnabled: med.dashboard_enabled,
@@ -151,6 +154,7 @@ export type DraftFormData = Partial<{
   startingQuantity: string;
   quantityPerDose: string;
   lowSupplyThreshold: string;
+  nextRefillDate: string;
   feedbackType: FeedbackType;
   dashboardEnabled: boolean;
   remindersEnabled: boolean;
@@ -184,6 +188,7 @@ function toDraftData(f: WizardFormState): DraftFormData {
     startingQuantity: f.startingQuantity,
     quantityPerDose: f.quantityPerDose,
     lowSupplyThreshold: f.lowSupplyThreshold,
+    nextRefillDate: usDateToIso(f.nextRefillDate) ?? '',
     feedbackType: f.feedbackType,
     dashboardEnabled: f.dashboardEnabled,
     remindersEnabled: f.remindersEnabled,
@@ -215,6 +220,7 @@ function fromDraftData(d: DraftFormData): WizardFormState {
     inventoryEnabled: d.inventoryEnabled ?? i.inventoryEnabled,
     startingQuantity: d.startingQuantity ?? '',
     lowSupplyThreshold: d.lowSupplyThreshold ?? i.lowSupplyThreshold,
+    nextRefillDate: isoToUsDate(d.nextRefillDate),
     quantityPerDose: d.quantityPerDose ?? i.quantityPerDose,
     feedbackType: d.feedbackType ?? i.feedbackType,
     dashboardEnabled: d.dashboardEnabled ?? i.dashboardEnabled,
@@ -280,6 +286,7 @@ function validateStep(step: number, form: WizardFormState, ctx: ValidationContex
       }
       const threshold = Number(form.lowSupplyThreshold || '0');
       if (!Number.isFinite(threshold) || threshold < 0) return 'Low supply threshold must be zero or greater.';
+      if (form.nextRefillDate && !usDateToIso(form.nextRefillDate)) return 'Next refill date must be a valid date in MM-DD-YYYY format.';
     }
     return null;
   }
@@ -558,6 +565,7 @@ export function MedicationWizard({
       starting_quantity: form.inventoryEnabled && form.startingQuantity ? Number(form.startingQuantity) : null,
       quantity_per_dose: Number(form.quantityPerDose),
       low_supply_threshold: form.lowSupplyThreshold ? Number(form.lowSupplyThreshold) : 0,
+      next_refill_date: form.inventoryEnabled && form.nextRefillDate ? usDateToIso(form.nextRefillDate) : null,
       feedback_type: form.feedbackType,
       dashboard_enabled: form.dashboardEnabled,
       reminders_enabled: form.remindersEnabled,
@@ -737,6 +745,17 @@ export function MedicationWizard({
                   />
                 </View>
               </View>
+              <Field
+                label="Next refill date (optional, MM-DD-YYYY)"
+                value={form.nextRefillDate}
+                onChangeText={(v) => update('nextRefillDate', maskBirthDateInput(v))}
+                placeholder="MM-DD-YYYY"
+                keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+              />
+              <Text muted className="text-xs">
+                Marked on the calendar. Leave the low supply threshold at 0 and this date is used for the refill
+                alert instead of the pill count — set a threshold to be reminded before it.
+              </Text>
               {startingQuantityLocked ? (
                 <Text muted className="text-xs">
                   Current balance is tracked separately by doses/refills — starting quantity can&apos;t be edited once tracking is on.
