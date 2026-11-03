@@ -166,7 +166,8 @@ export interface CalendarDaySupplyAlert {
   dose: string | null;
   dose_amount: number | null;
   dose_unit: string | null;
-  // "out" = already at 0 (shown on today); "runs_out" = projected run-out date.
+  // "out" = nothing on hand (shown on today); "runs_out" = projected run-out
+  // date, which can also be today when less than a day's supply remains.
   kind: "out" | "runs_out";
   quantity: number; // units on hand as of today
   unit: string;
@@ -401,7 +402,7 @@ export function buildDayDetails(
       dose: med.dose,
       dose_amount: med.dose_amount,
       dose_unit: med.dose_unit,
-      kind: daysLeft === 0 ? "out" : "runs_out",
+      kind: (med.current_quantity ?? 0) <= 0 ? "out" : "runs_out",
       quantity: med.current_quantity ?? 0,
       unit: med.inventory_unit,
     });
