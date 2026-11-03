@@ -10,7 +10,7 @@
 // app's fuller wasActiveOnDate/historicallyActiveMedications replay here).
 import type { CalendarLogRow } from "@/lib/dose-logs";
 import { generateDaySlots, slotDueTime, type DaySlot } from "@/lib/schedule";
-import { formatLate, localDateString, minutesLate, to12h } from "@/lib/utils";
+import { daysUntilRunout, formatLate, localDateString, minutesLate, to12h, type GroupDoseOverride } from "@/lib/utils";
 import type {
   DoseLogStatus,
   Medication,
@@ -160,6 +160,18 @@ export interface CalendarDayEndingMedication {
   dose_unit: string | null;
 }
 
+export interface CalendarDaySupplyAlert {
+  medicationId: string;
+  name: string;
+  dose: string | null;
+  dose_amount: number | null;
+  dose_unit: string | null;
+  // "out" = already at 0 (shown on today); "runs_out" = projected run-out date.
+  kind: "out" | "runs_out";
+  quantity: number; // units on hand as of today
+  unit: string;
+}
+
 export interface CalendarDayPendingMember {
   medicationId: string;
   name: string;
@@ -187,6 +199,9 @@ export interface CalendarDayDetail {
   // Medications whose end_date falls on this date (natural end-date
   // rollover only — never a separate inactive/discontinued flag).
   endingMedications: CalendarDayEndingMedication[];
+  // Medications with inventory tracking that are out of stock (today) or
+  // projected to run out on this date, assuming the current schedule holds.
+  supplyAlerts: CalendarDaySupplyAlert[];
   medications: CalendarDayMedicationSummary[]; // medications with no single shared group that day
   groups: CalendarDayGroupSummary[]; // medications sharing a group that day, nested under it
   // Eligible ungrouped as_needed medications for this date (past/today
@@ -364,6 +379,35 @@ export function buildDayDetails(
       }));
   }
 
+  // Run-out projection: today + whole days of supply left. Already-empty
+  // medications are flagged on today. Group-level dose overrides feed the
+  // same projection the medication screens use.
+  const supplyAlertsByDate = new Map<string, CalendarDaySupplyAlert[]>();
+  for (const med of medications) {
+    if (!med.active || !med.inventory_enabled || med.starting_quantity == null) continue;
+    const overrides: GroupDoseOverride[] = activeGroupMembers
+      .filter((m) => m.medication_id === med.id)
+      .map((m) => ({
+        scheduled_time: groupsById.get(m.group_id)!.scheduled_time,
+        quantity_per_dose: m.quantity_per_dose,
+      }));
+    const daysLeft = daysUntilRunout(med, overrides);
+    if (daysLeft === null) continue;
+    const date = addDays(todayDate, daysLeft);
+    const list = supplyAlertsByDate.get(date) ?? [];
+    list.push({
+      medicationId: med.id,
+      name: med.name,
+      dose: med.dose,
+      dose_amount: med.dose_amount,
+      dose_unit: med.dose_unit,
+      kind: daysLeft === 0 ? "out" : "runs_out",
+      quantity: med.current_quantity ?? 0,
+      unit: med.inventory_unit,
+    });
+    supplyAlertsByDate.set(date, list);
+  }
+
   const result: Record<string, CalendarDayDetail> = {};
   const groupIdsByDateAndMedication = new Map<string, Map<string, Set<string | null>>>();
 
@@ -377,6 +421,7 @@ export function buildDayDetails(
       plannedRequired: 0,
       plannedNonRequired: 0,
       endingMedications: [],
+      supplyAlerts: [],
       medications: [],
       groups: [],
       pendingUngroupedAsNeeded: [],
@@ -625,6 +670,8 @@ export function buildDayDetails(
     };
     day.plannedRequired = loggedRequired + unloggedCountFor(requiredSlots);
     day.plannedNonRequired = loggedNonRequired + unloggedCountFor(prnSlots);
+
+    day.supplyAlerts = supplyAlertsByDate.get(date) ?? [];
 
     day.endingMedications = medications
       .filter((m) => m.end_date === date)
