@@ -654,7 +654,7 @@ function GroupBox({
                 accessibilityRole="button"
                 className="min-h-11 justify-center"
                 hitSlop={6}
-                onPress={() => onEditAll(target.logIds)}>
+                onPress={() => onEditAll?.(target.logIds)}>
                 <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
                   {editTargets!.length > 1 ? `Edit all · ${target.displayTime}` : 'Edit all'}
                 </Text>
