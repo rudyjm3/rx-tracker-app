@@ -420,7 +420,10 @@ function DayDetailContent({
                 <Text className={cn('text-sm font-bold', out ? 'text-status-danger dark:text-status-danger' : ENDING_TEXT)}>
                   {lead}
                 </Text>
-                {label} ({alert.quantity} {alert.unit} left today{alert.kind === 'low' ? ` · est. run-out ${formatDate(alert.runoutDate)}` : ''})
+                {label}{' '}
+                {alert.quantity != null
+                  ? `(${alert.quantity} ${alert.unit} left today${alert.kind === 'low' ? ` · est. run-out ${formatDate(alert.runoutDate)}` : ''})`
+                  : `(refill date ${formatDate(alert.runoutDate)})`}
               </Text>
             </View>
           );
