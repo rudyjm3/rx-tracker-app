@@ -40,6 +40,8 @@ export interface MedicationInput {
   starting_quantity?: number | null;
   quantity_per_dose: number;
   low_supply_threshold: number;
+  // Omit to leave the stored value untouched on update; null clears it.
+  next_refill_date?: string | null;
   feedback_type: FeedbackType;
   dashboard_enabled: boolean;
   reminders_enabled: boolean;
@@ -146,6 +148,7 @@ export async function createMedication(
         starting_quantity: input.starting_quantity ?? null,
         quantity_per_dose: input.quantity_per_dose,
         low_supply_threshold: input.low_supply_threshold,
+        next_refill_date: input.next_refill_date ?? null,
         feedback_type: input.feedback_type,
         start_date: input.start_date ?? null,
         end_date: input.end_date ?? null,
@@ -200,6 +203,7 @@ export async function updateMedication(
       starting_quantity: input.starting_quantity ?? null,
       quantity_per_dose: input.quantity_per_dose,
       low_supply_threshold: input.low_supply_threshold,
+      ...(input.next_refill_date !== undefined && { next_refill_date: input.next_refill_date }),
       feedback_type: input.feedback_type,
       start_date: input.start_date ?? null,
       end_date: input.end_date ?? null,

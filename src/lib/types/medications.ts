@@ -40,6 +40,9 @@ export interface Medication {
   current_quantity: number | null;
   quantity_per_dose: number;
   low_supply_threshold: number;
+  // Optional YYYY-MM-DD. Marked on the calendar; drives the low-supply alert
+  // when low_supply_threshold is 0.
+  next_refill_date: string | null;
   track_dose_feedback: boolean;
   feedback_type: FeedbackType;
   start_date: string | null;

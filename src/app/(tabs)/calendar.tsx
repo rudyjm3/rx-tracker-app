@@ -264,7 +264,7 @@ export default function CalendarScreen() {
                           name="medkit-outline"
                           size={14}
                           color={hasOutOfStock ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR}
-                          accessibilityLabel={hasOutOfStock ? 'Medication out of stock' : 'Medication runs out'}
+                          accessibilityLabel={hasOutOfStock ? 'Medication out of stock' : 'Medication runs out or refill due'}
                         />
                       ) : null}
                     </View>
@@ -402,20 +402,23 @@ function DayDetailContent({
       <View className="mb-2 gap-1">
         {day.supplyAlerts.map((alert) => {
           const out = alert.kind === 'out';
+          const lead = out ? 'Out of stock: ' : alert.kind === 'refill' ? 'Refill due: ' : 'Runs out: ';
           const label = alert.dose ? `${alert.name} ${alert.dose}` : alert.name;
           return (
             <View key={alert.medicationId} className="flex-row items-start gap-1.5">
               <Ionicons name="medkit-outline" size={16} color={out ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR} />
               <Text className="flex-1 text-sm">
                 <Text className={cn('text-sm font-bold', out ? 'text-status-danger dark:text-status-danger' : ENDING_TEXT)}>
-                  {out ? 'Out of stock: ' : 'Runs out: '}
+                  {lead}
                 </Text>
                 {label} ({alert.quantity} {alert.unit} left today)
               </Text>
             </View>
           );
         })}
-        <Text muted className="text-xs">Run-out dates are estimates that assume your current schedule continues.</Text>
+        {day.supplyAlerts.some((a) => a.kind !== 'refill') ? (
+          <Text muted className="text-xs">Run-out dates are estimates that assume your current schedule continues.</Text>
+        ) : null}
       </View>
     ) : null;
 

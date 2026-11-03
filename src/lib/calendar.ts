@@ -167,8 +167,9 @@ export interface CalendarDaySupplyAlert {
   dose_amount: number | null;
   dose_unit: string | null;
   // "out" = nothing on hand (shown on today); "runs_out" = projected run-out
-  // date, which can also be today when less than a day's supply remains.
-  kind: "out" | "runs_out";
+  // date, which can also be today when less than a day's supply remains;
+  // "refill" = the medication's entered next refill date.
+  kind: "out" | "runs_out" | "refill";
   quantity: number; // units on hand as of today
   unit: string;
 }
@@ -407,6 +408,25 @@ export function buildDayDetails(
       unit: med.inventory_unit,
     });
     supplyAlertsByDate.set(date, list);
+  }
+
+  // The entered next refill date is marked on its own day, unless that
+  // medication is already flagged there by its run-out projection.
+  for (const med of medications) {
+    if (!med.active || !med.inventory_enabled || !med.next_refill_date) continue;
+    const list = supplyAlertsByDate.get(med.next_refill_date) ?? [];
+    if (list.some((a) => a.medicationId === med.id)) continue;
+    list.push({
+      medicationId: med.id,
+      name: med.name,
+      dose: med.dose,
+      dose_amount: med.dose_amount,
+      dose_unit: med.dose_unit,
+      kind: "refill",
+      quantity: med.current_quantity ?? 0,
+      unit: med.inventory_unit,
+    });
+    supplyAlertsByDate.set(med.next_refill_date, list);
   }
 
   const result: Record<string, CalendarDayDetail> = {};
