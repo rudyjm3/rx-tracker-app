@@ -8,7 +8,6 @@ import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
 import { SwitchRow } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/field';
-import { LimitedNoteField } from '@/components/ui/limited-note-field';
 import { LevelGrid } from '@/components/ui/level-grid';
 import { PillTab, PillTabs } from '@/components/ui/pill-tabs';
 import { Screen } from '@/components/ui/screen';
@@ -324,12 +323,17 @@ export default function PainMoodScreen() {
           </>
         ) : null}
 
-        <LimitedNoteField
-            label={<FieldLabel>Note (optional)</FieldLabel>}
+        <View className="gap-1">
+          <FieldLabel>Note (optional)</FieldLabel>
+          <Input
+            className="min-h-20 py-2"
+            style={{ textAlignVertical: 'top' }}
             value={note}
             onChangeText={setNote}
             placeholder="How are you feeling?"
+            multiline
           />
+        </View>
 
         <Button
           label={saving ? 'Saving…' : 'Save entry'}
@@ -671,12 +675,17 @@ function EditEntrySheet({
             </>
           ) : null}
 
-          <LimitedNoteField
-            label={<FieldLabel>Note (optional)</FieldLabel>}
+          <View className="gap-1">
+          <FieldLabel>Note (optional)</FieldLabel>
+          <Input
+            className="min-h-20 py-2"
+            style={{ textAlignVertical: 'top' }}
             value={note}
             onChangeText={setNote}
             placeholder="How are you feeling?"
+            multiline
           />
+        </View>
         </View>
 
         <View className="mt-4 flex-row gap-2">
