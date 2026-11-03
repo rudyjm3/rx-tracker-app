@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { Field } from './field';
+import { Input } from './field';
 import { Text } from './text';
 
 const BASE_LIMIT = 255;
@@ -14,23 +14,28 @@ export function LimitedNoteField({
   label,
   value,
   onChangeText,
+  placeholder,
 }: {
-  label: string;
+  /** A string renders as the standard field label; pass a node for a custom one. */
+  label: ReactNode;
   value: string;
   onChangeText: (v: string) => void;
+  placeholder?: string;
 }) {
-  const [extended, setExtended] = useState(false);
-  const limit = extended ? BASE_LIMIT + EXTRA : BASE_LIMIT;
+  // A note saved before limits existed may already be past the base limit.
+  const [extended, setExtended] = useState(value.length > BASE_LIMIT);
+  const limit = extended ? Math.max(BASE_LIMIT + EXTRA, value.length) : BASE_LIMIT;
   const atLimit = value.length >= limit;
 
   return (
     <View className="gap-1">
-      <Field
-        label={label}
-        className="min-h-20"
+      {typeof label === 'string' ? <Text className="text-sm">{label}</Text> : label}
+      <Input
+        className="min-h-20 py-2"
         style={{ textAlignVertical: 'top' }}
         value={value}
         onChangeText={onChangeText}
+        placeholder={placeholder}
         multiline
         maxLength={limit}
       />
