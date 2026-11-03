@@ -175,7 +175,7 @@ export interface CalendarDaySupplyAlert {
   // shown on today); "runs_out" = projected run-out date; "refill" = the
   // medication's entered next refill date. Mirrors rx-tracker-web.
   kind: "out" | "low" | "runs_out" | "refill";
-  quantity: number; // units on hand as of today
+  quantity: number | null; // units on hand as of today; null = unknown (refill entries only)
   unit: string;
   runoutDate: string; // projected run-out (or the refill date), YYYY-MM-DD
   daysLeft: number; // whole days from today to runoutDate
@@ -393,7 +393,8 @@ export function buildDayDetails(
   // same projection the medication screens use.
   const supplyAlertsByDate = new Map<string, CalendarDaySupplyAlert[]>();
   for (const med of medications) {
-    if (!med.active || med.as_needed || !med.inventory_enabled || med.starting_quantity == null) continue;
+    // An unknown count (null) can't be projected — it isn't the same as zero stock.
+    if (!med.active || med.as_needed || !med.inventory_enabled || med.starting_quantity == null || med.current_quantity == null) continue;
     const hasSchedule =
       med.schedule_mode === "fixed_times"
         ? (med.medication_schedule_times ?? []).length > 0
@@ -414,7 +415,7 @@ export function buildDayDetails(
     // The regimen finishes before the supply would run out. A run-out on the
     // final day (end_date is inclusive) is still a shortage, so keep it.
     if (med.end_date && med.end_date < runoutDate) continue;
-    const quantity = med.current_quantity ?? 0;
+    const quantity = med.current_quantity;
     const kind = quantity <= 0 ? "out" : quantity <= med.low_supply_threshold ? "low" : "runs_out";
     const date = kind === "runs_out" ? runoutDate : todayDate;
     const list = supplyAlertsByDate.get(date) ?? [];
@@ -447,7 +448,7 @@ export function buildDayDetails(
       dose_amount: med.dose_amount,
       dose_unit: med.dose_unit,
       kind: "refill",
-      quantity: med.current_quantity ?? 0,
+      quantity: med.current_quantity,
       unit: med.inventory_unit,
       runoutDate: med.next_refill_date,
       daysLeft: daysBetween(todayDate, med.next_refill_date),
