@@ -10,9 +10,9 @@ import {
   type GroupMemberRow,
 } from '@/components/edit-dose-log-sheet';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
 import { FormSheet } from '@/components/ui/form-sheet';
 import { PillTabs } from '@/components/ui/pill-tabs';
+import { LimitedNoteField } from '@/components/ui/limited-note-field';
 import { Text } from '@/components/ui/text';
 import { TimeField } from '@/components/ui/time-field';
 import { editDoseLogsBatch, type CalendarLogRow } from '@/lib/dose-logs';
@@ -111,15 +111,7 @@ export function EditGroupDoseSheet({
       {status === 'taken' ? (
         <>
           <TimeField label="Time taken" value={time} onChange={setTime} />
-          <Field
-            label="Notes (optional, applies to all)"
-            className="min-h-20"
-            style={{ textAlignVertical: 'top' }}
-            value={note}
-            onChangeText={setNote}
-            multiline
-            maxLength={255}
-          />
+          <LimitedNoteField label="Notes (optional, applies to all)" value={note} onChangeText={setNote} />
         </>
       ) : null}
     </FormSheet>

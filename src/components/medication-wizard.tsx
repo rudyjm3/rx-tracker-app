@@ -16,6 +16,7 @@ import { WizardStepper } from '@/components/ui/wizard-stepper';
 import { useActiveProfile } from '@/lib/active-profile';
 import { confirmDestructive } from '@/lib/confirm';
 import type { DrugSuggestion } from '@/lib/dailymed';
+import { showFlash } from '@/lib/flash';
 import { deleteDraft, saveDraft, type ParsedDraft } from '@/lib/drafts';
 import { DOSE_FORM_OPTIONS, DOSE_UNIT_OPTIONS, hasInventoryWording, inventoryWordingForForm } from '@/lib/dose-forms';
 import {
@@ -437,7 +438,10 @@ export function MedicationWizard({
     setFormError(null);
     try {
       await persistDraft(form, step, furthestStep);
-      setNotice('Draft saved.');
+      // Saved: stop autosaves and return to wherever the wizard was opened from.
+      finishedRef.current = true;
+      showFlash('Draft saved.');
+      onCancel();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Couldn’t save draft');
     } finally {

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
 import { FormSheet } from '@/components/ui/form-sheet';
 import { LevelGrid } from '@/components/ui/level-grid';
 import { PillTabs } from '@/components/ui/pill-tabs';
+import { LimitedNoteField } from '@/components/ui/limited-note-field';
 import { Text } from '@/components/ui/text';
 import { TimeField } from '@/components/ui/time-field';
 import { deleteDoseLog, editDoseLog, type CalendarLogRow } from '@/lib/dose-logs';
@@ -200,15 +200,7 @@ export function EditDoseLogSheet({
           {trackPain ? <LevelBlock label="Pain level" metric="pain" value={painLevel} onChange={setPainLevel} /> : null}
           {trackMood ? <LevelBlock label="Mood level" metric="mood" value={moodLevel} onChange={setMoodLevel} /> : null}
 
-          <Field
-            label="Notes (optional)"
-            className="min-h-20"
-            style={{ textAlignVertical: 'top' }}
-            value={note}
-            onChangeText={setNote}
-            multiline
-            maxLength={255}
-          />
+          <LimitedNoteField label="Notes (optional)" value={note} onChangeText={setNote} />
         </>
       ) : null}
 
