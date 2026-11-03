@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
