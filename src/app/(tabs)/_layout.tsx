@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ColorValue } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
+import { FlashMessage } from '@/components/flash-message';
 import { MoreSheet } from '@/components/more-sheet';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/lib/supabase/AuthProvider';
@@ -69,6 +70,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="help" options={{ href: null }} />
         <Tabs.Screen name="family" options={{ href: null }} />
       </Tabs>
+      <FlashMessage />
       {moreOpen && <MoreSheet onClose={() => setMoreOpen(false)} />}
     </>
   );
