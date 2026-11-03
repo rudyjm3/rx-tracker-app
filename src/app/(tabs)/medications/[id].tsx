@@ -225,8 +225,12 @@ export default function MedicationDetailScreen() {
     );
   }
 
-  const hasInventory = medication.inventory_enabled && medication.starting_quantity != null;
-  const daysLeft = hasInventory ? daysUntilRunout(medication, groupDoseOverrides) : null;
+  // Tracking can be on with no starting quantity entered (the count is then
+  // unknown); refill actions must still be reachable so a refill-date alert
+  // has somewhere to go. Projections need a known count.
+  const hasInventory = medication.inventory_enabled;
+  const hasCount = medication.current_quantity != null;
+  const daysLeft = hasInventory && hasCount ? daysUntilRunout(medication, groupDoseOverrides) : null;
 
   // Stack screen with its own header: bottom inset only.
   return (
@@ -255,9 +259,13 @@ export default function MedicationDetailScreen() {
         {hasInventory ? (
           <DetailRow
             label="Inventory"
-            value={`${medication.current_quantity ?? 0} of ${medication.starting_quantity} ${medication.inventory_unit} left${
-              daysLeft != null ? ` · ~${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left` : ''
-            }${(medication.current_quantity ?? 0) <= medication.low_supply_threshold ? ' · Low supply' : ''}`}
+            value={
+              hasCount
+                ? `${medication.current_quantity} ${medication.starting_quantity != null ? `of ${medication.starting_quantity} ` : ''}${medication.inventory_unit} left${
+                    daysLeft != null ? ` · ~${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left` : ''
+                  }${(medication.current_quantity ?? 0) <= medication.low_supply_threshold ? ' · Low supply' : ''}`
+                : 'Stock count not set — log a refill or adjust the quantity'
+            }
           />
         ) : null}
 
