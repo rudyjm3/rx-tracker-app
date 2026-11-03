@@ -11,6 +11,7 @@ import { Screen } from '@/components/ui/screen';
 import { PanelTitle } from '@/components/ui/screen-title';
 import { Sheet } from '@/components/ui/sheet';
 import { Text } from '@/components/ui/text';
+import { useActiveProfile } from '@/lib/active-profile';
 import { getProfileAllergies } from '@/lib/allergies';
 import { getActiveMedications } from '@/lib/medications';
 import { useAuth } from '@/lib/supabase/AuthProvider';
@@ -21,6 +22,7 @@ import { formatMemberSince, isoToUsDate } from '@/lib/utils';
 
 export default function MyProfileScreen() {
   const { session } = useAuth();
+  const { setActiveProfileId } = useActiveProfile();
   const user = session?.user;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [meds, setMeds] = useState<Medication[]>([]);
@@ -146,7 +148,19 @@ export default function MyProfileScreen() {
         />
       </Card>
 
-      {medsOpen ? <ActiveMedsSheet meds={meds} onClose={() => setMedsOpen(false)} /> : null}
+      {medsOpen ? (
+        <ActiveMedsSheet
+          meds={meds}
+          onClose={() => setMedsOpen(false)}
+          // The sheet lists the account owner's meds, so the medications tab
+          // it opens must be scoped to the owner, not a selected family member.
+          onViewAll={() => {
+            setActiveProfileId(null);
+            setMedsOpen(false);
+            router.push('/medications');
+          }}
+        />
+      ) : null}
     </Screen>
   );
 }
@@ -187,7 +201,7 @@ function NavCard({
   );
 }
 
-function ActiveMedsSheet({ meds, onClose }: { meds: Medication[]; onClose: () => void }) {
+function ActiveMedsSheet({ meds, onClose, onViewAll }: { meds: Medication[]; onClose: () => void; onViewAll: () => void }) {
   return (
     <Sheet onClose={onClose}>
       <Text accessibilityRole="header" className="mb-3 text-lg font-bold text-brand-navy dark:text-white">
@@ -208,14 +222,7 @@ function ActiveMedsSheet({ meds, onClose }: { meds: Medication[]; onClose: () =>
       )}
       <View className="mt-4 flex-row gap-2">
         <Button label="Close" variant="ghost" className="flex-1" onPress={onClose} />
-        <Button
-          label="View all medications"
-          className="flex-1"
-          onPress={() => {
-            onClose();
-            router.push('/medications');
-          }}
-        />
+        <Button label="View all medications" className="flex-1" onPress={onViewAll} />
       </View>
     </Sheet>
   );
