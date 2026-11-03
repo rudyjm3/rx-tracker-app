@@ -173,7 +173,9 @@ export function suggestNextRefillDate(
   const total = (medication.current_quantity ?? 0) + amountAdded;
   const days = daysUntilRunout({ ...medication, current_quantity: total }, groupDoseOverrides);
   const d = new Date(`${refillDate}T00:00:00`);
-  d.setDate(d.getDate() + (days && days > 0 ? days : 30));
+  // null = no projection possible; 0 is a real (sub-day) supply, so don't
+  // push the date out a month.
+  d.setDate(d.getDate() + (days ?? 30));
   return localDateString(d);
 }
 

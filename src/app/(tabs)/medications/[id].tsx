@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { MedicationWizard } from '@/components/medication-wizard';
 import { Badge } from '@/components/ui/badge';
@@ -709,8 +709,15 @@ function RefillSheet({
       setSaving(true);
       try {
         await logRefill(medication.id, amountValue, null, note, refillDate);
+        // The refill is committed at this point. If only the date update
+        // fails, don't surface an error that invites retrying "Log Refill"
+        // (which would add the refill a second time).
         if ((nextDate || null) !== (medication.next_refill_date ?? null)) {
-          await setNextRefillDate(medication.id, nextDate || null);
+          try {
+            await setNextRefillDate(medication.id, nextDate || null);
+          } catch {
+            Alert.alert('Refill logged', "The next refill date couldn't be saved. Set it from Edit.");
+          }
         }
         onSaved();
       } catch (e) {
