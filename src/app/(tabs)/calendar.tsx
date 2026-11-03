@@ -37,6 +37,8 @@ import { formatDate, localDateString } from '@/lib/utils';
 const ENDS_FLAG_COLOR = '#F5A524';
 const RUNS_OUT_COLOR = '#F5A524';
 const OUT_OF_STOCK_COLOR = '#E5484D';
+// Run-out/refill within this many days is shown in red, like the web calendar.
+const SUPPLY_URGENT_DAYS = 7;
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -221,7 +223,7 @@ export default function CalendarScreen() {
                 const lateCount = stats?.late ?? 0;
                 const endingMedications = detail?.endingMedications ?? [];
                 const supplyAlerts = detail?.supplyAlerts ?? [];
-                const hasOutOfStock = supplyAlerts.some((a) => a.kind === 'out');
+                const supplyUrgent = supplyAlerts.some((a) => a.kind === 'out' || a.daysLeft <= SUPPLY_URGENT_DAYS);
 
                 return (
                   <Pressable
@@ -263,8 +265,8 @@ export default function CalendarScreen() {
                         <Ionicons
                           name="medkit-outline"
                           size={14}
-                          color={hasOutOfStock ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR}
-                          accessibilityLabel={hasOutOfStock ? 'Medication out of stock' : 'Medication runs out or refill due'}
+                          color={supplyUrgent ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR}
+                          accessibilityLabel={supplyUrgent ? 'Medication out of stock or running out soon' : 'Medication runs out or refill due'}
                         />
                       ) : null}
                     </View>
@@ -401,8 +403,15 @@ function DayDetailContent({
     day.supplyAlerts.length > 0 ? (
       <View className="mb-2 gap-1">
         {day.supplyAlerts.map((alert) => {
-          const out = alert.kind === 'out';
-          const lead = out ? 'Out of stock: ' : alert.kind === 'refill' ? 'Refill due: ' : 'Runs out: ';
+          const out = alert.kind === 'out' || alert.daysLeft <= SUPPLY_URGENT_DAYS;
+          const lead =
+            alert.kind === 'out'
+              ? 'Out of stock: '
+              : alert.kind === 'low'
+                ? 'Low supply: '
+                : alert.kind === 'refill'
+                  ? 'Refill due: '
+                  : 'Runs out: ';
           const label = alert.dose ? `${alert.name} ${alert.dose}` : alert.name;
           return (
             <View key={alert.medicationId} className="flex-row items-start gap-1.5">
@@ -411,7 +420,7 @@ function DayDetailContent({
                 <Text className={cn('text-sm font-bold', out ? 'text-status-danger dark:text-status-danger' : ENDING_TEXT)}>
                   {lead}
                 </Text>
-                {label} ({alert.quantity} {alert.unit} left today)
+                {label} ({alert.quantity} {alert.unit} left today{alert.kind === 'low' ? ` · est. run-out ${formatDate(alert.runoutDate)}` : ''})
               </Text>
             </View>
           );

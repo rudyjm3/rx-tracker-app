@@ -24,6 +24,11 @@ function addDays(date: string, days: number): string {
   return localDateString(d);
 }
 
+function daysBetween(from: string, to: string): number {
+  const ms = new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -166,12 +171,14 @@ export interface CalendarDaySupplyAlert {
   dose: string | null;
   dose_amount: number | null;
   dose_unit: string | null;
-  // "out" = nothing on hand (shown on today); "runs_out" = projected run-out
-  // date, which can also be today when less than a day's supply remains;
-  // "refill" = the medication's entered next refill date.
-  kind: "out" | "runs_out" | "refill";
+  // "out" = nothing on hand and "low" = at/below the low-supply threshold (both
+  // shown on today); "runs_out" = projected run-out date; "refill" = the
+  // medication's entered next refill date. Mirrors rx-tracker-web.
+  kind: "out" | "low" | "runs_out" | "refill";
   quantity: number; // units on hand as of today
   unit: string;
+  runoutDate: string; // projected run-out (or the refill date), YYYY-MM-DD
+  daysLeft: number; // whole days from today to runoutDate
 }
 
 export interface CalendarDayPendingMember {
@@ -386,7 +393,12 @@ export function buildDayDetails(
   // same projection the medication screens use.
   const supplyAlertsByDate = new Map<string, CalendarDaySupplyAlert[]>();
   for (const med of medications) {
-    if (!med.active || !med.inventory_enabled || med.starting_quantity == null) continue;
+    if (!med.active || med.as_needed || !med.inventory_enabled || med.starting_quantity == null) continue;
+    const hasSchedule =
+      med.schedule_mode === "fixed_times"
+        ? (med.medication_schedule_times ?? []).length > 0
+        : !!med.interval_hours;
+    if (!hasSchedule) continue;
     const overrides: GroupDoseOverride[] = activeGroupMembers
       .filter((m) => m.medication_id === med.id)
       .map((m) => ({
@@ -395,7 +407,15 @@ export function buildDayDetails(
       }));
     const daysLeft = daysUntilRunout(med, overrides);
     if (daysLeft === null) continue;
-    const date = addDays(todayDate, daysLeft);
+    // Consumption only starts on start_date, so a not-yet-started regimen's
+    // supply runs out that many days after it begins, not after today.
+    const baseDate = med.start_date && med.start_date > todayDate ? med.start_date : todayDate;
+    const runoutDate = addDays(baseDate, daysLeft);
+    // The regimen finishes before the supply would run out.
+    if (med.end_date && med.end_date <= runoutDate) continue;
+    const quantity = med.current_quantity ?? 0;
+    const kind = quantity <= 0 ? "out" : quantity <= med.low_supply_threshold ? "low" : "runs_out";
+    const date = kind === "runs_out" ? runoutDate : todayDate;
     const list = supplyAlertsByDate.get(date) ?? [];
     list.push({
       medicationId: med.id,
@@ -403,9 +423,11 @@ export function buildDayDetails(
       dose: med.dose,
       dose_amount: med.dose_amount,
       dose_unit: med.dose_unit,
-      kind: (med.current_quantity ?? 0) <= 0 ? "out" : "runs_out",
-      quantity: med.current_quantity ?? 0,
+      kind,
+      quantity,
       unit: med.inventory_unit,
+      runoutDate,
+      daysLeft: daysBetween(todayDate, runoutDate),
     });
     supplyAlertsByDate.set(date, list);
   }
@@ -414,6 +436,7 @@ export function buildDayDetails(
   // medication is already flagged there by its run-out projection.
   for (const med of medications) {
     if (!med.active || !med.inventory_enabled || !med.next_refill_date) continue;
+    if (med.next_refill_date < todayDate) continue;
     const list = supplyAlertsByDate.get(med.next_refill_date) ?? [];
     if (list.some((a) => a.medicationId === med.id)) continue;
     list.push({
@@ -425,6 +448,8 @@ export function buildDayDetails(
       kind: "refill",
       quantity: med.current_quantity ?? 0,
       unit: med.inventory_unit,
+      runoutDate: med.next_refill_date,
+      daysLeft: daysBetween(todayDate, med.next_refill_date),
     });
     supplyAlertsByDate.set(med.next_refill_date, list);
   }
