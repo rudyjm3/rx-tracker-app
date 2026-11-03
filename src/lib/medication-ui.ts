@@ -57,8 +57,13 @@ export interface SupplyAlert {
 export function getSupplyAlerts(medications: Medication[], today: string = localDateString()): SupplyAlert[] {
   const alerts: SupplyAlert[] = [];
   for (const medication of medications) {
-    if (!medication.inventory_enabled || medication.current_quantity == null) continue;
-    let severity = severityFor(medication.current_quantity, medication.low_supply_threshold);
+    if (!medication.inventory_enabled) continue;
+    // Stock-based severity needs a known count; the refill-date fallback
+    // doesn't (the count can be blank when no starting quantity was entered).
+    let severity =
+      medication.current_quantity == null
+        ? null
+        : severityFor(medication.current_quantity, medication.low_supply_threshold);
     if (
       !severity &&
       medication.low_supply_threshold <= 0 &&

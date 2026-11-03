@@ -91,9 +91,11 @@ function ReminderCard({
             Refill: {medication.name}
             {medication.dose ? ` ${medication.dose}` : ''}
           </Text>
-          <Text className="text-sm text-white/80 dark:text-white/80">
-            Pills Left: {medication.current_quantity} {medication.inventory_unit}
-          </Text>
+          {medication.current_quantity != null ? (
+            <Text className="text-sm text-white/80 dark:text-white/80">
+              Pills Left: {medication.current_quantity} {medication.inventory_unit}
+            </Text>
+          ) : null}
           <View className="mt-2 flex-row items-center">
             <Pressable
               className="min-h-11 flex-row items-center gap-1 self-start rounded-full border border-white/30 bg-white/15 px-4 active:bg-white/25"
