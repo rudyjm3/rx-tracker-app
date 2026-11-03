@@ -10,6 +10,8 @@ export default function ProfileStackLayout() {
   return (
     <Stack>
       <Stack.Screen name="index" options={{ title: 'My Profile', headerBackTitle: 'Settings' }} />
+      <Stack.Screen name="edit" options={{ title: 'Edit Profile', headerBackTitle: 'Profile' }} />
+      <Stack.Screen name="allergies" options={{ title: 'Allergies & Intolerances', headerBackTitle: 'Profile' }} />
     </Stack>
   );
 }

@@ -296,3 +296,29 @@ export function usDateToIso(us: string): string | null {
     date.getFullYear() === Number(yyyy) && date.getMonth() === Number(mm) - 1 && date.getDate() === Number(dd);
   return valid ? `${yyyy}-${mm}-${dd}` : null;
 }
+
+/**
+ * "MM/DD/YYYY - 4 months, 14 days" for an account created-at timestamp.
+ * Months are whole calendar months; the remainder is days.
+ */
+export function formatMemberSince(createdAt: string, now: Date = new Date()): string {
+  const created = new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return "—";
+  const mm = String(created.getMonth() + 1).padStart(2, "0");
+  const dd = String(created.getDate()).padStart(2, "0");
+  const date = `${mm}/${dd}/${created.getFullYear()}`;
+
+  let months = (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth());
+  let anchor = new Date(created.getFullYear(), created.getMonth() + months, created.getDate());
+  if (anchor > now) {
+    months -= 1;
+    anchor = new Date(created.getFullYear(), created.getMonth() + months, created.getDate());
+  }
+  const days = Math.max(0, Math.floor((now.getTime() - anchor.getTime()) / 86_400_000));
+  if (months < 0) return date;
+
+  const parts: string[] = [];
+  if (months > 0) parts.push(`${months} month${months === 1 ? "" : "s"}`);
+  if (days > 0 || months === 0) parts.push(`${days} day${days === 1 ? "" : "s"}`);
+  return `${date} - ${parts.join(", ")}`;
+}

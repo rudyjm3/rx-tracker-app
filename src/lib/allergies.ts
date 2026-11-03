@@ -153,3 +153,37 @@ export async function deleteAllergy(id: string): Promise<void> {
   const { error } = await supabase.from("profile_allergies").delete().eq("id", id);
   if (error) throw error;
 }
+
+// Severity as a 0-4 level for the 4-segment bar: Low 1 … Very High 4.
+// Life-threatening always fills the whole bar; 0 means no severity recorded.
+export function allergySeverityLevel(a: {
+  life_threatening: boolean;
+  severity: AllergySeverity | null;
+}): 0 | 1 | 2 | 3 | 4 {
+  if (a.life_threatening) return 4;
+  switch (a.severity) {
+    case "low":
+      return 1;
+    case "moderate":
+      return 2;
+    case "high":
+      return 3;
+    case "very_high":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+export function allergySeverityText(a: {
+  life_threatening: boolean;
+  severity: AllergySeverity | null;
+}): string | null {
+  if (a.life_threatening) return "Life-threatening";
+  return a.severity ? ALLERGY_SEVERITY_LABELS[a.severity] : null;
+}
+
+export const ALLERGY_TYPE_LABELS: Record<AllergyType, string> = {
+  allergy: "Allergy",
+  intolerance: "Intolerance",
+};

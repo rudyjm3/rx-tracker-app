@@ -325,7 +325,7 @@ export default function SettingsScreen() {
       <Card flat className="gap-1 p-2">
         <LinkRow
           title="My Profile"
-          description="Edit your name, birth date, height, and weight."
+          description="View your profile, allergies, and connected accounts."
           href="/profile"
         />
         <LinkRow
