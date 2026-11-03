@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
@@ -262,9 +264,10 @@ export default function CalendarScreen() {
                         </View>
                       ) : null}
                       {supplyAlerts.length > 0 ? (
-                        <Ionicons
-                          name="medkit-outline"
-                          size={14}
+                        <FontAwesome6
+                          name="prescription-bottle"
+                          solid
+                          size={13}
                           color={supplyUrgent ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR}
                           accessibilityLabel={supplyUrgent ? 'Medication out of stock or running out soon' : 'Medication runs out or refill due'}
                         />
@@ -415,7 +418,7 @@ function DayDetailContent({
           const label = alert.dose ? `${alert.name} ${alert.dose}` : alert.name;
           return (
             <View key={alert.medicationId} className="flex-row items-start gap-1.5">
-              <Ionicons name="medkit-outline" size={16} color={out ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR} />
+              <FontAwesome6 name="prescription-bottle" solid size={15} color={out ? OUT_OF_STOCK_COLOR : RUNS_OUT_COLOR} />
               <Text className="flex-1 text-sm">
                 <Text className={cn('text-sm font-bold', out ? 'text-status-danger dark:text-status-danger' : ENDING_TEXT)}>
                   {lead}
