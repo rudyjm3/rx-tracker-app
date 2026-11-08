@@ -54,3 +54,41 @@ export function wasActiveDuring(
   }
   return activeFrom !== null && activeFrom <= end;
 }
+
+// Days a medication was actually in use, summed over its active stretches
+// up to `asOf` (inclusive; a day shared by two stretches counts once).
+// Port of rx-tracker-web's activeDaysOnMedication.
+export function activeDaysOnMedication(
+  startDate: string | null,
+  events: MedicationStatusEventLike[],
+  asOf: string,
+): number | null {
+  if (!startDate) return null;
+  const end = dayNumber(asOf);
+  const sorted = events
+    .filter((e) => e.event === "discontinued" || e.event === "resumed")
+    .sort((a, b) => a.event_at.localeCompare(b.event_at));
+
+  const stretches: [number, number][] = [];
+  let activeFrom: number | null = dayNumber(startDate);
+  for (const e of sorted) {
+    const day = eventDayNumber(e.event_at);
+    if (day > end) break;
+    if (e.event === "discontinued" && activeFrom !== null) {
+      stretches.push([activeFrom, day]);
+      activeFrom = null;
+    } else if (e.event === "resumed" && activeFrom === null) {
+      activeFrom = day;
+    }
+  }
+  if (activeFrom !== null) stretches.push([activeFrom, end]);
+
+  let total = 0;
+  let coveredUntil = -Infinity;
+  for (const [from, to] of stretches) {
+    if (to < from) continue;
+    total += to - Math.max(from, coveredUntil + 1) + 1;
+    coveredUntil = Math.max(coveredUntil, to);
+  }
+  return total;
+}

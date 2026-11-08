@@ -322,3 +322,46 @@ export function formatMemberSince(createdAt: string, now: Date = new Date()): st
   if (days > 0 || months === 0) parts.push(`${days} day${days === 1 ? "" : "s"}`);
   return `${date} - ${parts.join(", ")}`;
 }
+
+// ── Report formatting (ported from rx-tracker-web lib/utils.ts and
+// lib/medication-label.ts for the Doctor Visit Report) ─────────────────
+
+// Local calendar date of a timestamptz value; bare YYYY-MM-DD passes through.
+export function localDateFromTimestamp(timestamp: string): string {
+  if (!timestamp.includes("T")) return timestamp.slice(0, 10);
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? timestamp.slice(0, 10) : localDateString(date);
+}
+
+// "January 5, 2026"
+export function formatLongDate(dateStr: string): string {
+  return new Date(`${dateStr.slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// "Jan 5, 2026"
+export function formatShortDate(dateStr: string): string {
+  return new Date(`${dateStr.slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+type MedicationDoseInput = Pick<Medication, "dose" | "dose_amount" | "dose_unit">;
+
+// Structured dose ("5 mg") when set, else the legacy free-text dose.
+export function formatPrescribedDose(medication: MedicationDoseInput): string {
+  if (medication.dose_amount != null) {
+    return [medication.dose_amount, medication.dose_unit].filter((part) => part != null && part !== "").join(" ");
+  }
+  return medication.dose?.trim() ?? "";
+}
+
+export function formatMedicationNameDose(medication: MedicationDoseInput & Pick<Medication, "name">): string {
+  const dose = formatPrescribedDose(medication);
+  return dose ? `${medication.name} ${dose}` : medication.name;
+}
