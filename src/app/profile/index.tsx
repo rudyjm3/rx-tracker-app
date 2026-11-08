@@ -15,6 +15,7 @@ import { useActiveProfile } from '@/lib/active-profile';
 import { getProfileAllergies } from '@/lib/allergies';
 import { getActiveMedications } from '@/lib/medications';
 import { useAuth } from '@/lib/supabase/AuthProvider';
+import { linkGoogle, unlinkGoogle } from '@/lib/supabase/google-auth';
 import type { Medication } from '@/lib/types/medications';
 import type { UserProfile } from '@/lib/types/profile';
 import { getUserProfile } from '@/lib/user-profile';
@@ -30,6 +31,7 @@ export default function MyProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [medsOpen, setMedsOpen] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,11 +70,41 @@ export default function MyProfileScreen() {
     profile?.display_name?.trim() ||
     [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
     email;
-  const googleConnected = !!user?.identities?.some((i) => i.provider === 'google');
+  const identities = user?.identities ?? [];
+  const googleIdentity = identities.find((i) => i.provider === 'google');
+  const googleConnected = !!googleIdentity;
+  // Supabase refuses to unlink an account's last sign-in method.
+  const canDisconnectGoogle = identities.length > 1;
 
-  // Google linking from the app isn't wired up yet (the web app handles it).
-  function googleUnavailable() {
-    Alert.alert('Not available yet', 'Connecting or disconnecting Google from the app is coming soon. You can manage it from the web app.');
+  async function handleConnectGoogle() {
+    setGoogleBusy(true);
+    try {
+      const { error, cancelled } = await linkGoogle();
+      if (error) Alert.alert("Couldn't connect Google", error);
+      else if (!cancelled) Alert.alert('Google connected', 'You can now sign in with Google.');
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  function handleDisconnectGoogle() {
+    if (!googleIdentity) return;
+    Alert.alert('Disconnect Google?', "You won't be able to sign in with Google until you connect it again.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect',
+        style: 'destructive',
+        onPress: async () => {
+          setGoogleBusy(true);
+          try {
+            const { error } = await unlinkGoogle(googleIdentity);
+            if (error) Alert.alert("Couldn't disconnect Google", error);
+          } finally {
+            setGoogleBusy(false);
+          }
+        },
+      },
+    ]);
   }
 
   return (
@@ -144,8 +176,15 @@ export default function MyProfileScreen() {
           label={googleConnected ? 'Disconnect' : 'Connect'}
           variant="secondary"
           className="self-start"
-          onPress={googleUnavailable}
+          loading={googleBusy}
+          disabled={googleConnected && !canDisconnectGoogle}
+          onPress={googleConnected ? handleDisconnectGoogle : handleConnectGoogle}
         />
+        {googleConnected && !canDisconnectGoogle ? (
+          <Text muted className="text-xs">
+            Google is your only sign-in method, so it can&apos;t be disconnected.
+          </Text>
+        ) : null}
       </Card>
 
       {medsOpen ? (

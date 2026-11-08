@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AuthShell } from '@/components/auth-shell';
+import { GoogleAuthButton } from '@/components/google-auth-button';
 import { LegalLinks } from '@/components/legal-links';
 import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
@@ -90,6 +91,8 @@ export default function SignupScreen() {
           className="mt-2 w-full"
         />
       </View>
+
+      <GoogleAuthButton onError={setError} disabled={submitting} />
 
       <Text muted className="mt-6 text-center text-sm">
         Already have an account?{' '}
