@@ -34,12 +34,15 @@ export function PillTab({
       className={cn(
         'min-h-9 items-center justify-center overflow-hidden rounded-control',
         range ? 'px-3 py-1.5' : 'min-h-11 px-4 py-2',
+        // Solid fallback so the white label never sits on nothing if the
+        // gradient layer is late to paint after a selection change (Android).
+        active && 'bg-brand-blue',
         !active && !range && 'border border-brand-border bg-white active:bg-brand-bg dark:border-night-border dark:bg-night-card',
         !active && range && 'bg-brand-bg dark:bg-night-selected',
         disabled && 'opacity-50',
         className,
       )}>
-      {active ? <GradientFill name="brand" /> : null}
+      {active ? <GradientFill key="active-fill" name="brand" /> : null}
       <Text
         className={cn(
           'text-sm font-medium',
