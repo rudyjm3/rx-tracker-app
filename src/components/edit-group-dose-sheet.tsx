@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import {
   nowTime,
   normalizeTime,
+  resolveAsNeededGroupQuantity,
   resolveHistoricalQuantityPerDose,
   timeFromIso,
   TIME_RE,
@@ -99,11 +100,12 @@ export function EditGroupDoseSheet({
           pendingMedicationIds.map((id) => {
             const medication = medications.find((m) => m.id === id);
             if (!medication) return Promise.resolve();
+            const quantity = resolveAsNeededGroupQuantity(medication, groups, groupMembers);
             return status === 'taken'
-              ? recordDoseAtTime(medication, pendingDate, pendingTime, takenAt!, medication.quantity_per_dose, {
+              ? recordDoseAtTime(medication, pendingDate, pendingTime, takenAt!, quantity, {
                   note: note.trim() || undefined,
                 })
-              : recordDose(medication, pendingDate, pendingTime, 'skipped', medication.quantity_per_dose);
+              : recordDose(medication, pendingDate, pendingTime, 'skipped', quantity);
           }),
         );
       }
