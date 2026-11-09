@@ -82,7 +82,7 @@ export default function CalendarScreen() {
     Pick<MedicationGroupMember, 'group_id' | 'medication_id' | 'quantity_per_dose'>[]
   >([]);
   const [editingLog, setEditingLog] = useState<CalendarLogRow | null>(null);
-  const [editingGroup, setEditingGroup] = useState<{ name: string; logs: CalendarLogRow[] } | null>(null);
+  const [editingGroup, setEditingGroup] = useState<{ name: string; logs: CalendarLogRow[]; pendingIds: string[]; date: string; time: string } | null>(null);
   const [loggingMissed, setLoggingMissed] = useState<{ name: string; date: string; target: GroupMissedTarget } | null>(null);
 
   const bounds = useMemo(() => monthBounds(month), [month]);
@@ -308,9 +308,9 @@ export default function CalendarScreen() {
             <DayDetailContent
               day={selectedDay}
               onEditSlot={(logId) => setEditingLog(logs.find((l) => l.id === logId) ?? null)}
-              onEditGroup={(name, logIds) => {
+              onEditGroup={(name, logIds, pending) => {
                 const groupLogs = logs.filter((l) => logIds.includes(l.id));
-                if (groupLogs.length > 0) setEditingGroup({ name, logs: groupLogs });
+                if (groupLogs.length > 0) setEditingGroup({ name, logs: groupLogs, ...pending });
               }}
               onLogGroupMissed={(name, date, target) => setLoggingMissed({ name, date, target })}
               onLogAsNeeded={(medicationId, date) => {
@@ -365,6 +365,9 @@ export default function CalendarScreen() {
           medications={medications}
           groups={groups}
           groupMembers={groupMembers}
+          pendingMedicationIds={editingGroup.pendingIds}
+          pendingDate={editingGroup.date}
+          pendingTime={editingGroup.time}
           onClose={() => setEditingGroup(null)}
           onSaved={() => {
             setEditingGroup(null);
@@ -389,7 +392,7 @@ function DayDetailContent({
 }: {
   day: CalendarDayDetail | null;
   onEditSlot: (logId: string) => void;
-  onEditGroup: (groupName: string, logIds: string[]) => void;
+  onEditGroup: (groupName: string, logIds: string[], pending: { pendingIds: string[]; date: string; time: string }) => void;
   onLogGroupMissed: (groupName: string, date: string, target: GroupMissedTarget) => void;
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
@@ -526,8 +529,18 @@ function DayDetailContent({
               key={group.groupId}
               name={group.groupName}
               editTargets={groupEditTargets(group.medications)}
-              onEditAll={(logIds) => onEditGroup(group.groupName, logIds)}
-              logTargets={groupMissedTargets(group.medications)}
+              onEditAll={(target) =>
+                onEditGroup(group.groupName, target.logIds, {
+                  // As-needed members join the group's first dose only.
+                  pendingIds:
+                    target.time === groupEditTargets(group.medications)[0]?.time
+                      ? group.pendingAsNeeded.map((m) => m.medicationId)
+                      : [],
+                  date: day.date,
+                  time: target.time,
+                })
+              }
+              logTargets={groupMissedTargets(group.medications, group.pendingAsNeeded.map((m) => m.medicationId))}
               onLogAll={(target) => onLogGroupMissed(group.groupName, day.date, target)}>
               {group.medications.map((med) => (
                 <MedicationSummaryRow
@@ -621,7 +634,7 @@ function GroupBox({
 }: {
   name: string;
   editTargets?: GroupEditTarget[];
-  onEditAll?: (logIds: string[]) => void;
+  onEditAll?: (target: GroupEditTarget) => void;
   logTargets?: GroupMissedTarget[];
   onLogAll?: (target: GroupMissedTarget) => void;
   children: React.ReactNode;
@@ -654,7 +667,7 @@ function GroupBox({
                 accessibilityRole="button"
                 className="min-h-11 justify-center"
                 hitSlop={6}
-                onPress={() => onEditAll?.(target.logIds)}>
+                onPress={() => onEditAll?.(target)}>
                 <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">
                   {editTargets!.length > 1 ? `Edit all · ${target.displayTime}` : 'Edit all'}
                 </Text>
@@ -689,7 +702,7 @@ type GroupMissedTarget = { time: string; displayTime: string; entries: MissedGro
 
 // One "Log all" target per distinct dose time among a group's unlogged
 // overdue ("Missed", no dose_logs row yet) slots.
-function groupMissedTargets(medications: CalendarDayDetail['medications']): GroupMissedTarget[] {
+function groupMissedTargets(medications: CalendarDayDetail['medications'], pendingAsNeededIds: string[] = []): GroupMissedTarget[] {
   const byTime = new Map<string, GroupMissedTarget>();
   for (const med of medications) {
     for (const slot of med.slots) {
@@ -699,7 +712,13 @@ function groupMissedTargets(medications: CalendarDayDetail['medications']): Grou
       byTime.set(slot.time, target);
     }
   }
-  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+  const targets = [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+  // As-needed members (e.g. a supplement) have no slot of their own; log them
+  // with the group's first missed dose.
+  if (targets[0]) {
+    for (const id of pendingAsNeededIds) targets[0].entries.push({ medicationId: id, time: targets[0].time });
+  }
+  return targets;
 }
 
 function MedicationSummaryRow({

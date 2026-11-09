@@ -15,7 +15,7 @@ import { PillTabs } from '@/components/ui/pill-tabs';
 import { LimitedNoteField } from '@/components/ui/limited-note-field';
 import { Text } from '@/components/ui/text';
 import { TimeField } from '@/components/ui/time-field';
-import { editDoseLogsBatch, type CalendarLogRow } from '@/lib/dose-logs';
+import { editDoseLogsBatch, recordDose, recordDoseAtTime, type CalendarLogRow } from '@/lib/dose-logs';
 import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
 
@@ -34,10 +34,18 @@ export function EditGroupDoseSheet({
   medications,
   groups,
   groupMembers,
+  pendingMedicationIds = [],
+  pendingDate,
+  pendingTime,
   onClose,
   onSaved,
 }: {
   groupName: string;
+  /** As-needed members with no log for this dose; logged together on save. */
+  pendingMedicationIds?: string[];
+  pendingDate?: string;
+  /** "HH:MM" scheduled time used for the pending members' rows. */
+  pendingTime?: string;
   logs: CalendarLogRow[];
   medications: Medication[];
   groups: MedicationGroup[];
@@ -83,6 +91,22 @@ export function EditGroupDoseSheet({
         ];
       });
       await editDoseLogsBatch(edits);
+      // Group members that are as-needed (e.g. a supplement) have no slot, so
+      // they were never part of the batch — log them with the group.
+      if (pendingDate && pendingTime && (status === 'taken' || status === 'skipped')) {
+        const takenAt = status === 'taken' ? new Date(`${pendingDate}T${normalizeTime(time)}:00`).toISOString() : null;
+        await Promise.all(
+          pendingMedicationIds.map((id) => {
+            const medication = medications.find((m) => m.id === id);
+            if (!medication) return Promise.resolve();
+            return status === 'taken'
+              ? recordDoseAtTime(medication, pendingDate, pendingTime, takenAt!, medication.quantity_per_dose, {
+                  note: note.trim() || undefined,
+                })
+              : recordDose(medication, pendingDate, pendingTime, 'skipped', medication.quantity_per_dose);
+          }),
+        );
+      }
       onSaved();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Couldn't save changes");
@@ -93,7 +117,7 @@ export function EditGroupDoseSheet({
   return (
     <FormSheet
       title={`Edit all — ${groupName}`}
-      subtitle={`Applies to all ${logs.length} medications in this group for this dose.`}
+      subtitle={`Applies to all ${logs.length + (pendingDate && pendingTime ? pendingMedicationIds.length : 0)} medications in this group for this dose.`}
       onClose={onClose}
       dismissible={!saving}
       error={formError}
