@@ -69,6 +69,18 @@ export function resolveHistoricalQuantityPerDose(
   return slot?.quantityPerDose ?? medication.quantity_per_dose;
 }
 
+// As-needed group members have no schedule slot, so generateDaySlots can't
+// supply their quantity: use the group membership override, else the default.
+export function resolveAsNeededGroupQuantity(
+  medication: Medication,
+  groups: MedicationGroup[],
+  groupMembers: GroupMemberRow[],
+): number {
+  const activeGroupIds = new Set(groups.map((g) => g.id));
+  const membership = groupMembers.find((m) => m.medication_id === medication.id && activeGroupIds.has(m.group_id));
+  return membership?.quantity_per_dose ?? medication.quantity_per_dose;
+}
+
 // Edit a dose_logs entry (DESIGN.md 9.7): status, time taken, pain / mood and
 // notes, with a confirmed delete. Shared by History and the dashboard's
 // Today's history panel.

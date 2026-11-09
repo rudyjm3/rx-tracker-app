@@ -361,6 +361,16 @@ export function buildDayDetails(
     memberIdsByGroup.set(member.group_id, existing);
   }
 
+  // An as-needed medication has no schedule times, so its logs can't be tied
+  // to a group through one; a sole active group membership places them.
+  const soleGroupIdByAsNeededMed = new Map<string, string>();
+  for (const [groupId, ids] of memberIdsByGroup) {
+    for (const id of ids) {
+      if (!medsById.get(id)?.as_needed) continue;
+      soleGroupIdByAsNeededMed.set(id, soleGroupIdByAsNeededMed.has(id) ? "" : groupId);
+    }
+  }
+
   const logsByDate = new Map<string, CalendarLogRow[]>();
   for (const log of logs) {
     logsByDate.set(log.scheduled_for_date, [...(logsByDate.get(log.scheduled_for_date) ?? []), log]);
@@ -531,7 +541,8 @@ export function buildDayDetails(
       deductedQuantity: log.deducted_quantity,
     });
 
-    const groupId = groupIdByMedTime.get(`${log.medication_id}|${time}`) ?? null;
+    const groupId =
+      groupIdByMedTime.get(`${log.medication_id}|${time}`) ?? (soleGroupIdByAsNeededMed.get(log.medication_id) || null);
     let byMedication = groupIdsByDateAndMedication.get(date);
     if (!byMedication) {
       byMedication = new Map();

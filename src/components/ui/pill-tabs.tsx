@@ -44,6 +44,9 @@ export function PillTab({
       )}>
       {active ? <GradientFill key="active-fill" name="brand" /> : null}
       <Text
+        // Explicit color + stacking: on Android the label could end up hidden
+        // behind (or blended into) the gradient layer after a selection change.
+        style={active ? { color: '#ffffff', zIndex: 1, elevation: 1 } : undefined}
         className={cn(
           'text-sm font-medium',
           active ? 'text-white dark:text-white' : range ? 'text-brand-text-muted dark:text-night-muted' : 'text-brand-text',

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { normalizeTime, TIME_RE, type GroupMemberRow } from '@/components/edit-dose-log-sheet';
+import { normalizeTime, resolveAsNeededGroupQuantity, TIME_RE, type GroupMemberRow } from '@/components/edit-dose-log-sheet';
 import { Button } from '@/components/ui/button';
 import { FormSheet } from '@/components/ui/form-sheet';
 import { PillTabs } from '@/components/ui/pill-tabs';
@@ -67,7 +67,7 @@ export function LogGroupMissedSheet({
           const slot = generateDaySlots(date, [medication], groups, groupMembers, [], [], {
             ignoreDashboardVisibility: true,
           }).find((s) => s.scheduledTime.slice(0, 5) === entry.time);
-          const quantityPerDose = slot?.quantityPerDose ?? medication.quantity_per_dose;
+          const quantityPerDose = slot?.quantityPerDose ?? resolveAsNeededGroupQuantity(medication, groups, groupMembers);
           if (status === 'taken') {
             return recordDoseAtTime(medication, date, entry.time, takenAt!, quantityPerDose, {
               note: note.trim() || undefined,
