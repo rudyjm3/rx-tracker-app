@@ -176,22 +176,27 @@ function reportSlotsForDate(
   // generateDaySlots matches a log to its slot by exact medication+time. A
   // dose logged at a different time than scheduled (postponed, or logged
   // as 05:35 against a 05:30 slot) is therefore left unmatched and its slot
-  // looks pending. Pair each such orphan log with that medication's
-  // unmatched slots (in time order) so the resolved status isn't lost.
+  // looks pending. Pair each such orphan log with the *nearest* still-
+  // pending slot of the same medication (by time of day), so a genuinely
+  // untouched earlier/later dose isn't absorbed by it and stays missed.
+  const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
   const slotKeys = new Set(slots.map((s) => `${s.medicationId}|${s.scheduledTime.slice(0, 5)}`));
-  const orphansByMed = new Map<string, CalendarLogRow[]>();
+  const statusBySlot = new Map<number, DoseLogStatus>();
   for (const l of dayLogs) {
     if (slotKeys.has(`${l.medication_id}|${l.scheduled_time.slice(0, 5)}`)) continue;
-    const list = orphansByMed.get(l.medication_id) ?? [];
-    list.push(l);
-    orphansByMed.set(l.medication_id, list);
+    let best = -1;
+    let bestDist = Infinity;
+    slots.forEach((s, i) => {
+      if (s.medicationId !== l.medication_id || s.status !== "pending" || statusBySlot.has(i)) return;
+      const dist = Math.abs(toMinutes(s.scheduledTime) - toMinutes(l.scheduled_time));
+      if (dist < bestDist) {
+        best = i;
+        bestDist = dist;
+      }
+    });
+    if (best >= 0) statusBySlot.set(best, l.status);
   }
-  for (const list of orphansByMed.values()) list.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
-  const resolved = slots.map((s) => {
-    if (s.status !== "pending") return s;
-    const orphan = orphansByMed.get(s.medicationId)?.shift();
-    return orphan ? { ...s, status: orphan.status } : s;
-  });
+  const resolved = slots.map((s, i) => (statusBySlot.has(i) ? { ...s, status: statusBySlot.get(i)! } : s));
 
   return resolved.map((s) => ({
 
