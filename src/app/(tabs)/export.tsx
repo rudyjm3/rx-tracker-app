@@ -154,7 +154,11 @@ export default function ExportScreen() {
   // The preview's data, tagged with the inputs it was built from.
   const [built, setBuilt] = useState<{ key: string; data: ReportData } | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [sharedUri, setSharedUri] = useState<string | null>(null);
+  // Inputs whose preview build failed, so the spinner stops without the
+  // old data being mistaken for a report of those inputs.
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  // The last shared PDF, tagged with the inputs it was generated from.
+  const [shared, setShared] = useState<{ key: string; uri: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
@@ -230,7 +234,12 @@ export default function ExportScreen() {
     includeMood,
   ]);
   const report = built?.data ?? null;
-  const reportLoading = loadingMedications || built?.key !== inputsKey;
+  // Only a build of exactly the current inputs counts as the current report.
+  const reportIsCurrent = !loadingMedications && built?.key === inputsKey;
+  const reportLoading = !reportIsCurrent && failedKey !== inputsKey;
+  // "Share again" only offers the PDF made for the current inputs (profile,
+  // dates, medications, tracking toggles); any change hides it.
+  const sharedUri = shared?.key === inputsKey ? shared.uri : null;
 
   useEffect(() => {
     if (loadingMedications) return;
@@ -253,8 +262,9 @@ export default function ExportScreen() {
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Failed to build report');
-          // Stop showing the preview as "updating" for inputs that failed.
-          setBuilt((prev) => (prev ? { ...prev, key: inputsKey } : prev));
+          // Stop the "updating" state, but keep the old data tagged with its
+          // own inputs so Generate never exports it as this report.
+          setFailedKey(inputsKey);
         }
       }
     }, PREVIEW_DEBOUNCE_MS);
@@ -301,7 +311,7 @@ export default function ExportScreen() {
     try {
       // Reuse the preview's data when it's current; otherwise build fresh.
       const data =
-        report && !reportLoading
+        report && reportIsCurrent
           ? { ...report, generatedAt: new Date().toLocaleString() }
           : await buildReportData({
               profileId: activeProfileId,
@@ -329,7 +339,7 @@ export default function ExportScreen() {
         shareUri = named.uri;
       }
       await sharePdf(shareUri);
-      setSharedUri(shareUri);
+      setShared({ key: inputsKey, uri: shareUri });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report');
     } finally {
@@ -355,20 +365,14 @@ export default function ExportScreen() {
             label="From"
             value={startDate}
             maximumDate={endDate}
-            onChange={(iso) => {
-              setStartDate(iso);
-              setSharedUri(null);
-            }}
+            onChange={setStartDate}
           />
           <DateField
             label="To"
             value={endDate}
             minimumDate={startDate}
             maximumDate={today}
-            onChange={(iso) => {
-              setEndDate(iso);
-              setSharedUri(null);
-            }}
+            onChange={setEndDate}
           />
         </View>
       </Card>
