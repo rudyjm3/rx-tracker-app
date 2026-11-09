@@ -16,7 +16,7 @@ import { PillTabs } from '@/components/ui/pill-tabs';
 import { LimitedNoteField } from '@/components/ui/limited-note-field';
 import { Text } from '@/components/ui/text';
 import { TimeField } from '@/components/ui/time-field';
-import { editDoseLogsBatch, recordDose, recordDoseAtTime, type CalendarLogRow } from '@/lib/dose-logs';
+import { editGroupDoseLogs, type CalendarLogRow, type PendingGroupDoseInput } from '@/lib/dose-logs';
 import type { DoseLogStatus, Medication, MedicationGroup } from '@/lib/types/medications';
 import { localDateString } from '@/lib/utils';
 
@@ -69,7 +69,7 @@ export function EditGroupDoseSheet({
     }
     setSaving(true);
     try {
-      // One transactional RPC: every member is edited or none are.
+      // One transactional RPC (edit_group_dose_logs): every member is edited or none are.
       const edits = logs.flatMap((log) => {
         const medication = medications.find((m) => m.id === log.medication_id);
         if (!medication) return [];
@@ -91,24 +91,28 @@ export function EditGroupDoseSheet({
           },
         ];
       });
-      await editDoseLogsBatch(edits);
       // Group members that are as-needed (e.g. a supplement) have no slot, so
-      // they were never part of the batch — log them with the group.
+      // they aren't in `edits` — they're recorded with the group in the same
+      // transaction, so the whole group saves or nothing does.
+      const pending: PendingGroupDoseInput[] = [];
       if (pendingDate && pendingTime && (status === 'taken' || status === 'skipped')) {
         const takenAt = status === 'taken' ? new Date(`${pendingDate}T${normalizeTime(time)}:00`).toISOString() : null;
-        await Promise.all(
-          pendingMedicationIds.map((id) => {
-            const medication = medications.find((m) => m.id === id);
-            if (!medication) return Promise.resolve();
-            const quantity = resolveAsNeededGroupQuantity(medication, groups, groupMembers);
-            return status === 'taken'
-              ? recordDoseAtTime(medication, pendingDate, pendingTime, takenAt!, quantity, {
-                  note: note.trim() || undefined,
-                })
-              : recordDose(medication, pendingDate, pendingTime, 'skipped', quantity);
-          }),
-        );
+        for (const id of pendingMedicationIds) {
+          const medication = medications.find((m) => m.id === id);
+          if (!medication) continue;
+          pending.push({
+            medicationId: id,
+            scheduledForDate: pendingDate,
+            scheduledTime: pendingTime,
+            status,
+            takenAt,
+            note: status === 'taken' ? note.trim() || undefined : undefined,
+            quantityPerDose: resolveAsNeededGroupQuantity(medication, groups, groupMembers),
+            inventoryEnabled: medication.inventory_enabled,
+          });
+        }
       }
+      await editGroupDoseLogs(edits, pending);
       onSaved();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Couldn't save changes");

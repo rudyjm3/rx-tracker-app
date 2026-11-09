@@ -234,6 +234,52 @@ export async function editDoseLogsBatch(edits: DoseLogBatchEditInput[]): Promise
   if (error) throw error;
 }
 
+export interface PendingGroupDoseInput {
+  medicationId: string;
+  scheduledForDate: string;
+  scheduledTime: string;
+  status: Extract<DoseLogStatus, "taken" | "skipped">;
+  takenAt: string | null;
+  note?: string;
+  quantityPerDose: number;
+  inventoryEnabled: boolean;
+}
+
+/**
+ * Group "Edit all" in one transaction via the edit_group_dose_logs RPC: the
+ * existing members' edits (like editDoseLogsBatch) plus doses for as-needed
+ * members with no log yet. Either everything is saved or nothing is.
+ */
+export async function editGroupDoseLogs(
+  edits: DoseLogBatchEditInput[],
+  pending: PendingGroupDoseInput[],
+): Promise<void> {
+  if (edits.length === 0 && pending.length === 0) return;
+  const { error } = await supabase.rpc("edit_group_dose_logs", {
+    p_edits: edits.map((e) => ({
+      log_id: e.logId,
+      status: e.status,
+      taken_at: e.takenAt ?? null,
+      pain_level: e.painLevel ?? null,
+      mood_level: e.moodLevel ?? null,
+      note: e.note ?? null,
+      quantity_per_dose: e.quantityPerDose ?? null,
+      inventory_enabled: e.inventoryEnabled ?? false,
+    })),
+    p_pending: pending.map((p) => ({
+      medication_id: p.medicationId,
+      scheduled_for_date: p.scheduledForDate,
+      scheduled_time: p.scheduledTime,
+      status: p.status,
+      taken_at: p.takenAt,
+      note: p.note ?? null,
+      quantity_per_dose: p.quantityPerDose,
+      inventory_enabled: p.inventoryEnabled,
+    })),
+  });
+  if (error) throw error;
+}
+
 /**
  * Deletes a dose_logs row via the delete_dose_log RPC, restoring
  * deducted inventory if it was a 'taken' entry on an inventory-tracked
