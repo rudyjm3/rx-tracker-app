@@ -172,7 +172,29 @@ function reportSlotsForDate(
   if (medsForDate.length === 0) return [];
   const dayLogs = logs.filter((l) => l.scheduled_for_date === date);
   const slots = generateDaySlots(date, medsForDate, [], [], dayLogs, [], { ignoreDashboardVisibility: true });
-  return slots.map((s) => ({
+
+  // generateDaySlots matches a log to its slot by exact medication+time. A
+  // dose logged at a different time than scheduled (postponed, or logged
+  // as 05:35 against a 05:30 slot) is therefore left unmatched and its slot
+  // looks pending. Pair each such orphan log with that medication's
+  // unmatched slots (in time order) so the resolved status isn't lost.
+  const slotKeys = new Set(slots.map((s) => `${s.medicationId}|${s.scheduledTime.slice(0, 5)}`));
+  const orphansByMed = new Map<string, CalendarLogRow[]>();
+  for (const l of dayLogs) {
+    if (slotKeys.has(`${l.medication_id}|${l.scheduled_time.slice(0, 5)}`)) continue;
+    const list = orphansByMed.get(l.medication_id) ?? [];
+    list.push(l);
+    orphansByMed.set(l.medication_id, list);
+  }
+  for (const list of orphansByMed.values()) list.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+  const resolved = slots.map((s) => {
+    if (s.status !== "pending") return s;
+    const orphan = orphansByMed.get(s.medicationId)?.shift();
+    return orphan ? { ...s, status: orphan.status } : s;
+  });
+
+  return resolved.map((s) => ({
+
     medicationId: s.medicationId,
     date,
     scheduledTime: s.scheduledTime,
