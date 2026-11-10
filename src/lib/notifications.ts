@@ -103,6 +103,13 @@ const ALARM_MAX_RING_MS = 5 * 60_000;
 
 let alarmPlayer: ReturnType<typeof createAudioPlayer> | null = null;
 let alarmStopTimer: ReturnType<typeof setTimeout> | null = null;
+let alarmFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+// Last time an alarm-channel notification was delivered while the app was open.
+let lastForegroundNotificationAt = 0;
+// How long the in-app loop waits for the notification to take over the sound
+// before concluding none is coming (reminders off for this medication, the
+// dose's scheduled time already passed when the app opened, delivery failed).
+const NOTIFICATION_TAKEOVER_MS = 30_000;
 
 function startLoopingSound(): void {
   if (alarmPlayer) return;
@@ -143,14 +150,33 @@ export async function startAlarm(): Promise<void> {
     notificationsDeliverAlarm(),
   ]);
   if (!alarmStopTimer) return; // stopped while we were checking settings
+  const startedAt = Date.now();
   if (vibration) Vibration.vibrate(VIBRATION_LOOP_PATTERN, true);
-  if (sound && !viaNotification) startLoopingSound();
+  if (!sound) return;
+  if (!viaNotification) {
+    startLoopingSound();
+    return;
+  }
+  // The scheduled notification should ring on the alarm channel (alarm
+  // volume). Whether one actually covers this dose can't be known from global
+  // settings alone, so give it a window and fall back to the in-app loop if
+  // none was delivered around now.
+  alarmFallbackTimer = setTimeout(() => {
+    alarmFallbackTimer = null;
+    if (!alarmStopTimer) return;
+    if (lastForegroundNotificationAt >= startedAt - 60_000) return;
+    startLoopingSound();
+  }, NOTIFICATION_TAKEOVER_MS);
 }
 
 export function stopAlarm(): void {
   if (alarmStopTimer) {
     clearTimeout(alarmStopTimer);
     alarmStopTimer = null;
+  }
+  if (alarmFallbackTimer) {
+    clearTimeout(alarmFallbackTimer);
+    alarmFallbackTimer = null;
   }
   Vibration.cancel();
   if (alarmPlayer) {
@@ -425,6 +451,9 @@ export function configureNotificationHandler(): void {
         };
       },
     });
+    Notifications.addNotificationReceivedListener(() => {
+      lastForegroundNotificationAt = Date.now();
+    });
   } catch (e) {
     console.warn("configureNotificationHandler failed", e);
   }
@@ -559,7 +588,8 @@ export async function resyncReminderNotifications(): Promise<void> {
         });
       }
 
-      if (unsnoozed.length > 0) {
+      if (unsnoozed.length === item.members.length) {
+        // Nobody resolved or snoozed: the full-membership recurring reminder is accurate.
         await Notifications.scheduleNotificationAsync({
           content: notificationContent(item, item.members, false),
           trigger: {
@@ -570,6 +600,17 @@ export async function resyncReminderNotifications(): Promise<void> {
           },
         });
       } else {
+        // Some members were already taken/skipped or snoozed, so today's
+        // ping must name only those still due; the recurring trigger can't
+        // carry day-specific content, so bridge with one-shots (the next
+        // resync restores the recurring one).
+        const todayMs = new Date(`${today}T${item.time}`).getTime();
+        if (unsnoozed.length > 0 && todayMs > Date.now()) {
+          await Notifications.scheduleNotificationAsync({
+            content: notificationContent(item, unsnoozed, false),
+            trigger: { type: DATE, date: todayMs, channelId },
+          });
+        }
         await scheduleTomorrow();
       }
     }
