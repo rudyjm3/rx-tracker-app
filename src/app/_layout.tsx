@@ -5,15 +5,21 @@ import { useEffect, useRef } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { ActiveProfileProvider } from '@/lib/active-profile';
+import { ActiveProfileProvider, useActiveProfile } from '@/lib/active-profile';
+import { getMedication } from '@/lib/medications';
 import {
   addNotificationResponseListener,
   cancelAllReminderNotifications,
+  configureNotificationHandler,
   resyncIfRemindersEnabled,
 } from '@/lib/notifications';
 import { AuthProvider, useAuth } from '@/lib/supabase/AuthProvider';
 
 SplashScreen.preventAutoHideAsync();
+
+// Without a handler, a notification delivered while the app is open is
+// dropped silently.
+configureNotificationHandler();
 
 // Minimum time between AppState-triggered resyncs, so rapid foreground/
 // background flicker (e.g. a system permission dialog, a quick app
@@ -23,6 +29,7 @@ const FOREGROUND_RESYNC_MIN_INTERVAL_MS = 60_000;
 
 function RootNavigation() {
   const { loading, session } = useAuth();
+  const { setActiveProfileId } = useActiveProfile();
   const lastForegroundResyncAt = useRef(0);
   const lastUserId = useRef<string | null>(null);
 
@@ -69,13 +76,28 @@ function RootNavigation() {
     return () => subscription.remove();
   }, [session]);
 
-  // Tapping a delivered reminder opens that medication's detail screen.
+  // Tapping a delivered reminder opens the dashboard, where the due-now
+  // overlay offers Take / Snooze / Skip for the whole group (or the single dose).
+  // Reminders cover every profile but the dashboard shows only the active one,
+  // so switch to the reminded medication's profile first. If that can't be
+  // resolved, fall back to the medication's own screen rather than an
+  // unrelated profile's dashboard.
   useEffect(() => {
-    const unsubscribe = addNotificationResponseListener(({ medicationId }) => {
-      if (medicationId) router.push(`/medications/${medicationId}`);
+    const unsubscribe = addNotificationResponseListener(async ({ medicationId }) => {
+      if (!medicationId) {
+        router.navigate('/');
+        return;
+      }
+      try {
+        const med = await getMedication(medicationId);
+        setActiveProfileId(med.profile_id);
+        router.navigate('/');
+      } catch {
+        router.push(`/medications/${medicationId}`);
+      }
     });
     return unsubscribe;
-  }, []);
+  }, [setActiveProfileId]);
 
   if (loading) return null;
 

@@ -30,6 +30,7 @@ import { useActiveProfile } from '@/lib/active-profile';
 import { getMissedGraceMinutes, getSnoozeMinutes } from '@/lib/app-settings';
 import {
   postponeDose,
+  postponeDoses,
   recordDose,
   recordDoseAtTime,
   getTodayLogs,
@@ -37,7 +38,7 @@ import {
   type DoseFeedback,
 } from '@/lib/dose-logs';
 import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
-import { playAlarmSound, resyncIfRemindersEnabled, triggerVibration } from '@/lib/notifications';
+import { resyncIfRemindersEnabled, startAlarm, stopAlarm } from '@/lib/notifications';
 import { medicationTracksMood, medicationTracksPain } from '@/lib/pain-mood';
 import {
   buildDoseEvents,
@@ -426,11 +427,22 @@ export default function DashboardScreen() {
     }
   }
 
+  // One write with one shared postponed_until, then one reload — snoozing
+  // members one at a time stamped each with its own clock reading and split
+  // the group into per-medication cards.
   async function handleSnoozeAllForEvent(event: NextDoseEvent, minutes: number) {
-    for (const slot of eventSlots(event)) {
-      if (slot.status === 'pending') await handleSnooze(slot, minutes);
+    const pending = eventSlots(event).filter((s) => s.status === 'pending');
+    setActingKey(pending.map((s) => `${s.medicationId}|${s.scheduledTime}`).join(','));
+    try {
+      await postponeDoses(pending, scheduleDate, minutes);
+      resyncIfRemindersEnabled();
+      await load(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to snooze dose');
+    } finally {
+      setActingKey(null);
+      setSnoozeEvent(null);
     }
-    setSnoozeEvent(null);
   }
 
   // Separate from `events` (which drives "Today's schedule" and includes
@@ -463,18 +475,21 @@ export default function DashboardScreen() {
       : null;
 
   // In-app "dose due" alarm (sound + vibration) — port of rx-tracker-web's
-  // identical effect in DashboardClient.tsx. Fires once per slot, keyed by
+  // identical effect in DashboardClient.tsx. A slot "newly due" is keyed by
   // its exact due time (slotDueTime, which is postponedUntil when snoozed)
   // rather than its scheduled time, so a later snooze can alarm again
   // instead of being permanently suppressed by the first alarm's key. Only
-  // alarms while the due time has passed but the missed-dose grace cutoff
-  // hasn't, so a backlog of already-overdue-past-grace slots doesn't all
-  // alarm at once on load — those are about to be finalized as missed by
-  // recordAndReload's own load() cycle instead. Driven by nowTick (already
-  // ticking every 20s above for the midnight-rollover check) rather than
-  // just `slots` changing reference, since a slot's due time can newly
-  // pass without `slots` itself changing.
+  // slots whose due time has passed but whose missed-dose grace cutoff
+  // hasn't count, so a backlog of already-overdue-past-grace slots doesn't
+  // all alarm at once on load. Driven by nowTick (ticking every 20s above)
+  // rather than just `slots` changing reference, since a slot's due time can
+  // newly pass without `slots` itself changing.
+  //
+  // The alarm now LOOPS for as long as the due-now overlay is up (it used to
+  // beep once, easy to miss) and stops the moment the dose is taken, skipped
+  // or snoozed — i.e. when dueNowEvent goes away.
   const alarmedKeysRef = useRef<Set<string>>(new Set());
+  const alarmQueuedRef = useRef(false);
   useEffect(() => {
     const now = nowTick;
     for (const slot of slots) {
@@ -485,10 +500,20 @@ export default function DashboardScreen() {
       const key = `${slot.medicationId}|${due}`;
       if (alarmedKeysRef.current.has(key)) continue;
       alarmedKeysRef.current.add(key);
-      playAlarmSound();
-      triggerVibration();
+      alarmQueuedRef.current = true;
     }
-  }, [slots, scheduleDate, graceMinutes, nowTick]);
+    // Hold a queued alarm until the overlay is actually showing (it is
+    // briefly suppressed while the feedback sheet is open).
+    if (alarmQueuedRef.current && dueNowEvent) {
+      alarmQueuedRef.current = false;
+      startAlarm();
+    }
+  }, [slots, scheduleDate, graceMinutes, nowTick, dueNowEvent]);
+
+  useEffect(() => {
+    if (!dueNowEvent) stopAlarm();
+  }, [dueNowEvent]);
+  useEffect(() => stopAlarm, []);
 
   const adherenceStats: AdherenceStats = useMemo(() => {
     const track = (s: DaySlot, required: boolean) => ({

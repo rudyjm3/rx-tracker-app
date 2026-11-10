@@ -312,6 +312,17 @@ export async function getGroups(profileId?: string | null): Promise<MedicationGr
   return data as MedicationGroup[];
 }
 
+/** Every active group across all profiles — for device reminders, which cover every profile. */
+export async function getAllActiveGroups(): Promise<MedicationGroup[]> {
+  const { data, error } = await supabase
+    .from("medication_groups")
+    .select("*")
+    .eq("active", true)
+    .order("scheduled_time");
+  if (error) throw error;
+  return data as MedicationGroup[];
+}
+
 export async function getGroupMembers(): Promise<
   { group_id: string; medication_id: string; quantity_per_dose: number | null }[]
 > {

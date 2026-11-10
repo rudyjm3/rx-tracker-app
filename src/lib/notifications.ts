@@ -15,9 +15,9 @@ import { createAudioPlayer } from "expo-audio";
 import { isRunningInExpoGo } from "expo";
 
 import { getTodayLogs, getTodayPostpones } from "@/lib/dose-logs";
-import { getAllActiveMedicationsAcrossProfiles } from "@/lib/medications";
+import { getAllActiveGroups, getAllActiveMedicationsAcrossProfiles, getGroupMembers } from "@/lib/medications";
 import { localDateString, timeToMinutes } from "@/lib/utils";
-import type { DoseLog, DosePostpone, Medication } from "@/lib/types/medications";
+import type { DoseLog, DosePostpone, Medication, MedicationGroup } from "@/lib/types/medications";
 
 // This preference is intentionally per-device local storage (AsyncStorage),
 // NOT the Supabase-backed app_settings get/setSetting helpers used
@@ -87,46 +87,140 @@ export async function setVibrationEnabled(enabled: boolean): Promise<void> {
   await writeToggle(VIBRATION_KEY, enabled);
 }
 
-// Fire-and-forget: creates a short-lived imperative player (createAudioPlayer,
-// not the useAudioPlayer hook — this is called from plain event-driven code,
-// not component render) and releases it once playback finishes, so repeated
-// alarms across a session don't leak players. Best-effort — a device that
-// can't play audio right now (e.g. mid-call) just means no sound this time,
-// same failure posture as web's tone() catch.
-function tone(): void {
+// ── Alarm playback ──────────────────────────────────────────────────
+//
+// The due-now alarm LOOPS until stopAlarm() (Take/Skip/Snooze closes the
+// overlay) instead of beeping once. A safety timeout stops it if nobody
+// answers, so a forgotten phone doesn't ring forever.
+//
+// Volume: expo-audio plays on Android's MEDIA stream (no alarm-usage option),
+// so the in-app player follows the media volume slider. Whenever device
+// reminders are active on Android, the alarm is therefore delivered by the
+// scheduled notification itself, whose channel uses ALARM audio usage and so
+// follows the phone's *alarm* volume (see ensureAlarmChannel). The expo-audio
+// loop is only the fallback when reminders are off / unsupported.
+const ALARM_MAX_RING_MS = 5 * 60_000;
+
+let alarmPlayer: ReturnType<typeof createAudioPlayer> | null = null;
+let alarmStopTimer: ReturnType<typeof setTimeout> | null = null;
+let alarmFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+// Last time an alarm-channel notification was delivered while the app was open.
+let lastForegroundNotificationAt = 0;
+// How long the in-app loop waits for the notification to take over the sound
+// before concluding none is coming (reminders off for this medication, the
+// dose's scheduled time already passed when the app opened, delivery failed).
+const NOTIFICATION_TAKEOVER_MS = 30_000;
+
+function startLoopingSound(): void {
+  if (alarmPlayer) return;
   try {
     const player = createAudioPlayer(require("../../assets/sounds/alarm.wav"));
-    const subscription = player.addListener("playbackStatusUpdate", (status) => {
-      if (!status.didJustFinish) return;
-      subscription.remove();
-      player.remove();
-    });
+    player.loop = true;
+    player.volume = 1;
     player.play();
+    alarmPlayer = player;
   } catch {
-    // Best-effort — see above.
+    // Best-effort — a device that can't play audio right now just stays silent.
   }
 }
 
-// [200, 100, 200]ms matches web's navigator.vibrate([200, 100, 200]) pattern
-// (buzz, pause, buzz) exactly — RN's Vibration.vibrate takes the same
-// vibrate-pause-vibrate-... array shape navigator.vibrate does.
-function vibrateOnce(): void {
+// [0 wait, 600 buzz, 400 pause] repeated (repeat index 0 = loop from start).
+const VIBRATION_LOOP_PATTERN = [0, 600, 400];
+
+async function notificationsDeliverAlarm(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return false;
+  try {
+    if (!(await getRemindersEnabledSetting())) return false;
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/** Starts the looping alarm (sound + vibration, per the user's toggles). Idempotent. */
+export async function startAlarm(): Promise<void> {
+  if (alarmStopTimer) return; // already ringing
+  alarmStopTimer = setTimeout(stopAlarm, ALARM_MAX_RING_MS);
+  const [sound, vibration, viaNotification] = await Promise.all([
+    isAlarmSoundEnabled(),
+    isVibrationEnabled(),
+    notificationsDeliverAlarm(),
+  ]);
+  if (!alarmStopTimer) return; // stopped while we were checking settings
+  const startedAt = Date.now();
+  if (vibration) Vibration.vibrate(VIBRATION_LOOP_PATTERN, true);
+  if (!sound) return;
+  if (!viaNotification) {
+    startLoopingSound();
+    return;
+  }
+  // The scheduled notification should ring on the alarm channel (alarm
+  // volume). Whether one actually covers this dose can't be known from global
+  // settings alone, so give it a window and fall back to the in-app loop if
+  // none was delivered around now.
+  alarmFallbackTimer = setTimeout(() => {
+    alarmFallbackTimer = null;
+    if (!alarmStopTimer) return;
+    if (lastForegroundNotificationAt >= startedAt - 60_000) return;
+    startLoopingSound();
+  }, NOTIFICATION_TAKEOVER_MS);
+}
+
+export function stopAlarm(): void {
+  if (alarmStopTimer) {
+    clearTimeout(alarmStopTimer);
+    alarmStopTimer = null;
+  }
+  if (alarmFallbackTimer) {
+    clearTimeout(alarmFallbackTimer);
+    alarmFallbackTimer = null;
+  }
+  Vibration.cancel();
+  if (alarmPlayer) {
+    try {
+      alarmPlayer.pause();
+      alarmPlayer.remove();
+    } catch {
+      // Already released.
+    }
+    alarmPlayer = null;
+  }
+  // Answering the dose in-app also silences a notification alarm that is
+  // still ringing (removing a notification stops its sound).
+  const Notifications = getNotificationsModule();
+  Notifications?.dismissAllNotificationsAsync().catch(() => {});
+}
+
+/**
+ * Settings "Test alarm": bypasses both toggles. On Android with permission it
+ * posts a real notification through the alarm channel, so the user hears
+ * exactly what a dose reminder sounds like (at alarm volume) and learns
+ * whether notifications work at all; otherwise a short in-app preview.
+ */
+export async function previewAlarm(): Promise<void> {
+  const Notifications = getNotificationsModule();
+  if (Notifications && Platform.OS === "android") {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status === "granted") {
+        await ensureAlarmChannel();
+        await Notifications.scheduleNotificationAsync({
+          content: { title: "Test alarm", body: "This is how a dose reminder sounds.", sound: ALARM_SOUND_FILE },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: ALARM_CHANNEL_ID },
+        });
+        Vibration.vibrate([200, 100, 200]);
+        return;
+      }
+    } catch (e) {
+      console.warn("previewAlarm notification failed", e);
+    }
+  }
+  startLoopingSound();
   Vibration.vibrate([200, 100, 200]);
-}
-
-export async function playAlarmSound(): Promise<void> {
-  if (await isAlarmSoundEnabled()) tone();
-}
-
-export async function triggerVibration(): Promise<void> {
-  if (await isVibrationEnabled()) vibrateOnce();
-}
-
-// Bypasses both toggles — lets the Settings screen's "Test alarm" button
-// preview sound/vibration even while deciding whether to turn them on.
-export function previewAlarm(): void {
-  tone();
-  vibrateOnce();
+  setTimeout(stopAlarm, 3000);
 }
 
 export interface ReminderTime {
@@ -134,6 +228,9 @@ export interface ReminderTime {
   medicationName: string;
   dose: string;
   time: string; // "HH:MM", 24h
+  // Set when the dose belongs to an active group at this time — grouped doses
+  // get ONE notification per group/time, like the dashboard's group card.
+  groupId?: string | null;
 }
 
 // Every module-level use of expo-notifications is behind this guard (and
@@ -193,8 +290,19 @@ function getNotificationsModule(): typeof import("expo-notifications") | null {
 export function computeReminderTimes(
   medications: Medication[],
   today: string = localDateString(),
+  groups: MedicationGroup[] = [],
+  groupMembers: { group_id: string; medication_id: string }[] = [],
 ): ReminderTime[] {
   const reminders: ReminderTime[] = [];
+  const groupsById = new Map(groups.map((g) => [g.id, g]));
+  const groupsByMedication = new Map<string, MedicationGroup[]>();
+  for (const member of groupMembers) {
+    const group = groupsById.get(member.group_id);
+    if (!group) continue;
+    const list = groupsByMedication.get(member.medication_id) ?? [];
+    list.push(group);
+    groupsByMedication.set(member.medication_id, list);
+  }
 
   for (const med of medications) {
     if (!med.active) continue;
@@ -204,11 +312,13 @@ export function computeReminderTimes(
     if (med.start_date && today < med.start_date) continue;
     if (med.end_date && today > med.end_date) continue;
 
-    const times = new Set<string>();
+    // time -> groupId (or null): the same schedule math as before, now
+    // remembering which active group (if any) owns each occurrence.
+    const times = new Map<string, string | null>();
 
     if (med.schedule_mode === "fixed_times") {
       for (const st of med.medication_schedule_times ?? []) {
-        times.add(st.reminder_time.slice(0, 5));
+        times.set(st.reminder_time.slice(0, 5), st.group_id && groupsById.has(st.group_id) ? st.group_id : null);
       }
     } else if (med.schedule_mode === "interval" && med.interval_hours && med.first_dose_time) {
       const stepMinutes = med.interval_hours * 60;
@@ -220,17 +330,20 @@ export function computeReminderTimes(
       while (minutes < 24 * 60) {
         const h = String(Math.floor(minutes / 60)).padStart(2, "0");
         const m = String(minutes % 60).padStart(2, "0");
-        times.add(`${h}:${m}`);
+        const time = `${h}:${m}`;
+        const matched = (groupsByMedication.get(med.id) ?? []).find((g) => g.scheduled_time.slice(0, 5) === time);
+        times.set(time, matched ? matched.id : null);
         minutes += stepMinutes;
       }
     }
 
-    for (const time of times) {
+    for (const [time, groupId] of times) {
       reminders.push({
         medicationId: med.id,
         medicationName: med.name,
         dose: med.dose,
         time,
+        groupId,
       });
     }
   }
@@ -238,20 +351,112 @@ export function computeReminderTimes(
   return reminders;
 }
 
-function notificationContent(reminder: ReminderTime) {
-  const [hourStr, minuteStr] = reminder.time.split(":");
+function formatReminderTime(time: string): string {
+  const [hourStr, minuteStr] = time.split(":");
   const hour = parseInt(hourStr, 10);
-  const displayHour = hour % 12 || 12;
-  const period = hour >= 12 ? "PM" : "AM";
-  const displayTime = `${displayHour}:${minuteStr} ${period}`;
+  return `${hour % 12 || 12}:${minuteStr} ${hour >= 12 ? "PM" : "AM"}`;
+}
 
-  const title = reminder.dose ? `${reminder.medicationName} (${reminder.dose})` : reminder.medicationName;
+// A reminder "item" is one notification: every member of a group at a time,
+// or a single ungrouped medication.
+interface ReminderItem {
+  key: string;
+  groupName: string | null;
+  time: string;
+  members: ReminderTime[];
+}
+
+function notificationContent(item: ReminderItem, members: ReminderTime[], snoozed: boolean) {
+  const displayTime = formatReminderTime(item.time);
+  const first = members[0];
+  let title: string;
+  let body: string;
+  if (item.groupName) {
+    title = item.groupName;
+    const names = members.map((m) => m.medicationName);
+    body = `${snoozed ? "Snoozed — time" : "Time"} for your ${displayTime} dose: ${names.join(", ")}`;
+  } else {
+    title = first.dose ? `${first.medicationName} (${first.dose})` : first.medicationName;
+    body = `${snoozed ? "Snoozed — time" : "Time"} for your ${displayTime} dose`;
+  }
 
   return {
     title,
-    body: `Time for your ${displayTime} dose`,
-    data: { medicationId: reminder.medicationId, scheduledTime: reminder.time },
+    body,
+    sound: ALARM_SOUND_FILE,
+    priority: "max" as const,
+    data: { medicationId: first.medicationId, scheduledTime: item.time, groupId: item.key.startsWith("g|") ? item.key.split("|")[1] : null },
   };
+}
+
+// ── Android notification channel ────────────────────────────────────
+//
+// Reminders used to be scheduled with no channelId, so Android delivered them
+// on a generic default channel (no custom sound, ordinary notification
+// volume, easy to miss — or dropped to the silent list). This channel is
+// MAX importance, plays the bundled alarm sound, and uses ALARM audio usage
+// so it follows the device's *alarm* volume rather than media/notification
+// volume. Channel settings are immutable once created, so any change to them
+// needs a new id plus removing the old one.
+const ALARM_CHANNEL_ID = "dose-alarm";
+const LEGACY_CHANNEL_IDS = ["medication-reminders"];
+const ALARM_SOUND_FILE = "alarm.wav"; // registered in app.json via the expo-notifications plugin `sounds`
+
+async function ensureAlarmChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+  for (const id of LEGACY_CHANNEL_IDS) {
+    try {
+      await Notifications.deleteNotificationChannelAsync(id);
+    } catch {
+      // Already gone.
+    }
+  }
+  await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
+    name: "Medication alarms",
+    description: "Dose-due alarms. Plays at the alarm volume.",
+    importance: Notifications.AndroidImportance.MAX,
+    sound: ALARM_SOUND_FILE,
+    audioAttributes: {
+      usage: Notifications.AndroidAudioUsage.ALARM,
+      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+    },
+    vibrationPattern: [0, 600, 400, 600, 400, 600],
+    enableVibrate: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: false,
+  });
+}
+
+/**
+ * While the app is in the foreground the OS would otherwise silently swallow
+ * a delivered notification (no handler = nothing shown). On Android we let it
+ * show and ring on the alarm channel (alarm volume) — unless the user turned
+ * the alarm sound off, in which case the in-app overlay is enough. On iOS the
+ * in-app overlay + looping alarm handle the foreground. Call once at startup.
+ */
+export function configureNotificationHandler(): void {
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => {
+        const ring = Platform.OS === "android" && (await isAlarmSoundEnabled());
+        return {
+          shouldShowBanner: ring,
+          shouldShowList: ring,
+          shouldPlaySound: ring,
+          shouldSetBadge: false,
+        };
+      },
+    });
+    Notifications.addNotificationReceivedListener(() => {
+      lastForegroundNotificationAt = Date.now();
+    });
+  } catch (e) {
+    console.warn("configureNotificationHandler failed", e);
+  }
 }
 
 /**
@@ -263,26 +468,26 @@ function notificationContent(reminder: ReminderTime) {
  * (sign-in, app foreground, after any medication create/update/
  * discontinue/reactivate, and after a Take/Skip/Snooze).
  *
- * Each of today's occurrences is checked against today's dose_logs and
- * dose_postpones before scheduling, so the device notification agrees
- * with what the Dashboard shows for that occurrence right now:
- *   - already taken/skipped today → suppress today's ping, but schedule
- *     a one-shot DATE trigger for tomorrow's occurrence of the same
- *     time instead of the normal recurring one — a single recurring
- *     DAILY trigger is the only primitive for "this time, every day",
- *     so dropping it entirely to silence today would also silence every
- *     future day until the next resync (app foreground/launch) happens
- *     to run before tomorrow's time arrives.
- *   - snoozed and still pending → a one-shot DATE trigger at the
- *     postponed time, replacing the normal recurring one for today.
+ * Doses in an active group share ONE notification per group/time (matching
+ * the dashboard's group card) instead of one per medication. Each item is
+ * checked against today's dose_logs and dose_postpones so the device agrees
+ * with the Dashboard:
+ *   - every member taken/skipped today → suppress today's ping, but
+ *     schedule a one-shot DATE trigger for tomorrow's occurrence instead of
+ *     the recurring one (a recurring DAILY trigger is the only primitive for
+ *     "this time, every day", so dropping it to silence today would also
+ *     silence every future day until the next resync).
+ *   - pending members that were snoozed → a one-shot DATE trigger at the
+ *     shared postponed time. Because today's recurring ping is consumed by
+ *     that, tomorrow's occurrence is bridged with a one-shot too (a snooze
+ *     used to leave tomorrow unscheduled until the next app launch).
  *   - snoozed but the postponed time already passed → skip (missed).
- *   - otherwise → the normal recurring DAILY trigger, unchanged.
+ *   - pending members that were not snoozed → the normal recurring DAILY
+ *     trigger.
  * There's no persisted "this occurrence was resynced" state: the next
  * resync just re-reads dose_logs/dose_postpones, and since
  * getTodayLogs/getTodayPostpones are date-scoped, today's resolution
- * stops matching on its own once today is no longer today — any resync
- * from tomorrow onward falls through to the normal recurring case,
- * which is what the one-shot above bridges the gap until.
+ * stops matching on its own once today is no longer today.
  *
  * No-ops (never throws) on web or if anything in expo-notifications
  * fails, since a resync should never crash app launch or a save flow.
@@ -295,16 +500,20 @@ export async function resyncReminderNotifications(): Promise<void> {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== "granted") return;
 
+    await ensureAlarmChannel();
     await Notifications.cancelAllScheduledNotificationsAsync();
 
     const today = localDateString();
-    const [medications, todayLogs, todayPostpones] = await Promise.all([
+    const [medications, groups, groupMembers, todayLogs, todayPostpones] = await Promise.all([
       getAllActiveMedicationsAcrossProfiles(),
+      getAllActiveGroups(),
+      getGroupMembers(),
       getTodayLogs(today),
       getTodayPostpones(today),
     ]);
-    const reminders = computeReminderTimes(medications, today);
+    const reminders = computeReminderTimes(medications, today, groups, groupMembers);
     const medicationsById = new Map(medications.map((med) => [med.id, med]));
+    const groupsById = new Map(groups.map((g) => [g.id, g]));
 
     const logsByKey = new Map<string, DoseLog>();
     for (const log of todayLogs) {
@@ -315,49 +524,95 @@ export async function resyncReminderNotifications(): Promise<void> {
       postponeByKey.set(`${postpone.medication_id}|${postpone.scheduled_time.slice(0, 5)}`, postpone);
     }
 
+    const items = new Map<string, ReminderItem>();
     for (const reminder of reminders) {
-      const key = `${reminder.medicationId}|${reminder.time}`;
-      const log = logsByKey.get(key);
-      const content = notificationContent(reminder);
+      const group = reminder.groupId ? groupsById.get(reminder.groupId) : undefined;
+      const key = group ? `g|${group.id}|${reminder.time}` : `m|${reminder.medicationId}|${reminder.time}`;
+      const item = items.get(key) ?? { key, groupName: group ? group.name : null, time: reminder.time, members: [] };
+      item.members.push(reminder);
+      items.set(key, item);
+    }
 
-      if (log && (log.status === "taken" || log.status === "skipped")) {
-        const tomorrow = new Date(`${today}T${reminder.time}`);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        // Skip the bridging one-shot if the medication's course ends before
-        // tomorrow — otherwise a dose taken on the last day of a course
-        // would still ping once more the next day.
-        const med = medicationsById.get(reminder.medicationId);
-        const tomorrowStr = localDateString(tomorrow);
-        if (med?.end_date && tomorrowStr > med.end_date) continue;
+    const channelId = ALARM_CHANNEL_ID;
+    const DATE = Notifications.SchedulableTriggerInputTypes.DATE;
 
-        await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: tomorrow.getTime() },
+    for (const item of items.values()) {
+      const [hourStr, minuteStr] = item.time.split(":");
+
+      // Tomorrow's occurrence as a one-shot, skipped once every member's
+      // course has ended by then.
+      const tomorrow = new Date(`${today}T${item.time}`);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = localDateString(tomorrow);
+      const scheduleTomorrow = async () => {
+        const live = item.members.filter((m) => {
+          const end = medicationsById.get(m.medicationId)?.end_date;
+          return !end || tomorrowStr <= end;
         });
-        continue;
-      }
-
-      const postpone = postponeByKey.get(key);
-      if (postpone) {
-        const postponedUntilMs = new Date(postpone.postponed_until).getTime();
-        if (postponedUntilMs <= Date.now()) continue;
-
+        if (live.length === 0) return;
         await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: postponedUntilMs },
+          content: notificationContent(item, live, false),
+          trigger: { type: DATE, date: tomorrow.getTime(), channelId },
         });
-        continue;
-      }
+      };
 
-      const [hourStr, minuteStr] = reminder.time.split(":");
-      await Notifications.scheduleNotificationAsync({
-        content,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: parseInt(hourStr, 10),
-          minute: parseInt(minuteStr, 10),
-        },
+      const pending = item.members.filter((m) => {
+        const log = logsByKey.get(`${m.medicationId}|${m.time}`);
+        return !(log && (log.status === "taken" || log.status === "skipped"));
       });
+
+      if (pending.length === 0) {
+        await scheduleTomorrow();
+        continue;
+      }
+
+      // Bucket the pending members by their snooze instant so members snoozed
+      // together stay one notification.
+      const unsnoozed: ReminderTime[] = [];
+      const snoozedBuckets = new Map<number, ReminderTime[]>();
+      for (const m of pending) {
+        const postpone = postponeByKey.get(`${m.medicationId}|${m.time}`);
+        if (!postpone) {
+          unsnoozed.push(m);
+          continue;
+        }
+        const ms = new Date(postpone.postponed_until).getTime();
+        snoozedBuckets.set(ms, [...(snoozedBuckets.get(ms) ?? []), m]);
+      }
+
+      for (const [ms, members] of snoozedBuckets) {
+        if (ms <= Date.now()) continue; // postponed time already passed (missed)
+        await Notifications.scheduleNotificationAsync({
+          content: notificationContent(item, members, true),
+          trigger: { type: DATE, date: ms, channelId },
+        });
+      }
+
+      if (unsnoozed.length === item.members.length) {
+        // Nobody resolved or snoozed: the full-membership recurring reminder is accurate.
+        await Notifications.scheduleNotificationAsync({
+          content: notificationContent(item, item.members, false),
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: parseInt(hourStr, 10),
+            minute: parseInt(minuteStr, 10),
+            channelId,
+          },
+        });
+      } else {
+        // Some members were already taken/skipped or snoozed, so today's
+        // ping must name only those still due; the recurring trigger can't
+        // carry day-specific content, so bridge with one-shots (the next
+        // resync restores the recurring one).
+        const todayMs = new Date(`${today}T${item.time}`).getTime();
+        if (unsnoozed.length > 0 && todayMs > Date.now()) {
+          await Notifications.scheduleNotificationAsync({
+            content: notificationContent(item, unsnoozed, false),
+            trigger: { type: DATE, date: todayMs, channelId },
+          });
+        }
+        await scheduleTomorrow();
+      }
     }
   } catch (e) {
     console.warn("resyncReminderNotifications failed", e);
@@ -378,12 +633,7 @@ export async function requestReminderPermissions(): Promise<PermissionRequestRes
   if (!Notifications) return "unsupported";
 
   try {
-    if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("medication-reminders", {
-        name: "Medication reminders",
-        importance: Notifications.AndroidImportance.MAX,
-      });
-    }
+    await ensureAlarmChannel();
     const { status } = await Notifications.requestPermissionsAsync();
     return status === "granted" ? "granted" : "denied";
   } catch (e) {
@@ -398,7 +648,7 @@ export async function requestReminderPermissions(): Promise<PermissionRequestRes
  * web. Intended to be called once from the root layout.
  */
 export function addNotificationResponseListener(
-  onResponse: (data: { medicationId?: string; scheduledTime?: string }) => void,
+  onResponse: (data: { medicationId?: string; scheduledTime?: string; groupId?: string | null }) => void,
 ): () => void {
   const Notifications = getNotificationsModule();
   if (!Notifications) return () => {};
@@ -406,7 +656,7 @@ export function addNotificationResponseListener(
   try {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as
-        | { medicationId?: string; scheduledTime?: string }
+        | { medicationId?: string; scheduledTime?: string; groupId?: string | null }
         | undefined;
       if (data) onResponse(data);
     });
