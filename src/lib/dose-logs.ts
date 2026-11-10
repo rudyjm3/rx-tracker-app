@@ -106,25 +106,45 @@ export async function postponeDose(
   scheduledTime: string,
   minutes: number,
 ): Promise<void> {
+  await postponeDoses([{ medicationId, scheduledTime }], scheduledForDate, minutes);
+}
+
+/**
+ * Snoozes several slots at once to ONE shared postponed_until. A group snooze
+ * must stamp every member with the identical instant: computing it per member
+ * (each call reading its own Date.now()) lets the members drift apart by
+ * seconds, and the dashboard — which groups members by exact due time — then
+ * splits the group into single-medication cards.
+ */
+export async function postponeDoses(
+  slots: { medicationId: string; scheduledTime: string }[],
+  scheduledForDate: string,
+  minutes: number,
+): Promise<void> {
+  if (slots.length === 0) return;
   // Snoozing a slot that isn't due yet (every pending slot in "Today's
   // schedule" offers Snooze, not just the next-due one) must count the
   // delay from the slot's own due time, not from whenever the user
   // happened to tap Snooze — otherwise snoozing an 8pm dose at 8am for 15
   // minutes would move it to 8:15am instead of 8:15pm. Once the slot is
   // actually due/overdue, Date.now() is the later of the two and this is
-  // equivalent to the simpler "now + minutes".
-  const scheduledDueMs = new Date(`${scheduledForDate}T${scheduledTime}`).getTime();
-  const baseMs = Math.max(Date.now(), scheduledDueMs);
+  // equivalent to the simpler "now + minutes". The latest due time among the
+  // slots is the shared base so they all land on the same instant.
+  const now = Date.now();
+  const baseMs = slots.reduce(
+    (latest, s) => Math.max(latest, new Date(`${scheduledForDate}T${s.scheduledTime}`).getTime()),
+    now,
+  );
   const postponedUntil = new Date(baseMs + minutes * 60000).toISOString();
 
   const { error } = await supabase.from("dose_postpones").upsert(
-    {
-      medication_id: medicationId,
+    slots.map((s) => ({
+      medication_id: s.medicationId,
       scheduled_for_date: scheduledForDate,
-      scheduled_time: scheduledTime,
+      scheduled_time: s.scheduledTime,
       postponed_until: postponedUntil,
       resolved_at: null,
-    },
+    })),
     { onConflict: "medication_id,scheduled_for_date,scheduled_time" },
   );
   if (error) throw error;

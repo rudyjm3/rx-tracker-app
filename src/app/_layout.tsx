@@ -9,11 +9,16 @@ import { ActiveProfileProvider } from '@/lib/active-profile';
 import {
   addNotificationResponseListener,
   cancelAllReminderNotifications,
+  configureNotificationHandler,
   resyncIfRemindersEnabled,
 } from '@/lib/notifications';
 import { AuthProvider, useAuth } from '@/lib/supabase/AuthProvider';
 
 SplashScreen.preventAutoHideAsync();
+
+// Without a handler, a notification delivered while the app is open is
+// dropped silently.
+configureNotificationHandler();
 
 // Minimum time between AppState-triggered resyncs, so rapid foreground/
 // background flicker (e.g. a system permission dialog, a quick app
@@ -69,10 +74,11 @@ function RootNavigation() {
     return () => subscription.remove();
   }, [session]);
 
-  // Tapping a delivered reminder opens that medication's detail screen.
+  // Tapping a delivered reminder opens the dashboard, where the due-now
+  // overlay offers Take / Snooze / Skip for the whole group (or the single dose).
   useEffect(() => {
-    const unsubscribe = addNotificationResponseListener(({ medicationId }) => {
-      if (medicationId) router.push(`/medications/${medicationId}`);
+    const unsubscribe = addNotificationResponseListener(() => {
+      router.navigate('/');
     });
     return unsubscribe;
   }, []);

@@ -21,7 +21,8 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "package": "com.anonymous.rxtrackerapp"
     },
@@ -42,7 +43,10 @@
       [
         "expo-notifications",
         {
-          "color": "#0754A8"
+          "color": "#0754A8",
+          "sounds": [
+            "./assets/sounds/alarm.wav"
+          ]
         }
       ],
       [
