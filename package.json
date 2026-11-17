@@ -6,6 +6,7 @@
     "@expo/ui": "~57.0.20",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.1.0",
     "@supabase/supabase-js": "^2.117.1",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.25",

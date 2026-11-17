@@ -28,7 +28,7 @@ function ConnectorFill({ filled }: { filled: boolean }) {
     <View
       pointerEvents="none"
       className="absolute h-0.5 overflow-hidden rounded-full bg-brand-border dark:bg-night-border"
-      style={{ left: '50%', width: '100%', top: CIRCLE / 2 - 1 }}>
+      style={{ left: '50%', width: '100%', top: CIRCLE / 2 - 1, zIndex: 0 }}>
       <Animated.View className="h-full overflow-hidden" style={{ width }}>
         <GradientFill name="brand" />
       </Animated.View>
@@ -66,6 +66,9 @@ export function WizardStepper({
               disabled={!reachable || active}
               hitSlop={4}
               onPress={() => onSelect(n)}
+              // Sit above the connector line / gradient (a native view that
+              // otherwise paints over the circle and hides its number/check).
+              style={{ zIndex: 1 }}
               className="items-center gap-1 py-1">
               <View
                 className={cn(

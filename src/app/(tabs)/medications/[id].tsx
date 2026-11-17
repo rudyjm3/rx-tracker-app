@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SwitchRow } from '@/components/ui/checkbox';
+import { DateField } from '@/components/ui/date-field';
 import { Field, Input } from '@/components/ui/field';
 import { FormSheet } from '@/components/ui/form-sheet';
 import { LevelGrid } from '@/components/ui/level-grid';
@@ -770,14 +771,13 @@ function RefillSheet({
       }>
       {mode === 'refill' ? (
         <>
-          <Field
+          <DateField
             label="Refill date"
             value={refillDate}
-            onChangeText={(v) => {
+            onChange={(v) => {
               setRefillDate(v);
               suggest(amount, v);
             }}
-            placeholder="YYYY-MM-DD"
           />
           <Field
             label={`Amount added (${medication.inventory_unit})`}
@@ -789,14 +789,14 @@ function RefillSheet({
             }}
             placeholder="e.g. 30"
           />
-          <Field
+          <DateField
             label="Next refill date (optional)"
             value={nextRefill}
-            onChangeText={(v) => {
+            clearable
+            onChange={(v) => {
               setNextRefillTouched(true);
               setNextRefill(v);
             }}
-            placeholder="YYYY-MM-DD"
           />
           <Text muted className="text-xs">
             Suggested from how long your supply lasts on the current schedule. Edit or clear it as needed.
@@ -872,7 +872,7 @@ function EditRefillSheet({
           <Button label={saving ? 'Saving…' : 'Save'} className="flex-1" loading={saving} onPress={handleSubmit} />
         </>
       }>
-      <Field label="Refill date" value={refillDate} onChangeText={setRefillDate} placeholder="YYYY-MM-DD" />
+      <DateField label="Refill date" value={refillDate} onChange={setRefillDate} />
       <Field
         label={`Amount added (${medication.inventory_unit})`}
         keyboardType="numeric"
@@ -1247,15 +1247,15 @@ function LogDoseSheet({
       }>
       {!entryStep ? (
         <>
-          <Field
+          <DateField
             label="Date"
             error={dateError ?? undefined}
             value={date}
-            onChangeText={(v) => {
+            maximumDate={new Date()}
+            onChange={(v) => {
               setDate(v);
               setSlot(null);
             }}
-            placeholder="YYYY-MM-DD"
           />
 
           {contextError ? (

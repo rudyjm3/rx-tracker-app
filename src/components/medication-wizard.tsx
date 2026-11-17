@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Callout } from '@/components/ui/callout';
 import { Card } from '@/components/ui/card';
 import { SwitchRow } from '@/components/ui/checkbox';
+import { DateField } from '@/components/ui/date-field';
 import { Field } from '@/components/ui/field';
 import { PillTabs } from '@/components/ui/pill-tabs';
 import { Screen } from '@/components/ui/screen';
@@ -31,7 +32,7 @@ import {
 import { MEDICATION_TYPE_LABELS, MEDICATION_TYPE_OPTIONS } from '@/lib/medication-ui';
 import { resyncIfRemindersEnabled } from '@/lib/notifications';
 import type { FeedbackType, Medication, MedicationGroup, MedicationType, ScheduleMode } from '@/lib/types/medications';
-import { isoToUsDate, localDateString, maskBirthDateInput, usDateToIso } from '@/lib/utils';
+import { isoToUsDate, localDateString, usDateToIso } from '@/lib/utils';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
@@ -687,19 +688,19 @@ export function MedicationWizard({
           </View>
 
           <View className="gap-1">
-            <Field
-              label={mode === 'edit' ? 'Start date (MM-DD-YYYY, blank = unchanged)' : 'Start date (MM-DD-YYYY, blank = today)'}
-              value={form.startDate}
-              onChangeText={(v) => update('startDate', maskBirthDateInput(v))}
-              placeholder="MM-DD-YYYY"
-              keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+            <DateField
+              label={mode === 'edit' ? 'Start date (blank = unchanged)' : 'Start date (blank = today)'}
+              value={usDateToIso(form.startDate) ?? ''}
+              onChange={(iso) => update('startDate', isoToUsDate(iso))}
+              placeholder={mode === 'edit' ? 'Unchanged' : 'Today'}
+              clearable
             />
-            <Field
-              label="End date (optional, MM-DD-YYYY)"
-              value={form.endDate}
-              onChangeText={(v) => update('endDate', maskBirthDateInput(v))}
-              placeholder="MM-DD-YYYY"
-              keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+            <DateField
+              label="End date (optional)"
+              value={usDateToIso(form.endDate) ?? ''}
+              onChange={(iso) => update('endDate', isoToUsDate(iso))}
+              placeholder="No end date"
+              clearable
             />
             <Text muted className="text-xs">
               The regimen stops generating doses after this date. Leave blank for an ongoing medication.
@@ -749,12 +750,12 @@ export function MedicationWizard({
                   />
                 </View>
               </View>
-              <Field
-                label="Next refill date (optional, MM-DD-YYYY)"
-                value={form.nextRefillDate}
-                onChangeText={(v) => update('nextRefillDate', maskBirthDateInput(v))}
-                placeholder="MM-DD-YYYY"
-                keyboardType="number-pad" maxLength={10} autoCapitalize="none" autoCorrect={false}
+              <DateField
+                label="Next refill date (optional)"
+                value={usDateToIso(form.nextRefillDate) ?? ''}
+                onChange={(iso) => update('nextRefillDate', isoToUsDate(iso))}
+                placeholder="No refill date"
+                clearable
               />
               <Text muted className="text-xs">
                 Marked on the calendar. Leave the low supply threshold at 0 and this date is used for the refill
