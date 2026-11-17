@@ -121,7 +121,9 @@ export default function DashboardScreen() {
   // `queue` are the zero-count slots still to ask about (the first is the one
   // on screen); `rest` are the slots to record once the queue is answered
   // (the non-blocked ones plus any the user chose to take anyway).
-  const [zeroFlow, setZeroFlow] = useState<{ queue: DaySlot[]; rest: DaySlot[] } | null>(null);
+  // `late` marks a past-due group Take All, which must continue into the
+  // batch time-entry flow rather than the instant takeSlots path.
+  const [zeroFlow, setZeroFlow] = useState<{ queue: DaySlot[]; rest: DaySlot[]; late: boolean; date: string } | null>(null);
   const zeroPillSlot = zeroFlow?.queue[0] ?? null;
   const [doseList, setDoseList] = useState<'required' | 'non-required' | null>(null);
   // ?setup=complete is passed once, right after onboarding. Captured into
@@ -305,14 +307,27 @@ export default function DashboardScreen() {
 
   // Zero-count slots are asked about one at a time before anything is
   // recorded; everything else goes straight to takeSlots.
-  function startTake(toTake: DaySlot[]) {
+  function startTake(toTake: DaySlot[], late = false) {
+    // Captured now so a midnight reload during the zero-pill prompts can't
+    // re-home a late batch under the new date.
+    const date = scheduleDate;
     const blocked = toTake.filter(isZeroCount);
     const rest = toTake.filter((s) => !isZeroCount(s));
     if (blocked.length === 0) {
-      takeSlots(rest);
+      if (late) beginLateBatch(rest, date);
+      else takeSlots(rest);
       return;
     }
-    setZeroFlow({ queue: blocked, rest });
+    setZeroFlow({ queue: blocked, rest, late, date });
+  }
+
+  // Past-due group Take All: records pending + missed members at a
+  // user-entered time, after any feedback prompts.
+  function beginLateBatch(slots: DaySlot[], date: string) {
+    if (slots.length === 0) return;
+    const needsFeedback = slots.filter((s) => s.medication.feedback_type !== 'none');
+    setBatch({ date, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
+    setFeedbackSlot(needsFeedback[0] ?? null);
   }
 
   // Answer for the zero-pill slot on screen: take it anyway (joins `rest`) or
@@ -322,11 +337,12 @@ export default function DashboardScreen() {
     const [current, ...queue] = zeroFlow.queue;
     const rest = takeAnyway ? [...zeroFlow.rest, current] : zeroFlow.rest;
     if (queue.length > 0) {
-      setZeroFlow({ queue, rest });
+      setZeroFlow({ queue, rest, late: zeroFlow.late, date: zeroFlow.date });
       return;
     }
     setZeroFlow(null);
-    takeSlots(rest);
+    if (zeroFlow.late) beginLateBatch(rest, zeroFlow.date);
+    else takeSlots(rest);
   }
 
   async function handleSnooze(slot: DaySlot, minutes: number) {
@@ -393,9 +409,8 @@ export default function DashboardScreen() {
     }
     const slots = takeAllSlots(event);
     if (slots.length === 0) return;
-    const needsFeedback = slots.filter((s) => s.medication.feedback_type !== 'none');
-    setBatch({ date: scheduleDate, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
-    setFeedbackSlot(needsFeedback[0] ?? null);
+    // Zero-count meds must be resolved (correct count / refill) first.
+    startTake(slots, true);
   }
 
   function batchKey(slot: DaySlot) {
