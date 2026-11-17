@@ -1493,7 +1493,7 @@ function SideEffectsSheet({
       dismissible={!busy}
       error={formError}
       footer={<Button label="Done" variant="ghost" className="flex-1" onPress={requestClose} disabled={busy} />}>
-      <Field label="Date" value={occurredDate} onChangeText={setOccurredDate} placeholder="YYYY-MM-DD" />
+      <DateField label="Date" value={occurredDate} onChange={setOccurredDate} maximumDate={new Date()} />
 
       <View className="gap-1">
         <Text className="text-sm">Severity</Text>
