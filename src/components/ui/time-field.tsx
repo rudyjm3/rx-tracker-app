@@ -43,6 +43,15 @@ export function TimeField({
   onChange: (value: string) => void;
 }) {
   const [webText, setWebText] = useState(value);
+  // Web fallback: follow outside changes (e.g. a removed row reusing this
+  // component) but never clobber in-progress typing — only resync when the
+  // incoming value is valid and differs from what the typed text represents.
+  const [lastValue, setLastValue] = useState(value);
+  if (value !== lastValue) {
+    setLastValue(value);
+    const typed = TIME_RE.test(webText) ? webText : '';
+    if (value !== typed) setWebText(value);
+  }
 
   function handle(e: DateTimePickerEvent, d?: Date) {
     if (e.type === 'set' && d) onChange(toValue(d));

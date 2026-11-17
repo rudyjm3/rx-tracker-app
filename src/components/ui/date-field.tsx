@@ -1,5 +1,6 @@
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { cn } from '@/lib/cn';
@@ -48,6 +49,15 @@ export function DateField({
   error?: string;
 }) {
   const current = value ? isoToDate(value) : new Date();
+  // Web fallback keeps the raw typed text so partial input isn't wiped; it
+  // follows outside changes only when they differ from what the text means.
+  const [webText, setWebText] = useState(value);
+  const [lastValue, setLastValue] = useState(value);
+  if (value !== lastValue) {
+    setLastValue(value);
+    const typed = /^\d{4}-\d{2}-\d{2}$/.test(webText) ? webText : '';
+    if (value !== typed) setWebText(value);
+  }
 
   function handle(e: DateTimePickerEvent, d?: Date) {
     if (e.type === 'set' && d) onChange(dateToIso(d));
@@ -84,7 +94,14 @@ export function DateField({
           {clearable && value ? <ClearButton label={label} onPress={() => onChange('')} /> : null}
         </View>
       ) : (
-        <Input value={value} onChangeText={onChange} placeholder="YYYY-MM-DD" />
+        <Input
+          value={webText}
+          placeholder="YYYY-MM-DD"
+          onChangeText={(v) => {
+            setWebText(v);
+            onChange(/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
+          }}
+        />
       )}
       {error ? <Text className="text-xs text-status-danger">{error}</Text> : null}
     </View>
