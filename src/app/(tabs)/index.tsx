@@ -123,7 +123,7 @@ export default function DashboardScreen() {
   // (the non-blocked ones plus any the user chose to take anyway).
   // `late` marks a past-due group Take All, which must continue into the
   // batch time-entry flow rather than the instant takeSlots path.
-  const [zeroFlow, setZeroFlow] = useState<{ queue: DaySlot[]; rest: DaySlot[]; late: boolean } | null>(null);
+  const [zeroFlow, setZeroFlow] = useState<{ queue: DaySlot[]; rest: DaySlot[]; late: boolean; date: string } | null>(null);
   const zeroPillSlot = zeroFlow?.queue[0] ?? null;
   const [doseList, setDoseList] = useState<'required' | 'non-required' | null>(null);
   // ?setup=complete is passed once, right after onboarding. Captured into
@@ -308,22 +308,25 @@ export default function DashboardScreen() {
   // Zero-count slots are asked about one at a time before anything is
   // recorded; everything else goes straight to takeSlots.
   function startTake(toTake: DaySlot[], late = false) {
+    // Captured now so a midnight reload during the zero-pill prompts can't
+    // re-home a late batch under the new date.
+    const date = scheduleDate;
     const blocked = toTake.filter(isZeroCount);
     const rest = toTake.filter((s) => !isZeroCount(s));
     if (blocked.length === 0) {
-      if (late) beginLateBatch(rest);
+      if (late) beginLateBatch(rest, date);
       else takeSlots(rest);
       return;
     }
-    setZeroFlow({ queue: blocked, rest, late });
+    setZeroFlow({ queue: blocked, rest, late, date });
   }
 
   // Past-due group Take All: records pending + missed members at a
   // user-entered time, after any feedback prompts.
-  function beginLateBatch(slots: DaySlot[]) {
+  function beginLateBatch(slots: DaySlot[], date: string) {
     if (slots.length === 0) return;
     const needsFeedback = slots.filter((s) => s.medication.feedback_type !== 'none');
-    setBatch({ date: scheduleDate, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
+    setBatch({ date, slots, queue: needsFeedback.slice(1), answers: new Map(), timeStep: needsFeedback.length === 0 });
     setFeedbackSlot(needsFeedback[0] ?? null);
   }
 
@@ -334,11 +337,11 @@ export default function DashboardScreen() {
     const [current, ...queue] = zeroFlow.queue;
     const rest = takeAnyway ? [...zeroFlow.rest, current] : zeroFlow.rest;
     if (queue.length > 0) {
-      setZeroFlow({ queue, rest, late: zeroFlow.late });
+      setZeroFlow({ queue, rest, late: zeroFlow.late, date: zeroFlow.date });
       return;
     }
     setZeroFlow(null);
-    if (zeroFlow.late) beginLateBatch(rest);
+    if (zeroFlow.late) beginLateBatch(rest, zeroFlow.date);
     else takeSlots(rest);
   }
 
