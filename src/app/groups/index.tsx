@@ -9,7 +9,7 @@ import { Screen } from '@/components/ui/screen';
 import { ScreenTitle } from '@/components/ui/screen-title';
 import { Text } from '@/components/ui/text';
 import { useActiveProfile } from '@/lib/active-profile';
-import { getGroupMembers, getGroups } from '@/lib/medications';
+import { getActiveMedications, getGroupMembers, getGroups } from '@/lib/medications';
 import type { MedicationGroup } from '@/lib/types/medications';
 import { to12h } from '@/lib/utils';
 
@@ -32,11 +32,19 @@ export default function GroupsListScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const [groupData, members] = await Promise.all([getGroups(activeProfileId), getGroupMembers()]);
+      const [groupData, members, activeMeds] = await Promise.all([
+        getGroups(activeProfileId),
+        getGroupMembers(),
+        getActiveMedications(activeProfileId),
+      ]);
       if (requestIdRef.current !== requestId) return;
       setGroups(groupData);
       const counts: Record<string, number> = {};
+      // Only count active medications: the group editor lists just those, so
+      // memberships pointing at deactivated medications would inflate the count.
+      const activeIds = new Set(activeMeds.map((m) => m.id));
       for (const m of members) {
+        if (!activeIds.has(m.medication_id)) continue;
         counts[m.group_id] = (counts[m.group_id] ?? 0) + 1;
       }
       setMemberCounts(counts);
