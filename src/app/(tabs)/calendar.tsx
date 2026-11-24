@@ -83,7 +83,7 @@ export default function CalendarScreen() {
   >([]);
   const [editingLog, setEditingLog] = useState<CalendarLogRow | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ name: string; logs: CalendarLogRow[]; pendingIds: string[]; date: string; time: string } | null>(null);
-  const [loggingMissed, setLoggingMissed] = useState<{ name: string; date: string; target: GroupMissedTarget } | null>(null);
+  const [loggingMissed, setLoggingMissed] = useState<{ name: string; date: string; target: GroupMissedTarget; single?: boolean } | null>(null);
 
   const bounds = useMemo(() => monthBounds(month), [month]);
   const today = localDateString();
@@ -313,6 +313,7 @@ export default function CalendarScreen() {
                 if (groupLogs.length > 0) setEditingGroup({ name, logs: groupLogs, ...pending });
               }}
               onLogGroupMissed={(name, date, target) => setLoggingMissed({ name, date, target })}
+              onLogMissedSlot={(name, date, target) => setLoggingMissed({ name, date, target, single: true })}
               onLogAsNeeded={(medicationId, date) => {
                 setSelectedDate(null);
                 router.push(`/medications/${medicationId}?action=logDose&date=${date}`);
@@ -344,6 +345,7 @@ export default function CalendarScreen() {
       {loggingMissed ? (
         <LogGroupMissedSheet
           groupName={loggingMissed.name}
+          single={loggingMissed.single}
           date={loggingMissed.date}
           displayTime={loggingMissed.target.displayTime}
           entries={loggingMissed.target.entries}
@@ -388,12 +390,14 @@ function DayDetailContent({
   onEditSlot,
   onEditGroup,
   onLogGroupMissed,
+  onLogMissedSlot,
   onLogAsNeeded,
 }: {
   day: CalendarDayDetail | null;
   onEditSlot: (logId: string) => void;
   onEditGroup: (groupName: string, logIds: string[], pending: { pendingIds: string[]; date: string; time: string }) => void;
   onLogGroupMissed: (groupName: string, date: string, target: GroupMissedTarget) => void;
+  onLogMissedSlot: (medName: string, date: string, target: GroupMissedTarget) => void;
   onLogAsNeeded: (medicationId: string, date: string) => void;
 }) {
   if (!day) {
@@ -547,6 +551,7 @@ function DayDetailContent({
                   key={med.medicationId}
                   med={med}
                   onEditSlot={onEditSlot}
+                  onLogMissed={(target) => onLogMissedSlot(med.name, day.date, target)}
                   endingToday={endingIds.has(med.medicationId)}
                 />
               ))}
@@ -591,7 +596,12 @@ function DayDetailContent({
                 'mb-3 rounded-control border p-2',
                 endingIds.has(med.medicationId) ? ENDING_BOX : 'border-brand-border dark:border-night-border',
               )}>
-              <MedicationSummaryRow med={med} endingToday={endingIds.has(med.medicationId)} onEditSlot={onEditSlot} />
+              <MedicationSummaryRow
+                med={med}
+                endingToday={endingIds.has(med.medicationId)}
+                onEditSlot={onEditSlot}
+                onLogMissed={(target) => onLogMissedSlot(med.name, day.date, target)}
+              />
             </View>
           ))}
           {day.plannedMedications.map((slot) => (
@@ -725,10 +735,12 @@ function MedicationSummaryRow({
   med,
   endingToday,
   onEditSlot,
+  onLogMissed,
 }: {
   med: CalendarDayDetail['medications'][number];
   endingToday: boolean;
   onEditSlot: (logId: string) => void;
+  onLogMissed: (target: GroupMissedTarget) => void;
 }) {
   return (
     <View className="gap-1 p-0.5">
@@ -750,7 +762,22 @@ function MedicationSummaryRow({
               ) : (
                 <Badge variant={slot.status === 'skipped' ? 'skipped' : 'missed'} />
               )}
-              {slot.logId.startsWith('unlogged-') ? null : (
+              {slot.logId.startsWith('unlogged-') ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Log ${med.name} dose at ${slot.displayTime}`}
+                  className="min-h-9 justify-center"
+                  hitSlop={6}
+                  onPress={() =>
+                    onLogMissed({
+                      time: slot.time,
+                      displayTime: slot.displayTime,
+                      entries: [{ medicationId: med.medicationId, time: slot.time }],
+                    })
+                  }>
+                  <Text className="text-sm font-bold text-brand-deep-blue dark:text-brand-cyan">Log</Text>
+                </Pressable>
+              ) : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${med.name} dose at ${slot.displayTime}`}

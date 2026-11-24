@@ -24,6 +24,7 @@ const STATUS_OPTIONS: { value: 'taken' | 'skipped'; label: string }[] = [
 // mirroring the dashboard's group "Take all" and the calendar's "Edit all".
 export function LogGroupMissedSheet({
   groupName,
+  single = false,
   date,
   displayTime,
   entries,
@@ -34,6 +35,8 @@ export function LogGroupMissedSheet({
   onSaved,
 }: {
   groupName: string;
+  /** One medication's own missed dose (not a group): relabels the sheet. */
+  single?: boolean;
   date: string;
   displayTime: string;
   entries: MissedGroupEntry[];
@@ -85,8 +88,12 @@ export function LogGroupMissedSheet({
 
   return (
     <FormSheet
-      title={`Log all — ${groupName}`}
-      subtitle={`Logs all ${entries.length} medications in this group for the ${displayTime} dose.`}
+      title={single ? `Log dose — ${groupName}` : `Log all — ${groupName}`}
+      subtitle={
+        single
+          ? `Logs the ${displayTime} dose.`
+          : `Logs all ${entries.length} medications in this group for the ${displayTime} dose.`
+      }
       onClose={onClose}
       dismissible={!saving}
       error={formError}
