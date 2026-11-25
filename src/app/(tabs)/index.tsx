@@ -364,8 +364,22 @@ export default function DashboardScreen() {
     return event.kind === 'group' ? event.members : [event.slot];
   }
 
+  // Every still-pending member of an event's group at its due time, PRN
+  // included. The due-now overlay's event omits PRN members (so they never
+  // trigger it), but Take/Skip/Snooze All act on the whole group; picking
+  // only some members is what Manage Individually is for.
+  function pendingGroupSlots(event: NextDoseEvent): DaySlot[] {
+    if (event.kind !== 'group') return eventSlots(event).filter((s) => s.status === 'pending');
+    return slots.filter(
+      (s) =>
+        s.groupId === event.groupId &&
+        s.status === 'pending' &&
+        slotGroupTime(s, scheduleDate, slots) === event.time,
+    );
+  }
+
   function handleTakeAllForEvent(event: NextDoseEvent) {
-    startTake(eventSlots(event).filter((s) => s.status === 'pending'));
+    startTake(pendingGroupSlots(event));
   }
 
   async function takeSlots(pending: DaySlot[]) {
@@ -437,8 +451,8 @@ export default function DashboardScreen() {
   }
 
   async function handleSkipAllForEvent(event: NextDoseEvent) {
-    for (const slot of eventSlots(event)) {
-      if (slot.status === 'pending') await handleAction(slot, 'skipped');
+    for (const slot of pendingGroupSlots(event)) {
+      await handleAction(slot, 'skipped');
     }
   }
 
@@ -446,7 +460,7 @@ export default function DashboardScreen() {
   // members one at a time stamped each with its own clock reading and split
   // the group into per-medication cards.
   async function handleSnoozeAllForEvent(event: NextDoseEvent, minutes: number) {
-    const pending = eventSlots(event).filter((s) => s.status === 'pending');
+    const pending = pendingGroupSlots(event);
     setActingKey(pending.map((s) => `${s.medicationId}|${s.scheduledTime}`).join(','));
     try {
       await postponeDoses(pending, scheduleDate, minutes);
@@ -481,11 +495,14 @@ export default function DashboardScreen() {
 
   // Group membership/size shown on the overlay comes from the full slot
   // set (not doseEvents' own members), so it stays accurate even once some
-  // groupmates have already been resolved and dropped out of doseEvents.
+  // groupmates have already been resolved and dropped out of doseEvents. PRN
+  // members are included (excluded only from alarm-triggering events) since
+  // Take/Skip/Snooze All record them too, so the count and Manage Each rows
+  // must show them.
   const dueNowGroupMembers =
     dueNowEvent && dueNowEvent.kind === 'group'
       ? slots.filter(
-          (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotGroupTime(s, scheduleDate, slots) === dueNowEvent.time,
+          (s) => s.groupId === dueNowEvent.groupId && slotGroupTime(s, scheduleDate, slots) === dueNowEvent.time,
         )
       : null;
 
