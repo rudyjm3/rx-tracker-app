@@ -58,6 +58,14 @@ export function GroupDoseCard({
   const [manageEach, setManageEach] = useState(false);
   const { members } = event;
   const allResolved = !members.some((m) => m.status === 'pending');
+  // Once every required (non-PRN) member is resolved, the group's header
+  // actions are done even if an optional PRN member is still pending — it
+  // stays actionable from the expanded list instead of keeping Take All /
+  // Snooze / Skip on the card. A group made only of PRN members keeps them.
+  const hasRequired = members.some((m) => !m.isPrn);
+  const requiredResolved = hasRequired && !members.some((m) => m.status === 'pending' && !m.isPrn);
+  const headerResolved = allResolved || requiredResolved;
+  const hasMissedRequired = members.some((m) => !m.isPrn && m.status === 'missed');
   const disabled = actingKey !== null;
 
   return (
@@ -84,10 +92,10 @@ export function GroupDoseCard({
           </View>
         </View>
 
-        {allResolved ? (
+        {headerResolved ? (
           <View className="flex-row items-center gap-2">
             <Badge variant={summaryVariant(members, date, graceMinutes)} />
-            {takeAllCount > 0 ? (
+            {takeAllCount > 0 && (allResolved || hasMissedRequired) ? (
               <Button label="Take All" size="compact" disabled={disabled} onPress={() => onTakeAll(event)} />
             ) : null}
           </View>
