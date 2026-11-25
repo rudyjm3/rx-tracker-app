@@ -574,9 +574,7 @@ export default function DashboardScreen() {
   }
 
   const pendingEvents = events.filter((e) =>
-    e.kind === 'single'
-      ? e.slot.status === 'pending'
-      : e.members.some((m) => m.status === 'pending' && !m.isPrn),
+    e.kind === 'single' ? e.slot.status === 'pending' : e.members.some((m) => m.status === 'pending'),
   );
   const nextEvent = pendingEvents[0] ?? null;
   const upcomingEvent = nextEvent ? (pendingEvents.find((e) => e.time > nextEvent.time) ?? null) : null;
