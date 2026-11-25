@@ -495,11 +495,14 @@ export default function DashboardScreen() {
 
   // Group membership/size shown on the overlay comes from the full slot
   // set (not doseEvents' own members), so it stays accurate even once some
-  // groupmates have already been resolved and dropped out of doseEvents.
+  // groupmates have already been resolved and dropped out of doseEvents. PRN
+  // members are included (excluded only from alarm-triggering events) since
+  // Take/Skip/Snooze All record them too, so the count and Manage Each rows
+  // must show them.
   const dueNowGroupMembers =
     dueNowEvent && dueNowEvent.kind === 'group'
       ? slots.filter(
-          (s) => s.groupId === dueNowEvent.groupId && !s.isPrn && slotGroupTime(s, scheduleDate, slots) === dueNowEvent.time,
+          (s) => s.groupId === dueNowEvent.groupId && slotGroupTime(s, scheduleDate, slots) === dueNowEvent.time,
         )
       : null;
 
