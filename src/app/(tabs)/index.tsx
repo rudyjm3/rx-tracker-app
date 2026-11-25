@@ -446,7 +446,19 @@ export default function DashboardScreen() {
   // members one at a time stamped each with its own clock reading and split
   // the group into per-medication cards.
   async function handleSnoozeAllForEvent(event: NextDoseEvent, minutes: number) {
-    const pending = eventSlots(event).filter((s) => s.status === 'pending');
+    // The due-now overlay's event leaves PRN members out (they must not
+    // trigger the alarm), but snoozing is a whole-group action: pull in every
+    // still-pending groupmate at this event's time so a PRN member isn't left
+    // behind at the original time as its own card.
+    const pending =
+      event.kind === 'group'
+        ? slots.filter(
+            (s) =>
+              s.groupId === event.groupId &&
+              s.status === 'pending' &&
+              slotGroupTime(s, scheduleDate, slots) === event.time,
+          )
+        : eventSlots(event).filter((s) => s.status === 'pending');
     setActingKey(pending.map((s) => `${s.medicationId}|${s.scheduledTime}`).join(','));
     try {
       await postponeDoses(pending, scheduleDate, minutes);
